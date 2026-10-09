@@ -21,6 +21,7 @@ import type { WorldStateInjectionResult } from '$lib/services/ai/generation/Worl
 
 // Generation Phases
 export type GenerationPhase =
+  | 'scene_director'
   | 'pre' // Retry state backup, time tracking init
   | 'retrieval' // Memory retrieval, lorebook retrieval
   | 'narrative' // Streaming narrative generation
@@ -81,6 +82,17 @@ export interface PhaseCompleteEvent {
   result?: unknown
 }
 
+export interface DirectorProgressEvent {
+  type: 'phase_progress'
+  phase: 'scene_director'
+  progress: import('./prepareNovelTurn').NovelPreparationProgress
+}
+
+export interface DirectorChunkEvent {
+  type: 'director_chunk'
+  content: string
+}
+
 export interface NarrativeChunkEvent {
   type: 'narrative_chunk'
   content: string
@@ -114,6 +126,8 @@ export interface AbortedEvent {
 export type GenerationEvent =
   | PhaseStartEvent
   | PhaseCompleteEvent
+  | DirectorProgressEvent
+  | DirectorChunkEvent
   | NarrativeChunkEvent
   | NarrativeCompleteEvent
   | ClassificationCompleteEvent

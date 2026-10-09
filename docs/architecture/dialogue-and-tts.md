@@ -5,10 +5,12 @@ and two unrelated-looking features read it: the story renderer colours dialogue,
 the TTS pipeline can speak it in a second voice. Written as two regexes they would
 drift apart at the first edge case, so both go through `matchDialogueAt`.
 
-It recognises `"…"`, `“…”` and `«…»` — the guillemets are not decoration, translated
-narration comes back with them. Single quotes are excluded (`don't`, `l'uomo`), as is
-an unterminated quote, which is also what keeps a streaming line neutral until its
-closing quote arrives instead of flickering.
+It recognises `"…"`, `“…”`, `‘…’`, `«…»`, `「…」` and `『…』` — the guillemets and
+corner quotes are not decoration, translated or Chinese narration can come back with
+them. ASCII single quotes are excluded (`don't`, `l'uomo`), while typographic Chinese
+single quotes are unambiguous dialogue delimiters. An unterminated quote is also
+ignored, which keeps a streaming line neutral until its closing quote arrives instead
+of flickering.
 
 **A dialogue span never crosses a blank line.** On the renderer side that is free —
 marked's inline lexer works per block — but the TTS path segments the whole entry at

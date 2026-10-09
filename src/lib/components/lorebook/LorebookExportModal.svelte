@@ -60,7 +60,7 @@
     <ResponsiveModal.Header class="border-b px-6 py-4">
       <div class="flex items-center gap-2">
         <Upload class="text-primary h-5 w-5" />
-        <ResponsiveModal.Title>Export Lorebook</ResponsiveModal.Title>
+        <ResponsiveModal.Title>导出世界书</ResponsiveModal.Title>
       </div>
     </ResponsiveModal.Header>
 
@@ -68,7 +68,7 @@
       <!-- Export scope -->
       {#if hasSelection}
         <div class="space-y-3">
-          <Label>What to export</Label>
+          <Label>导出内容</Label>
           <RadioGroup
             value={exportSelected ? 'selected' : 'all'}
             onValueChange={(v) => (exportSelected = v === 'selected')}
@@ -81,9 +81,9 @@
             >
               <RadioGroupItem value="all" id="scope-all" />
               <Label for="scope-all" class="flex-1 cursor-pointer">
-                <div class="font-medium">All entries</div>
+                <div class="font-medium">所有条目</div>
                 <div class="text-muted-foreground text-xs">
-                  {story.lorebookEntries.length} entries
+                  {story.lorebookEntries.length} 条目
                 </div>
               </Label>
             </div>
@@ -96,9 +96,9 @@
             >
               <RadioGroupItem value="selected" id="scope-selected" />
               <Label for="scope-selected" class="flex-1 cursor-pointer">
-                <div class="font-medium">Selected only</div>
+                <div class="font-medium">仅所选条目</div>
                 <div class="text-muted-foreground text-xs">
-                  {ui.lorebookBulkSelection.size} entries
+                  {ui.lorebookBulkSelection.size} 条目
                 </div>
               </Label>
             </div>
@@ -106,14 +106,14 @@
         </div>
       {:else}
         <div class="bg-muted/50 rounded-lg border p-3">
-          <div class="text-foreground font-medium">{story.lorebookEntries.length} entries</div>
-          <div class="text-muted-foreground text-xs">All lorebook entries will be exported</div>
+          <div class="text-foreground font-medium">{story.lorebookEntries.length} 条目</div>
+          <div class="text-muted-foreground text-xs">将导出世界书中的所有条目</div>
         </div>
       {/if}
 
       <!-- Format selection -->
       <div class="space-y-3">
-        <Label>Export format</Label>
+        <Label>导出格式</Label>
         <RadioGroup
           value={selectedFormat}
           onValueChange={(v) => (selectedFormat = v as LorebookImportExport.ExportFormat)}
@@ -153,14 +153,14 @@
     </div>
 
     <ResponsiveModal.Footer class="mt-auto border-t px-6 py-4">
-      <Button variant="outline" onclick={close} disabled={exporting}>Cancel</Button>
+      <Button variant="outline" onclick={close} disabled={exporting}>取消</Button>
       <Button onclick={handleExport} disabled={exporting || entryCount === 0} class="gap-2">
         {#if exporting}
           <Loader2 class="h-4 w-4 animate-spin" />
-          Exporting...
+          正在导出…
         {:else}
           <Upload class="h-4 w-4" />
-          Export
+          导出
         {/if}
       </Button>
     </ResponsiveModal.Footer>

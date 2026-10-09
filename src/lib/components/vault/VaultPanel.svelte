@@ -3,6 +3,8 @@
   import { lorebookVault } from '$lib/stores/lorebookVault.svelte'
   import { scenarioVault } from '$lib/stores/scenarioVault.svelte'
   import { ui } from '$lib/stores/ui.svelte'
+  import { story } from '$lib/stores/story.svelte'
+  import { database } from '$lib/services/database'
   import type { VaultCharacter, VaultLorebook, VaultScenario } from '$lib/types'
   import {
     Plus,
@@ -82,7 +84,8 @@
   let importValidation = $state<ImportValidationResult | null>(null)
   let importConflictPack = $state<PresetPack | null>(null)
   // Prompts tab view state
-  type PromptsViewState = { mode: 'browsing' } | { mode: 'editing'; packId: string }
+  type PromptsViewState =
+    { mode: 'browsing' } | { mode: 'editing'; packId: string; templateId?: string }
   let promptsViewState = $state<PromptsViewState>({ mode: 'browsing' })
   let isPromptEditorDirty = $state(false)
   let promptEditorRef = $state<PromptPackEditor | null>(null)
@@ -148,7 +151,7 @@
   const sections: VaultSectionConfig[] = [
     {
       id: 'characters',
-      label: 'Characters',
+      label: '角色',
       icon: Users,
       type: 'character',
       store: characterVault,
@@ -163,7 +166,7 @@
     },
     {
       id: 'lorebooks',
-      label: 'Lorebooks',
+      label: '世界书',
       icon: Book,
       type: 'lorebook',
       store: lorebookVault,
@@ -178,7 +181,7 @@
     },
     {
       id: 'scenarios',
-      label: 'Scenarios',
+      label: '场景',
       icon: MapPin,
       type: 'scenario',
       store: scenarioVault,
@@ -256,6 +259,18 @@
   $effect(() => {
     ui.setVaultTab(activeTab)
     selectedTags = []
+  })
+
+  $effect(() => {
+    const target = ui.promptEditorTarget
+    if (!target) return
+    activeTab = 'prompts'
+    promptsViewState = {
+      mode: 'editing',
+      packId: target.packId,
+      templateId: target.templateId,
+    }
+    ui.clearPromptEditorTarget()
   })
 
   // Handlers
@@ -350,7 +365,34 @@
   }
 
   function handleOpenPack(packId: string) {
+    ui.setPromptEditorReturnTarget({ kind: 'global-pack-manager' })
     promptsViewState = { mode: 'editing', packId }
+  }
+
+  async function handleClosePromptEditor() {
+    const returnTarget = ui.clearPromptEditorSession()
+    promptsViewState = { mode: 'browsing' }
+    isPromptEditorDirty = false
+
+    if (
+      returnTarget?.kind === 'story-settings' &&
+      story.currentStory?.id === returnTarget.storyId
+    ) {
+      try {
+        const sourceStory = await database.getStory(returnTarget.storyId)
+        if (sourceStory && story.currentStory?.id === returnTarget.storyId) {
+          ui.setActivePanel('story')
+          ui.setSettingsTab(returnTarget.settingsTab)
+          ui.openSettings()
+          return
+        }
+      } catch (error) {
+        console.warn('[VaultPanel] Failed to verify the editor return story:', error)
+      }
+    }
+
+    ui.setVaultTab('prompts')
+    ui.setActivePanel('vault')
   }
 
   function guardPromptNavigation(action: () => void) {
@@ -416,127 +458,129 @@
   }}
   class="bg-background flex h-full flex-col"
 >
-  <!-- Header -->
-  <div class="bg-muted/20 flex flex-col border-b">
-    <!-- Top Bar -->
-    <div class="flex items-center gap-2 px-4 py-3">
-      <div class="flex shrink-0 items-center gap-1">
-        <Button
-          variant="link"
-          size="icon"
-          class="text-muted-foreground hover:text-foreground -ml-2 h-9 w-9"
-          onclick={() => guardPromptNavigation(() => ui.setActivePanel('library'))}
-          title="Back to Library"
+  <!-- Header. The editor has its own navigation while it is open. -->
+  {#if !(activeTab === 'prompts' && promptsViewState.mode === 'editing')}
+    <div class="bg-muted/20 flex flex-col border-b">
+      <!-- Top Bar -->
+      <div class="flex items-center gap-2 px-4 py-3">
+        <div class="flex shrink-0 items-center gap-1">
+          <Button
+            variant="link"
+            size="icon"
+            class="text-muted-foreground hover:text-foreground -ml-2 h-9 w-9"
+            onclick={() => guardPromptNavigation(() => ui.setActivePanel('library'))}
+            title="返回故事库"
+          >
+            <ChevronLeft class="h-5 w-5" />
+          </Button>
+          <div class="flex items-center gap-2">
+            <Archive class="text-muted-foreground h-5 w-5" />
+            <h2 class="text-lg font-semibold tracking-tight">素材库</h2>
+          </div>
+        </div>
+
+        <!-- Right Side Actions -->
+        <div
+          class="flex flex-1 items-center justify-end gap-2 [&_[data-button-label]]:max-lg:!hidden"
         >
-          <ChevronLeft class="h-5 w-5" />
-        </Button>
-        <div class="flex items-center gap-2">
-          <Archive class="text-muted-foreground h-5 w-5" />
-          <h2 class="text-lg font-semibold tracking-tight">Vault</h2>
+          <Button
+            icon={Bot}
+            label="素材库助手"
+            variant="outline"
+            size="sm"
+            class="h-9"
+            onclick={() => (showVaultAssistant = true)}
+          />
+
+          {#if activeTab === 'prompts' && promptsViewState.mode === 'browsing'}
+            <Button
+              icon={Download}
+              label="导入提示词包"
+              variant="outline"
+              size="sm"
+              class="h-9"
+              onclick={handleImportPack}
+            />
+
+            <Button
+              icon={Plus}
+              label="新建提示词包"
+              size="sm"
+              class="h-9"
+              onclick={() => (showCreatePackDialog = true)}
+            />
+          {:else if activeTab !== 'prompts'}
+            <Button
+              icon={Tags}
+              label="标签"
+              variant="outline"
+              size="sm"
+              class="h-9"
+              onclick={() => (showTagManager = true)}
+            />
+
+            {#each sections as section (section.id)}
+              {#if activeTab === section.id}
+                <Button
+                  icon={Globe}
+                  label="在线浏览"
+                  variant="outline"
+                  size="sm"
+                  class="h-9"
+                  onclick={() => openBrowseOnline(section.type)}
+                />
+
+                <div class="relative">
+                  <Button
+                    icon={Download}
+                    label={section.importLabel}
+                    variant="outline"
+                    size="sm"
+                    class="h-9 cursor-pointer"
+                  />
+                  <input
+                    type="file"
+                    accept={section.id === 'lorebooks' ? '.json,application/json' : '.json,.png'}
+                    class="absolute inset-0 cursor-pointer opacity-0"
+                    onchange={section.importAction}
+                  />
+                </div>
+
+                {#if section.createAction}
+                  <Button
+                    icon={Plus}
+                    label={section.createLabel!}
+                    size="sm"
+                    class="h-9"
+                    onclick={section.createAction}
+                  />
+                {/if}
+              {/if}
+            {/each}
+          {/if}
         </div>
       </div>
 
-      <!-- Right Side Actions -->
-      <div
-        class="flex flex-1 items-center justify-end gap-2 [&_[data-button-label]]:max-lg:!hidden"
-      >
-        <Button
-          icon={Bot}
-          label="Vault Assistant"
-          variant="outline"
-          size="sm"
-          class="h-9"
-          onclick={() => (showVaultAssistant = true)}
-        />
-
-        {#if activeTab === 'prompts' && promptsViewState.mode === 'browsing'}
-          <Button
-            icon={Download}
-            label="Import Pack"
-            variant="outline"
-            size="sm"
-            class="h-9"
-            onclick={handleImportPack}
-          />
-
-          <Button
-            icon={Plus}
-            label="New Pack"
-            size="sm"
-            class="h-9"
-            onclick={() => (showCreatePackDialog = true)}
-          />
-        {:else if activeTab !== 'prompts'}
-          <Button
-            icon={Tags}
-            label="Tags"
-            variant="outline"
-            size="sm"
-            class="h-9"
-            onclick={() => (showTagManager = true)}
-          />
-
+      <!-- Tab Bar -->
+      <div class="px-4 pb-2">
+        <TabsList class="bg-muted/50 grid w-full max-w-lg grid-cols-4">
           {#each sections as section (section.id)}
-            {#if activeTab === section.id}
-              <Button
-                icon={Globe}
-                label="Browse Online"
-                variant="outline"
-                size="sm"
-                class="h-9"
-                onclick={() => openBrowseOnline(section.type)}
-              />
-
-              <div class="relative">
-                <Button
-                  icon={Download}
-                  label={section.importLabel}
-                  variant="outline"
-                  size="sm"
-                  class="h-9 cursor-pointer"
-                />
-                <input
-                  type="file"
-                  accept={section.id === 'lorebooks' ? '.json,application/json' : '.json,.png'}
-                  class="absolute inset-0 cursor-pointer opacity-0"
-                  onchange={section.importAction}
-                />
-              </div>
-
-              {#if section.createAction}
-                <Button
-                  icon={Plus}
-                  label={section.createLabel!}
-                  size="sm"
-                  class="h-9"
-                  onclick={section.createAction}
-                />
-              {/if}
-            {/if}
+            <TabsTrigger value={section.id} class="flex items-center gap-2">
+              <section.icon class="h-4 w-4" />
+              <span class="hidden sm:inline">{section.label}</span>
+              <Badge variant="secondary" class="ml-1 h-5 px-1 py-0 text-[10px]">
+                {section.store.items.length}
+              </Badge>
+            </TabsTrigger>
           {/each}
-        {/if}
+          <TabsTrigger value="prompts" class="flex items-center gap-2">
+            <FileCode class="h-4 w-4" />
+            <span class="hidden sm:inline">提示词</span>
+          </TabsTrigger>
+        </TabsList>
       </div>
     </div>
-
-    <!-- Tab Bar -->
-    <div class="px-4 pb-2">
-      <TabsList class="bg-muted/50 grid w-full max-w-lg grid-cols-4">
-        {#each sections as section (section.id)}
-          <TabsTrigger value={section.id} class="flex items-center gap-2">
-            <section.icon class="h-4 w-4" />
-            <span class="hidden sm:inline">{section.label}</span>
-            <Badge variant="secondary" class="ml-1 h-5 px-1 py-0 text-[10px]">
-              {section.store.items.length}
-            </Badge>
-          </TabsTrigger>
-        {/each}
-        <TabsTrigger value="prompts" class="flex items-center gap-2">
-          <FileCode class="h-4 w-4" />
-          <span class="hidden sm:inline">Prompts</span>
-        </TabsTrigger>
-      </TabsList>
-    </div>
-  </div>
+  {/if}
 
   <!-- Search and Filters (hidden for Prompts tab) -->
   <div
@@ -565,7 +609,7 @@
 
         <Button
           icon={Star}
-          label="Favorites"
+          label="收藏"
           variant="outline"
           size="default"
           class={cn(
@@ -611,7 +655,7 @@
                     ? `No ${section.label.toLowerCase()} match your filters`
                     : section.emptyTitle}
                   description={searchQuery || showFavoritesOnly
-                    ? 'Try adjusting your search terms or filters.'
+                    ? '请尝试调整搜索词或筛选条件。'
                     : section.emptyDesc}
                 >
                   {#if !searchQuery && !showFavoritesOnly}
@@ -624,7 +668,7 @@
                       {/if}
                       <Button variant="outline" onclick={() => openBrowseOnline(section.type)}>
                         <Globe class="h-4 w-4" />
-                        Browse Online
+                        在线浏览
                       </Button>
                     </div>
                   {/if}
@@ -690,9 +734,20 @@
       <PromptPackEditor
         bind:this={promptEditorRef}
         packId={promptsViewState.packId}
-        onClose={() => {
-          promptsViewState = { mode: 'browsing' }
-        }}
+        storyId={ui.promptEditorReturnTarget.kind === 'story-settings'
+          ? ui.promptEditorReturnTarget.storyId
+          : story.currentStory?.id}
+        storyContext={story.currentStory
+          ? {
+              storyId: story.currentStory.id,
+              branchId: story.currentStory.currentBranchId ?? null,
+              entries: story.entries,
+              story: story.currentStory,
+              worldState: story.worldStateSnapshot,
+            }
+          : undefined}
+        initialTemplateId={promptsViewState.templateId}
+        onClose={handleClosePromptEditor}
         onDirtyChange={(dirty) => {
           isPromptEditorDirty = dirty
         }}

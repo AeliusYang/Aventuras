@@ -19,6 +19,7 @@
   import SyncModal from '$lib/components/sync/SyncModal.svelte'
   import STChatImportModal from '$lib/components/modals/STChatImportModal.svelte'
   import UpdateDialog from '$lib/components/updater/UpdateDialog.svelte'
+  import { UPSTREAM_UPDATES_ENABLED } from '$lib/constants/localRelease'
   import { swipe } from '$lib/utils/swipe'
   import { releaseOrphanScrollLock } from '$lib/utils/scrollLock'
   import { createLogger } from '$lib/log'
@@ -229,7 +230,7 @@
       <button
         class="mobile-sidebar-overlay"
         onclick={() => ui.toggleSidebar()}
-        aria-label="Close sidebar"
+        aria-label="关闭侧栏"
       ></button>
     {/if}
 
@@ -264,7 +265,7 @@
           <button
             class="nav-panel-scrim"
             onclick={() => ui.closeNavPanel()}
-            aria-label="Close story navigation"
+            aria-label="关闭故事导航"
           ></button>
           <div
             bind:this={navPanelEl}
@@ -278,7 +279,7 @@
               type="button"
               class="resizer-handle nav-panel-resizer h-full"
               onmousedown={(e) => startResizing('navPanel', e)}
-              aria-label="Story Navigation Resizer"
+              aria-label="调整故事导航宽度"
             ></button>
           </div>
         {/if}
@@ -311,7 +312,7 @@
           type="button"
           class="resizer-handle hidden h-full sm:block"
           onmousedown={(e) => startResizing('sidebar', e)}
-          aria-label="Sidebar Resizer"
+          aria-label="调整侧栏宽度"
         ></button>
         <Sidebar />
       </div>
@@ -336,7 +337,9 @@
   <STChatImportModal />
 
   <!-- Update Dialog (raised by the startup check and by the Settings button alike) -->
-  <UpdateDialog />
+  {#if UPSTREAM_UPDATES_ENABLED}
+    <UpdateDialog />
+  {/if}
 
   <!-- Floating Debug Button (when debug mode enabled) - draggable, high z-index -->
   {#if settings.uiSettings.debugMode}
@@ -356,7 +359,7 @@
       onpointercancel={() => {
         isDraggingDebug = false
       }}
-      title="View API Debug Logs (drag to move)"
+      title="查看 API 调试日志（可拖动）"
     >
       <Bug class="pointer-events-none h-5 w-5" />
       {#if debug.requestCount > 0}

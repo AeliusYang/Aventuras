@@ -59,13 +59,13 @@
     try {
       const success = await exportFn()
       if (success) {
-        ui.showToast(`Exported story as ${formatName}`, 'info')
+        ui.showToast(`故事已导出为 ${formatName}`, 'info')
       } else {
-        ui.showToast('Export cancelled', 'info')
+        ui.showToast('已取消导出', 'info')
       }
     } catch (error) {
       console.error('[Header] Export failed:', error)
-      ui.showToast(`Export failed: ${errMessage(error)}`, 'error')
+      ui.showToast(`导出失败：${errMessage(error)}`, 'error')
     }
   }
 
@@ -90,6 +90,7 @@
         data.chapters,
         null, // currentBgImage: unchanged from before; the importer reads it off story instead
         data.packBinding,
+        data.worldStateSnapshots,
       )
     }, 'Aventuras (.avt)')
   }
@@ -121,13 +122,13 @@
 </script>
 
 {#snippet importExportMenuItems()}
-  <DropdownMenu.Label>Import</DropdownMenu.Label>
+  <DropdownMenu.Label>导入</DropdownMenu.Label>
   <DropdownMenu.Item onclick={() => ui.openSTChatImport()}>
     <MessageSquare class="text-muted-foreground h-4 w-4" />
-    SillyTavern Chat (.jsonl)
+    SillyTavern 聊天记录 (.jsonl)
   </DropdownMenu.Item>
   <DropdownMenu.Separator />
-  <DropdownMenu.Label>Export</DropdownMenu.Label>
+  <DropdownMenu.Label>导出</DropdownMenu.Label>
   <DropdownMenu.Item onclick={exportAventuras}>
     <FileJson class="text-accent-400 h-4 w-4" />
     Aventuras (.avt)
@@ -138,7 +139,7 @@
   </DropdownMenu.Item>
   <DropdownMenu.Item onclick={exportText}>
     <FileText class="text-muted-foreground h-4 w-4" />
-    Plain Text (.txt)
+    纯文本 (.txt)
   </DropdownMenu.Item>
 {/snippet}
 
@@ -152,7 +153,7 @@
   <div class="relative {visibilityClass}">
     <Button
       icon={Settings}
-      label="Settings"
+      label="设置"
       variant="text"
       class="text-muted-foreground hover:text-primary min-h-11 min-w-11"
       onclick={() => ui.openSettings()}
@@ -194,7 +195,7 @@
         </div>
         {#if settings.uiSettings.showWordCount}
           <span class="text-muted-foreground hidden text-sm sm:-translate-y-px lg:inline"
-            >({story.wordCount} words)</span
+            >({story.wordCount} 字)</span
           >
         {/if}
       {:else}
@@ -210,24 +211,21 @@
       {#if ui.isGenerating}
         <div class="text-accent-400 hidden items-center gap-1.5 text-sm sm:flex">
           <div class="bg-accent-500 h-2 w-2 animate-pulse rounded-full"></div>
-          <span>Generating...</span>
+          <span>正在生成…</span>
         </div>
       {/if}
 
       <!-- Image generation status indicators -->
       {#if ui.imageAnalysisInProgress}
-        <div
-          class="flex items-center gap-1.5 text-sm text-blue-400"
-          title="Analyzing scene for images"
-        >
+        <div class="flex items-center gap-1.5 text-sm text-blue-400" title="正在分析场景以生成图片">
           <ImageIcon class="h-3.5 w-3.5 animate-pulse" />
-          <span class="hidden sm:inline">Analyzing...</span>
+          <span class="hidden sm:inline">正在分析…</span>
         </div>
       {:else if ui.imagesGenerating > 0}
-        <div class="flex items-center gap-1.5 text-sm text-emerald-400" title="Generating images">
+        <div class="flex items-center gap-1.5 text-sm text-emerald-400" title="正在生成图片">
           <ImageIcon class="h-3.5 w-3.5" />
           <span class="hidden sm:inline">
-            {ui.imagesGenerating} image{ui.imagesGenerating > 1 ? 's' : ''}
+            {ui.imagesGenerating} 张图片
           </span>
           <div class="h-2 w-2 animate-pulse rounded-full bg-emerald-500"></div>
         </div>
@@ -239,22 +237,22 @@
       <div class="hidden sm:block">
         <Button
           icon={Library}
-          label="Library"
+          label="故事库"
           variant="text"
           class="text-muted-foreground hover:text-primary min-h-11 min-w-11"
           onclick={goToLibrary}
-          title="Return to Library"
+          title="返回故事库"
         />
       </div>
 
       <!-- Gallery Button -->
       <Button
         icon={ImageIcon}
-        label="Gallery"
+        label="图库"
         variant="text"
         class="text-muted-foreground hover:text-primary min-h-11 min-w-11"
         onclick={() => ui.setActivePanel(ui.activePanel === 'gallery' ? 'story' : 'gallery')}
-        title="View generated images"
+        title="查看生成的图片"
       />
 
       <!-- Import / Export Menu -->
@@ -265,11 +263,11 @@
               <Button
                 {...props}
                 icon={ArrowUpDown}
-                label="Import/Export"
+                label="导入／导出"
                 endIcon={ChevronDown}
                 variant="text"
                 class="text-muted-foreground hover:text-primary min-h-11 min-w-11"
-                title="Import / Export story"
+                title="导入／导出故事"
               />
             {/snippet}
           </DropdownMenu.Trigger>
@@ -298,8 +296,8 @@
               {...props}
               variant="text"
               class="text-muted-foreground hover:text-primary min-h-11 min-w-11 sm:hidden"
-              title="Menu"
-              aria-label={showMobileMenu ? 'Close menu' : 'Open menu'}
+              title="菜单"
+              aria-label={showMobileMenu ? '关闭菜单' : '打开菜单'}
             >
               {#if showMobileMenu}
                 <ChevronUp class="h-5 w-5" />
@@ -312,7 +310,7 @@
         <DropdownMenu.Content align="end">
           <DropdownMenu.Item onclick={goToLibrary}>
             <Library class="text-muted-foreground h-4 w-4" />
-            Library
+            故事库
           </DropdownMenu.Item>
           <DropdownMenu.Separator />
           {@render importExportMenuItems()}
@@ -321,11 +319,11 @@
                menu is where it lives instead. -->
           <DropdownMenu.Item class="sm:hidden" onclick={() => ui.toggleNavPanel()}>
             <PanelLeft class="text-muted-foreground h-4 w-4" />
-            Go to an entry
+            跳转到指定段落
           </DropdownMenu.Item>
           <DropdownMenu.Item class="sm:hidden" onclick={() => ui.toggleLorebookDebug()}>
             <Bug class="text-muted-foreground h-4 w-4" />
-            Active Context
+            当前上下文
             {#if activeContextCount > 0}
               <span class="text-muted-foreground ml-auto font-mono text-xs"
                 >{activeContextCount}</span
@@ -335,7 +333,7 @@
           <DropdownMenu.Separator class="sm:hidden" />
           <DropdownMenu.Item onclick={() => ui.openSettings()}>
             <Settings class="text-muted-foreground h-4 w-4" />
-            Settings
+            设置
             {#if settings.hasGenerationConfigIssues}
               <AlertTriangle class="ml-auto h-3.5 w-3.5 text-amber-500" />
             {/if}
@@ -359,7 +357,7 @@
         variant="text"
         class="text-muted-foreground hover:text-primary relative hidden min-h-11 min-w-11 sm:flex"
         onclick={() => ui.toggleLorebookDebug()}
-        title="View active context"
+        title="查看当前上下文"
       >
         <Bug class="h-5 w-5" />
         {#if activeContextCount > 0}
@@ -381,7 +379,7 @@
         rel="noopener noreferrer"
         variant="text"
         class="text-muted-foreground hover:text-primary min-h-11 min-w-11 sm:hidden"
-        title="Join our Discord community"
+        title="加入 Discord 社区"
       >
         <svg class="h-5 w-5" viewBox="0 0 24 24" fill="currentColor">
           <path
@@ -401,14 +399,14 @@
         variant="text"
         class="text-muted-foreground hover:text-primary hidden min-h-11 min-w-11 sm:flex"
         onclick={() => ui.toggleNavPanel()}
-        title={ui.navPanelOpen ? 'Hide story navigation' : 'Go to an entry'}
+        title={ui.navPanelOpen ? '隐藏故事导航' : '跳转到指定段落'}
       />
       <Button
         icon={PanelRight}
         variant="text"
         class="text-muted-foreground hover:text-primary min-h-11 min-w-11"
         onclick={() => ui.toggleSidebar()}
-        title={ui.sidebarOpen ? 'Hide sidebar' : 'Show sidebar'}
+        title={ui.sidebarOpen ? '隐藏侧栏' : '显示侧栏'}
       />
     {/if}
   </div>

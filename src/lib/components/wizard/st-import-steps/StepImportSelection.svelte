@@ -54,12 +54,12 @@
 <div class="space-y-5">
   <div class="flex items-center justify-between">
     <p class="text-muted-foreground">
-      Choose what to import from <strong>{cardParsedData?.name}</strong> and review the extracted data.
+      选择要导入的内容，来源： <strong>{cardParsedData?.name}</strong> ，并检查提取结果。
     </p>
     {#if !isProcessingCard}
       <Button variant="outline" size="sm" class="shrink-0 gap-1.5" onclick={onProcessCard}>
         <RefreshCw class="h-3 w-3" />
-        Reprocess
+        重新处理
       </Button>
     {/if}
   </div>
@@ -69,10 +69,8 @@
       <Card.Content class="flex items-center gap-3 p-6">
         <Loader2 class="text-primary h-5 w-5 animate-spin" />
         <div>
-          <p class="text-sm font-medium">Processing character card...</p>
-          <p class="text-muted-foreground text-xs">
-            Using AI to extract characters, setting, and scenario data.
-          </p>
+          <p class="text-sm font-medium">正在处理角色卡…</p>
+          <p class="text-muted-foreground text-xs">使用 AI 提取角色、世界设定和场景信息。</p>
         </div>
       </Card.Content>
     </Card.Root>
@@ -98,15 +96,15 @@
                 />
               </div>
               <div>
-                <p class="text-sm font-medium">Characters (as Supporting Cast)</p>
+                <p class="text-sm font-medium">角色（作为配角导入）</p>
                 <p class="text-muted-foreground text-xs">
                   {#if cardImportResult}
                     {cardImportResult.primaryCharacterName}
                     {#if cardImportResult.npcs.length > 0}
-                      + {cardImportResult.npcs.length} extracted NPCs
+                      + {cardImportResult.npcs.length} 名提取的 NPC
                     {/if}
                   {:else}
-                    Card character and extracted NPCs
+                    角色卡主体与提取的 NPC
                   {/if}
                 </p>
               </div>
@@ -139,14 +137,14 @@
                     {sanitizedDescription
                       ? sanitizedDescription.slice(0, 100) +
                         (sanitizedDescription.length > 100 ? '...' : '')
-                      : 'Primary card character'}
+                      : '角色卡主体'}
                   </p>
                 </div>
               </div>
               <!-- Extracted NPCs -->
               {#if cardImportResult.npcs.length > 0}
                 <div class="text-muted-foreground ml-12 text-xs">
-                  <span class="font-medium">Extracted NPCs:</span>
+                  <span class="font-medium">提取的 NPC：</span>
                   <ul class="mt-1 ml-4 list-disc space-y-0.5">
                     {#each cardImportResult.npcs as npc (npc.name)}
                       <li>{npc.name}</li>
@@ -174,8 +172,8 @@
                 <Map class="h-4 w-4 {importScenario ? 'text-primary' : 'text-muted-foreground'}" />
               </div>
               <div>
-                <p class="text-sm font-medium">Scenario & Setting</p>
-                <p class="text-muted-foreground text-xs">World setting and scenario description</p>
+                <p class="text-sm font-medium">场景与设定</p>
+                <p class="text-muted-foreground text-xs">世界设定与场景描述</p>
               </div>
             </div>
             <Switch checked={importScenario} onCheckedChange={(v) => onImportScenarioChange(v)} />
@@ -218,18 +216,18 @@
               </div>
               <div>
                 <p class="text-sm font-medium">
-                  Embedded Lorebook
+                  内嵌世界书
                   {#if !hasEmbeddedLorebook}
-                    <Badge variant="outline" class="ml-1 text-xs">Not available</Badge>
+                    <Badge variant="outline" class="ml-1 text-xs">不可用</Badge>
                   {/if}
                 </p>
                 <p class="text-muted-foreground text-xs">
                   {#if hasEmbeddedLorebook}
-                    {embeddedLorebookEntryCount} lore {embeddedLorebookEntryCount === 1
-                      ? 'entry'
-                      : 'entries'} embedded in character book
+                    {embeddedLorebookEntryCount} 设定 {embeddedLorebookEntryCount === 1
+                      ? '条目'
+                      : '条目'} 内嵌于角色卡世界书
                   {:else}
-                    This card doesn't contain an embedded lorebook
+                    此角色卡没有内嵌世界书
                   {/if}
                 </p>
               </div>
@@ -247,7 +245,7 @@
     {#if cardImportResult}
       <div class="flex items-center gap-2 text-sm text-green-400">
         <Check class="h-4 w-4" />
-        Card processed successfully — details shown above.
+        角色卡处理完成，详情如上。
       </div>
     {/if}
   {/if}

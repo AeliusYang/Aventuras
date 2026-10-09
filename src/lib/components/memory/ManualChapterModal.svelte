@@ -44,17 +44,16 @@
 <ResponsiveModal.Root open={true} onOpenChange={(open) => !open && onClose()}>
   <ResponsiveModal.Content class="flex max-h-[85vh] max-w-lg flex-col gap-0 p-0">
     <ResponsiveModal.Header class="border-b px-4 py-4">
-      <ResponsiveModal.Title>Create Chapter</ResponsiveModal.Title>
+      <ResponsiveModal.Title>创建章节</ResponsiveModal.Title>
       <ResponsiveModal.Description>
-        Select where to end this chapter. All entries up to and including the selected entry will be
-        summarized.
+        选择本章的结束位置。包括所选段落在内的此前内容都将纳入摘要。
       </ResponsiveModal.Description>
     </ResponsiveModal.Header>
 
     <div class="min-h-0 flex-1">
       {#if entries.length === 0}
         <div class="text-muted-foreground flex h-40 items-center justify-center">
-          No entries available for chapter creation.
+          没有可用于创建章节的内容。
         </div>
       {:else}
         <ScrollArea class="h-[50vh] p-4">
@@ -74,7 +73,7 @@
                     variant={entry.type === 'user_action' ? 'secondary' : 'outline'}
                     class="mt-0.5 h-5 shrink-0 px-1.5 text-[10px]"
                   >
-                    {entry.type === 'user_action' ? 'ACTION' : 'NARRATIVE'}
+                    {entry.type === 'user_action' ? '用户输入' : '正文'}
                   </Badge>
                   <span class="text-foreground/80 line-clamp-2 text-sm leading-relaxed">
                     {entry.content}
@@ -86,18 +85,18 @@
         </ScrollArea>
 
         <div class="text-muted-foreground bg-muted/20 border-t px-4 py-2 text-xs">
-          Chapter will include {selectedIndex + 1} of {entries.length} entries
+          本章将包含 {selectedIndex + 1} / {entries.length} 条目
         </div>
       {/if}
     </div>
 
     <ResponsiveModal.Footer class="mt-auto border-t px-4 py-4">
-      <Button variant="outline" onclick={onClose}>Cancel</Button>
+      <Button variant="outline" onclick={onClose}>取消</Button>
       <Button onclick={handleConfirm} disabled={entries.length === 0 || ui.memoryLoading}>
         {#if ui.memoryLoading}
-          Creating...
+          正在创建…
         {:else}
-          Create Chapter
+          创建章节
         {/if}
       </Button>
     </ResponsiveModal.Footer>

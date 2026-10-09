@@ -38,7 +38,7 @@
         e.stopPropagation()
         confirming = false
       }}
-      title="Cancel"
+      title="取消"
     >
       <X class="h-3.5 w-3.5" />
     </Button>
@@ -52,7 +52,7 @@
         confirming = false
         onDelete?.()
       }}
-      title="Confirm Delete"
+      title="确认删除"
     >
       <Check class="h-3.5 w-3.5" />
     </Button>
@@ -70,7 +70,7 @@
           e.stopPropagation()
           confirming = true
         }}
-        title="Delete"
+        title="删除"
       >
         <Trash2 class="h-3.5 w-3.5" />
       </Button>

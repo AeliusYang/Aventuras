@@ -7,6 +7,7 @@ export type {
   FullPack,
   PackTemplate,
   PresetPack,
+  PackUsageStory,
   RuntimeEntityType,
   RuntimeVariable,
   RuntimeVariableType,

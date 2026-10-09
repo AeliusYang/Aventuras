@@ -102,14 +102,14 @@
   }
 
   const providers = [
-    { value: 'openai', label: 'OpenAI Compatible (OpenRouter, OpenAI, Local)' },
-    { value: 'google', label: 'Google Translate' },
-    { value: 'microsoft', label: 'Windows System TTS (Microsoft SAPI)' },
+    { value: 'openai', label: '兼容 OpenAI（OpenRouter、OpenAI、本地服务）' },
+    { value: 'google', label: 'Google 翻译' },
+    { value: 'microsoft', label: 'Windows 系统语音（Microsoft SAPI）' },
   ] as const
 
   const audioFormats = [
-    { value: 'mp3', label: 'MP3 (smaller)' },
-    { value: 'wav', label: 'WAV (widest support)' },
+    { value: 'mp3', label: 'MP3（体积较小）' },
+    { value: 'wav', label: 'WAV（兼容性较广）' },
   ] as const
 
   /**
@@ -239,8 +239,8 @@
   <!-- Enable TTS Toggle -->
   <div class="flex items-center justify-between">
     <div>
-      <Label>Enable Text-to-Speech</Label>
-      <p class="text-muted-foreground text-xs">Configure text-to-speech settings for narration.</p>
+      <Label>启用语音朗读</Label>
+      <p class="text-muted-foreground text-xs">配置正文的语音朗读。</p>
     </div>
     <Switch
       checked={settings.systemServicesSettings.tts.enabled}
@@ -254,7 +254,7 @@
   {#if settings.systemServicesSettings.tts.enabled}
     <!-- Provider Selection -->
     <div>
-      <Label class="mb-2 block">TTS Provider</Label>
+      <Label class="mb-2 block">语音服务商</Label>
       <Select.Root
         type="single"
         value={settings.systemServicesSettings.tts.provider}
@@ -301,7 +301,7 @@
       >
         <Select.Trigger class="h-10 w-full">
           {providers.find((p) => p.value === settings.systemServicesSettings.tts.provider)?.label ??
-            'Select provider'}
+            '选择服务商'}
         </Select.Trigger>
         <Select.Content>
           {#each providers as provider (provider.value)}
@@ -316,7 +316,7 @@
     {#if settings.systemServicesSettings.tts.provider === 'openai'}
       <!-- API Endpoint -->
       <div>
-        <Label class="mb-2 block">API Endpoint</Label>
+        <Label class="mb-2 block">API 地址</Label>
         <Input
           type="text"
           class="w-full"
@@ -331,7 +331,7 @@
 
       <!-- API Key -->
       <div>
-        <Label class="mb-2 block">API Key</Label>
+        <Label class="mb-2 block">API 密钥</Label>
         <Input
           type="password"
           class="w-full"
@@ -340,13 +340,13 @@
             settings.systemServicesSettings.tts.apiKey = e.currentTarget.value
             settings.saveSystemServicesSettings()
           }}
-          placeholder="Enter your API key"
+          placeholder="输入 API 密钥"
         />
       </div>
 
       <!-- TTS Model -->
       <div>
-        <Label class="mb-2 block">TTS Model</Label>
+        <Label class="mb-2 block">语音模型</Label>
         <Input
           type="text"
           class="w-full"
@@ -361,7 +361,7 @@
 
       <!-- Audio format -->
       <div>
-        <Label class="mb-2 block">Audio Format</Label>
+        <Label class="mb-2 block">音频格式</Label>
         <Select.Root
           type="single"
           value={settings.systemServicesSettings.tts.responseFormat}
@@ -373,7 +373,7 @@
           <Select.Trigger class="h-10 w-full">
             {audioFormats.find(
               (f) => f.value === settings.systemServicesSettings.tts.responseFormat,
-            )?.label ?? 'Select format'}
+            )?.label ?? '选择格式'}
           </Select.Trigger>
           <Select.Content>
             {#each audioFormats as format (format.value)}
@@ -384,8 +384,8 @@
           </Select.Content>
         </Select.Root>
         <p class="text-muted-foreground mt-1 text-xs">
-          Switch to WAV if the endpoint answers with "response_format must be wav or pcm" — a local
-          runtime built without an MP3 encoder will.
+          如果服务提示 response_format must be wav or pcm，请切换为 WAV。未包含 MP3
+          编码器的本地服务可能需要此设置。
         </p>
       </div>
     {/if}
@@ -395,10 +395,10 @@
       id="tts-narrator-voice"
       provider={settings.systemServicesSettings.tts.provider}
       value={settings.systemServicesSettings.tts.voice}
-      label={settings.systemServicesSettings.tts.provider === 'google' ? 'Language' : 'Voice'}
+      label={settings.systemServicesSettings.tts.provider === 'google' ? '语言' : '音色'}
       description={dialogueVoiceSupported &&
       settings.systemServicesSettings.tts.dialogueVoiceEnabled
-        ? 'Used for narration outside quotation marks'
+        ? '用于引号以外的旁白'
         : undefined}
       {systemVoices}
       {isLoadingVoices}
@@ -410,10 +410,8 @@
       <div class="space-y-3 rounded-lg border p-3">
         <div class="flex items-center justify-between gap-3">
           <div>
-            <Label for="tts-dialogue-voice-enabled">Separate Dialogue Voice</Label>
-            <p class="text-muted-foreground text-xs">
-              Speak text inside quotation marks in a second voice
-            </p>
+            <Label for="tts-dialogue-voice-enabled">为对白使用独立音色</Label>
+            <p class="text-muted-foreground text-xs">使用另一种音色朗读引号内的对白</p>
           </div>
           <Switch
             id="tts-dialogue-voice-enabled"
@@ -430,8 +428,8 @@
             id="tts-dialogue-voice"
             provider={settings.systemServicesSettings.tts.provider}
             value={settings.systemServicesSettings.tts.dialogueVoice}
-            label="Dialogue Voice"
-            description="Recognises &quot;…&quot;, &ldquo;…&rdquo; and «…». Leave empty to keep one voice."
+            label="对白音色"
+            description="识别英文双引号、中文双引号和 «…»。留空则统一使用旁白音色。"
             {systemVoices}
             {isLoadingVoices}
             placeholder="nova"
@@ -439,8 +437,8 @@
           />
 
           <p class="text-muted-foreground text-xs">
-            To keep the quotation marks themselves from being read aloud, add them to
-            <em>Excluded Characters</em> below.
+            如需避免读出引号本身，请将引号加入
+            <em>排除字符</em> 设置中。
           </p>
         {/if}
       </div>
@@ -456,13 +454,13 @@
       >
         {#if isLoadingPreview}
           <Loader2 class="mr-2 h-4 w-4 animate-spin" />
-          Loading...
+          正在加载…
         {:else if isPlayingPreview}
           <Square class="mr-2 h-4 w-4" />
-          Stop
+          停止
         {:else}
           <Play class="mr-2 h-4 w-4" />
-          Preview Voice
+          试听音色
         {/if}
       </Button>
 
@@ -475,13 +473,13 @@
         >
           {#if isLoadingPreview}
             <Loader2 class="mr-2 h-4 w-4 animate-spin" />
-            Loading...
+            正在加载…
           {:else if isPlayingPreview}
             <Square class="mr-2 h-4 w-4" />
-            Stop
+            停止
           {:else}
             <Play class="mr-2 h-4 w-4" />
-            Preview Both Voices
+            试听两种音色
           {/if}
         </Button>
       {/if}
@@ -494,8 +492,8 @@
     <div class="border-border bg-muted/20 space-y-4 rounded-lg border p-4">
       <div class="flex items-center justify-between">
         <div>
-          <Label>Volume Override</Label>
-          <p class="text-muted-foreground text-xs">Manually control TTS narration volume.</p>
+          <Label>自定义音量</Label>
+          <p class="text-muted-foreground text-xs">手动调整正文朗读音量。</p>
         </div>
         <Switch
           checked={settings.systemServicesSettings.tts.volumeOverride}
@@ -509,7 +507,7 @@
       {#if settings.systemServicesSettings.tts.volumeOverride}
         <div>
           <Label class="mb-2 block">
-            Narration Volume: {Math.round(settings.systemServicesSettings.tts.volume * 100)}%
+            朗读音量： {Math.round(settings.systemServicesSettings.tts.volume * 100)}%
           </Label>
           <Slider
             value={settings.systemServicesSettings.tts.volume}
@@ -530,7 +528,7 @@
     <!-- Speech Speed -->
     <div>
       <Label class="mb-2 block">
-        Speech Speed: {settings.systemServicesSettings.tts.speed.toFixed(2)}x
+        语速： {settings.systemServicesSettings.tts.speed.toFixed(2)}x
       </Label>
       <Slider
         value={settings.systemServicesSettings.tts.speed}
@@ -544,18 +542,14 @@
         step={0.05}
         class="w-full"
       />
-      <p class="text-muted-foreground mt-1 text-xs">
-        Adjust the speed of speech generation (0.25-4.0).
-      </p>
+      <p class="text-muted-foreground mt-1 text-xs">调整语音生成速度（0.25–4.0）。</p>
     </div>
 
     <!-- Auto-Play Toggle -->
     <div class="flex items-center justify-between">
       <div>
-        <Label>Auto-Play Narration</Label>
-        <p class="text-muted-foreground text-xs">
-          Automatically play TTS audio when story is narrated.
-        </p>
+        <Label>自动朗读正文</Label>
+        <p class="text-muted-foreground text-xs">正文生成后自动播放语音。</p>
       </div>
       <Switch
         checked={settings.systemServicesSettings.tts.autoPlay}
@@ -568,7 +562,7 @@
 
     <!-- Excluded Characters -->
     <div>
-      <Label class="mb-2 block">Excluded Characters</Label>
+      <Label class="mb-2 block">排除字符</Label>
       <Input
         type="text"
         class="w-full"
@@ -577,18 +571,16 @@
           settings.systemServicesSettings.tts.excludedCharacters = e.currentTarget.value
           settings.saveSystemServicesSettings()
         }}
-        placeholder="Comma-separated characters (e.g., *, #, _, ~)"
+        placeholder="字符用英文逗号分隔，例如 *, #, _, ~"
       />
-      <p class="text-muted-foreground mt-1 text-xs">Characters excluded from TTS narration.</p>
+      <p class="text-muted-foreground mt-1 text-xs">朗读时忽略这些字符。</p>
     </div>
     <div class="border-border bg-muted/20 space-y-4 rounded-lg border p-4">
       <!-- Remove HTML tags Toggle -->
       <div class="flex items-center justify-between">
         <div>
-          <Label>Remove HTML tags</Label>
-          <p class="text-muted-foreground text-xs">
-            Remove HTML tags from narrated text before sending to TTS.
-          </p>
+          <Label>移除 HTML 标签</Label>
+          <p class="text-muted-foreground text-xs">发送给语音服务前移除正文中的 HTML 标签。</p>
         </div>
         <Switch
           checked={settings.systemServicesSettings.tts.removeHtmlTags}
@@ -602,7 +594,7 @@
       {#if settings.systemServicesSettings.tts.removeHtmlTags}
         <!-- HTML tags to remove content from -->
         <div>
-          <Label class="mb-2 block">HTML tags to remove content from</Label>
+          <Label class="mb-2 block">需要移除内容的 HTML 标签</Label>
           <Input
             type="text"
             class="w-full"
@@ -611,21 +603,19 @@
               settings.systemServicesSettings.tts.htmlTagsToRemoveContent = e.currentTarget.value
               settings.saveSystemServicesSettings()
             }}
-            placeholder="Comma-separated HTML tags (e.g., div, span, font)"
+            placeholder="HTML 标签用英文逗号分隔，例如 div, span, font"
             disabled={settings.systemServicesSettings.tts.removeAllHtmlContent}
           />
           <p class="text-muted-foreground mt-1 text-xs">
-            Comma-separated list of HTML tags whose content should be removed before narration.
+            朗读前移除这些 HTML 标签及其内部内容，标签名用英文逗号分隔。
           </p>
         </div>
 
         <!-- Remove all tag content Toggle -->
         <div class="flex items-center justify-between">
           <div>
-            <Label>Remove all tag content</Label>
-            <p class="text-muted-foreground text-xs">
-              Removes content inside any HTML tag before narration.
-            </p>
+            <Label>移除所有标签内的内容</Label>
+            <p class="text-muted-foreground text-xs">朗读前移除所有 HTML 标签内的内容。</p>
           </div>
           <Switch
             checked={settings.systemServicesSettings.tts.removeAllHtmlContent}
@@ -640,7 +630,7 @@
     <!-- Reset Button -->
     <Button variant="outline" size="sm" onclick={resetSettings}>
       <RefreshCw class="mr-1 h-3 w-3" />
-      Reset to Defaults
+      恢复默认设置
     </Button>
   {/if}
 </div>

@@ -26,7 +26,7 @@ export class NarrativeStore {
   // Step 8: Writing Style
   selectedPOV = $state<POV>('first')
   selectedTense = $state<Tense>('present')
-  tone = $state('immersive and engaging')
+  tone = $state('')
   visualProseMode = $state(false)
   imageGenerationMode = $state<ImageGenerationMode>('none')
   backgroundImagesEnabled = $state(false)

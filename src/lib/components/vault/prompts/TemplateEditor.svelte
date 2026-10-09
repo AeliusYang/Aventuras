@@ -5,7 +5,9 @@
   import { HighlightStyle, syntaxHighlighting } from '@codemirror/language'
   import { tags } from '@lezer/highlight'
   import type { Extension } from '@codemirror/state'
-  import { database } from '$lib/services/database'
+  import { ContextBuilder } from '$lib/services/context/context-builder'
+  import { ui } from '$lib/stores/ui.svelte'
+  import * as Dialog from '$lib/components/ui/dialog'
   import { packService } from '$lib/services/packs/pack-service'
   import { validateTemplate } from '$lib/services/templates/validator'
   import { variableRegistry } from '$lib/services/templates/variables'
@@ -15,6 +17,7 @@
   import { AlertTriangle, CircleCheck, FlaskConical } from '@lucide/svelte'
   import { Button } from '$lib/components/ui/button'
   import TemplatePreview from './TemplatePreview.svelte'
+  import { templateDiff } from './templateDiff'
   import { createIsMobile } from '$lib/hooks/is-mobile.svelte'
 
   interface Props {
@@ -54,6 +57,10 @@
   let validationErrors = $state<ValidationError[]>([])
   let editorView = $state<EditorView | null>(null)
   let loading = $state(true)
+  let resetOpen = $state(false)
+  let baselineSystem = $state('')
+  let baselineUser = $state('')
+  let loadSequence = 0
 
   const isMobile = createIsMobile()
 
@@ -238,27 +245,28 @@
   })
 
   async function loadTemplate(pId: string, tId: string) {
+    const sequence = ++loadSequence
     loading = true
     validationErrors = []
     editorView = null
 
     try {
-      // Load system prompt
-      const systemTemplate = await database.getPackTemplate(pId, tId)
-      const sysContent = systemTemplate?.content ?? ''
+      const builder = await ContextBuilder.forPackId(pId)
+      const resolved = await builder.inspectTemplate(tId)
+      if (sequence !== loadSequence) return
+      const sysContent = resolved.systemTemplate
       systemContent = sysContent
       originalSystem = sysContent
 
       // Load user message (if exists)
-      const userTemplate = await database.getPackTemplate(pId, `${tId}-user`)
-      if (userTemplate) {
-        userContent = userTemplate.content
-        originalUser = userTemplate.content
+      if (resolved.userResolution) {
+        userContent = resolved.userTemplate
+        originalUser = resolved.userTemplate
         hasUserContent = true
       } else {
         userContent = ''
         originalUser = ''
-        hasUserContent = false
+        hasUserContent = tId.startsWith('collaborative-')
       }
 
       onHasUserContent?.(hasUserContent)
@@ -268,7 +276,7 @@
     } catch (error) {
       console.error('[TemplateEditor] Failed to load template:', error)
     } finally {
-      loading = false
+      if (sequence === loadSequence) loading = false
     }
   }
 
@@ -301,17 +309,22 @@
 
   // Public methods for parent component
   export async function save(): Promise<boolean> {
+    const pId = packId
+    const tId = templateId
+    const next = { system: systemContent, user: hasUserContent ? userContent : undefined }
     try {
-      await database.setPackTemplateContent(packId, templateId, systemContent, false)
-      originalSystem = systemContent
-
-      if (hasUserContent) {
-        await database.setPackTemplateContent(packId, `${templateId}-user`, userContent, false)
-        originalUser = userContent
+      await packService.saveTemplatePair(pId, tId, next, {
+        system: originalSystem,
+        user: hasUserContent ? originalUser : undefined,
+      })
+      if (packId === pId && templateId === tId) {
+        originalSystem = next.system
+        if (next.user !== undefined) originalUser = next.user
       }
       return true
     } catch (error) {
       console.error('[TemplateEditor] Failed to save:', error)
+      ui.showToast(error instanceof Error ? error.message : '保存失败', 'error')
       return false
     }
   }
@@ -323,22 +336,73 @@
   }
 
   export async function reset(): Promise<boolean> {
-    const resetSystem = await packService.resetTemplate(packId, templateId)
-    if (!resetSystem) return false
-
-    if (hasUserContent) {
-      await packService.resetTemplate(packId, `${templateId}-user`)
-    }
-
-    // Reload from database
-    await loadTemplate(packId, templateId)
+    const baseline = packService.getDefaultContent(templateId)
+    if (baseline === null) return false
+    baselineSystem = baseline
+    baselineUser = packService.getDefaultContent(`${templateId}-user`) ?? ''
+    resetOpen = true
     return true
+  }
+
+  async function confirmReset() {
+    try {
+      await packService.saveTemplatePair(
+        packId,
+        templateId,
+        { system: baselineSystem, user: baselineUser },
+        { system: originalSystem, user: originalUser },
+      )
+      resetOpen = false
+      await loadTemplate(packId, templateId)
+    } catch (error) {
+      ui.showToast(error instanceof Error ? error.message : '恢复失败', 'error')
+    }
   }
 </script>
 
+<Dialog.Root bind:open={resetOpen}>
+  <Dialog.Content class="max-h-[85vh] overflow-auto sm:max-w-4xl">
+    <Dialog.Header>
+      <Dialog.Title>确认恢复 baseline</Dialog.Title>
+      <Dialog.Description
+        >对照当前草稿和新版内置模板。确认会替换 active pack 的两部分，影响所有绑定此 pack
+        的故事；取消不会写入。</Dialog.Description
+      >
+    </Dialog.Header>
+    {#each [{ label: 'System', before: systemContent, after: baselineSystem }, { label: 'User', before: userContent, after: baselineUser }] as part (part.label)}
+      <div class="text-sm font-medium">
+        {part.label} · {part.before === part.after ? '无差异' : '将替换'}
+      </div>
+      <div class="grid gap-2 sm:grid-cols-2">
+        <div>
+          <div class="text-xs">当前 (-)</div>
+          <pre
+            class="max-h-56 overflow-auto rounded border p-2 text-xs whitespace-pre-wrap">{part.before}</pre>
+        </div>
+        <div>
+          <div class="text-xs">baseline (+)</div>
+          <pre
+            class="max-h-56 overflow-auto rounded border p-2 text-xs whitespace-pre-wrap">{part.after}</pre>
+        </div>
+      </div>
+      <details>
+        <summary class="cursor-pointer text-xs">查看 diff</summary>
+        <pre class="max-h-64 overflow-auto text-xs whitespace-pre-wrap">{templateDiff(
+            part.before,
+            part.after,
+          )}</pre>
+      </details>
+    {/each}
+    <Dialog.Footer>
+      <Button variant="outline" onclick={() => (resetOpen = false)}>取消</Button>
+      <Button variant="destructive" onclick={confirmReset}>确认替换两部分</Button>
+    </Dialog.Footer>
+  </Dialog.Content>
+</Dialog.Root>
+
 {#if loading}
   <div class="flex h-full items-center justify-center">
-    <p class="text-muted-foreground text-sm">Loading template...</p>
+    <p class="text-muted-foreground text-sm">正在加载模板…</p>
   </div>
 {:else}
   <div class="flex h-full flex-col overflow-hidden">
@@ -352,7 +416,7 @@
         {#if !isMobile.current}
           <div class="border-b px-4 py-2">
             <h4 class="text-muted-foreground text-xs font-medium tracking-wide uppercase">
-              Editor
+              模板原文编辑器
             </h4>
           </div>
         {/if}
@@ -402,7 +466,7 @@
                 <span class="text-muted-foreground">
                   {error.message}
                   {#if error.line}
-                    <span class="text-muted-foreground/70">(line {error.line})</span>
+                    <span class="text-muted-foreground/70">（行 {error.line})</span>
                   {/if}
                 </span>
               </div>
@@ -411,7 +475,7 @@
         {:else}
           <div class="flex items-center gap-2 text-xs">
             <CircleCheck class="h-3.5 w-3.5 text-green-500" />
-            <span class="text-muted-foreground">Template is valid</span>
+            <span class="text-muted-foreground">模板有效</span>
           </div>
         {/if}
       </div>
@@ -424,7 +488,7 @@
           onclick={onTestVarsOpen}
         >
           <FlaskConical class="h-3.5 w-3.5" />
-          Test Variables
+          测试变量
         </Button>
       {/if}
     </div>

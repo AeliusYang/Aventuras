@@ -98,7 +98,7 @@
   {#if isLoading}
     <div class="text-muted-foreground flex items-center gap-2 text-sm">
       <Loader2 class="h-4 w-4 animate-spin" />
-      Loading models...
+      正在加载模型…
     </div>
   {:else}
     <div class="flex items-center gap-2">
@@ -148,14 +148,14 @@
       </div>
 
       {#if showRefreshButton && onRefresh}
-        <Button variant="ghost" size="icon" onclick={onRefresh} aria-label="Refresh models">
+        <Button variant="ghost" size="icon" onclick={onRefresh} aria-label="刷新模型">
           <RefreshCw class="h-4 w-4" />
         </Button>
       {/if}
     </div>
     {#if selectedIsUnavailable}
       <p class="text-muted-foreground text-xs" role="status">
-        "{selectedModelId}" is not in the list fetched from this provider. It will be sent as typed.
+        "{selectedModelId}”不在服务商返回的列表中，将按输入的标识发送。
       </p>
     {/if}
     {#if errorMessage}

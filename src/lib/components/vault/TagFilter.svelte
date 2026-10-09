@@ -52,7 +52,7 @@
         {...props}
       >
         <Filter class="h-3 w-3" />
-        <span class="hidden sm:inline">Tags</span>
+        <span class="hidden sm:inline">标签</span>
         {#if selectedTags.length > 0}
           <Badge variant="secondary" class="h-5 px-0 text-sm">
             {selectedTags.length}
@@ -64,7 +64,7 @@
   <Popover.Content class="w-70 p-0" align="end">
     <!-- Logic Toggle Header -->
     <div class="flex items-center justify-between border-b px-3 py-2">
-      <span class="text-muted-foreground text-xs font-medium">Filter Logic:</span>
+      <span class="text-muted-foreground text-xs font-medium">筛选逻辑：</span>
       <div class="bg-muted flex items-center rounded-md p-0.5">
         <button
           class={cn(
@@ -75,7 +75,7 @@
           )}
           onclick={toggleLogic}
         >
-          AND
+          同时满足
         </button>
         <button
           class={cn(
@@ -86,16 +86,16 @@
           )}
           onclick={toggleLogic}
         >
-          OR
+          满足任一
         </button>
       </div>
     </div>
 
     <!-- Command List -->
     <Command.Root>
-      <Command.Input placeholder="Filter tags..." class="h-9" />
+      <Command.Input placeholder="筛选标签…" class="h-9" />
       <Command.List class="max-h-[200px]">
-        <Command.Empty>No tags found.</Command.Empty>
+        <Command.Empty>未找到标签。</Command.Empty>
         <Command.Group>
           {#each availableTags as tag, i (i)}
             <Command.Item
@@ -130,7 +130,7 @@
           onclick={clearTags}
         >
           <X class="mr-2 h-3 w-3" />
-          Clear Filters
+          清除筛选
         </Button>
       </div>
     {/if}

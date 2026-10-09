@@ -65,16 +65,16 @@
     {#if isLoadingVoices}
       <div class="text-muted-foreground flex items-center gap-2 text-sm">
         <Loader2 class="h-4 w-4 animate-spin" />
-        Loading system voices...
+        正在加载系统音色…
       </div>
     {:else if systemVoices.length === 0}
       <div class="text-muted-foreground text-sm">
-        No system voices found. Make sure you're running on Windows with TTS voices installed.
+        未找到系统音色，请确认当前为 Windows 且已安装语音包。
       </div>
     {:else}
       <Select.Root type="single" {value} onValueChange={(v) => onChange(v)}>
         <Select.Trigger {id} class="h-10 w-full">
-          {systemVoices.find((v) => v.name === value)?.name ?? 'Select system voice'}
+          {systemVoices.find((v) => v.name === value)?.name ?? '选择系统音色'}
         </Select.Trigger>
         <Select.Content>
           {#each systemVoices as voice (voice.name)}
@@ -89,7 +89,7 @@
   {:else if provider === 'google'}
     <Select.Root type="single" {value} onValueChange={(v) => onChange(v)}>
       <Select.Trigger {id} class="h-10 w-full">
-        {GOOGLE_TRANSLATE_LANGUAGES.find((l) => l.id === value)?.name ?? 'Select language'}
+        {GOOGLE_TRANSLATE_LANGUAGES.find((l) => l.id === value)?.name ?? '选择语言'}
       </Select.Trigger>
       <Select.Content>
         {#each GOOGLE_TRANSLATE_LANGUAGES as lang (lang.id)}

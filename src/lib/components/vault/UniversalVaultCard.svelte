@@ -144,12 +144,12 @@
       {#if hasLinkedLorebook}
         <Badge variant="secondary" class="h-4 max-w-32 gap-1 px-1.5 text-[10px] font-normal">
           <Link class="h-2.5 w-2.5 shrink-0" />
-          <span class="truncate">{linkedLorebookName ?? 'Lorebook'}</span>
+          <span class="truncate">{linkedLorebookName ?? '世界书'}</span>
         </Badge>
       {/if}
     {:else if asLorebook}
       <span class="text-muted-foreground text-[10px] font-medium">
-        {asLorebook.entries.length} entries
+        {asLorebook.entries.length} 条目
       </span>
       {#if isLinkedFromCard}
         <Badge variant="secondary" class="h-4 gap-1 px-1.5 text-[10px] font-normal">
@@ -158,14 +158,14 @@
         </Badge>
       {:else if asLorebook.source === 'story' || asLorebook.source === 'import'}
         <Badge variant="secondary" class="h-4 px-1.5 text-[10px] font-normal">
-          {asLorebook.source === 'story' ? 'Story' : 'Imported'}
+          {asLorebook.source === 'story' ? '故事' : '已导入'}
         </Badge>
       {/if}
     {:else if asScenario}
       {#if hasLinkedLorebook}
         <Badge variant="secondary" class="h-4 max-w-32 gap-1 px-1.5 text-[10px] font-normal">
           <Link class="h-2.5 w-2.5 shrink-0" />
-          <span class="truncate">{linkedLorebookName ?? 'Lorebook'}</span>
+          <span class="truncate">{linkedLorebookName ?? '世界书'}</span>
         </Badge>
       {/if}
     {/if}
@@ -228,7 +228,7 @@
             class="text-muted-foreground/80 border-muted-foreground/20 h-4 gap-1 px-1.5 text-[10px] font-normal"
           >
             <Users class="h-2.5 w-2.5" />
-            {asScenario.npcs.length} NPCs
+            {asScenario.npcs.length} 配角
           </Badge>
         {/if}
         {#if asScenario.firstMessage}
@@ -237,7 +237,7 @@
             class="text-muted-foreground/80 border-muted-foreground/20 h-4 gap-1 px-1.5 text-[10px] font-normal"
           >
             <MessageSquare class="h-2.5 w-2.5" />
-            Opening
+            开场
           </Badge>
         {/if}
         {#if asScenario.source === 'wizard' || asScenario.source === 'import'}
@@ -245,7 +245,7 @@
             variant="outline"
             class="text-muted-foreground/80 border-muted-foreground/20 h-4 px-1.5 text-[10px] font-normal"
           >
-            {asScenario.source === 'wizard' ? 'Created' : 'Imported'}
+            {asScenario.source === 'wizard' ? '已创建' : '已导入'}
           </Badge>
         {/if}
         {#each visibleScenarioTags as tag, i (i)}

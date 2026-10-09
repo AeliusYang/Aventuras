@@ -11,4 +11,5 @@ export interface StreamChunk {
   content: string
   reasoning?: string
   done: boolean
+  finishReason?: string
 }

@@ -1,4 +1,6 @@
+import { loreInsertStatements } from './storySetup/loreRows'
 import Database from '@tauri-apps/plugin-sql'
+import type { CollaborativeWriterRecovery } from '$lib/types/collaborative'
 import { invoke } from '@tauri-apps/api/core'
 import type {
   Story,
@@ -36,13 +38,20 @@ import type {
   RuntimeVariableType,
   RuntimeEntityType,
   EnumOption,
+  PackUsageStory,
 } from '$lib/services/packs/types'
 import { hashContent } from '$lib/services/packs/hash'
+import { COLLABORATIVE_IMPORT_DEFAULT_PACK_KEY } from '$lib/services/packs/types'
 import {
   packReplacementStatements,
   shippedTemplateStatements,
 } from '$lib/services/packs/replace-statements'
 import type { PackExport } from '$lib/services/packs/validation'
+import {
+  normalizeEntryInjection,
+  normalizeStringArray,
+  parseJsonOr,
+} from '$lib/utils/lorebookEntry'
 
 /**
  * A runtime variable's slot in an entity's metadata JSON.
@@ -169,8 +178,11 @@ function migrateVisualDescriptors(data: unknown): VisualDescriptors {
   return {}
 }
 
-class DatabaseService {
+export class DatabaseService {
   private db: Database | null = null
+  private collectedStatements: { sql: string; params?: unknown[]; expectedRows?: number }[] | null =
+    null
+  private collectingDb: Database | null = null
   /** Pending open promise — prevents concurrent callers from opening the DB twice. */
   private dbPromise: Promise<Database> | null = null
 
@@ -210,7 +222,57 @@ class DatabaseService {
     if (!this.db) {
       await this.init()
     }
-    return this.db!
+    if (!this.collectedStatements) return this.db!
+    if (!this.collectingDb) {
+      const statements = this.collectedStatements
+      this.collectingDb = new Proxy(this.db!, {
+        get(target, property, receiver) {
+          if (property === 'execute') {
+            return async (sql: string, params: unknown[] = []) => {
+              statements.push({ sql, params })
+              return { rowsAffected: 1, lastInsertId: 0 }
+            }
+          }
+          if (property === 'select') {
+            return async () => {
+              throw new Error('Reads are not allowed while collecting an atomic write batch')
+            }
+          }
+          return Reflect.get(target, property, receiver)
+        },
+      }) as Database
+    }
+    return this.collectingDb
+  }
+
+  /**
+   * Run existing write-only database methods as one transaction. The callback may calculate and
+   * stage writes, but must not perform database reads. Nested collection is rejected.
+   */
+  async collectAtomicWrites<T>(callback: (writer: DatabaseService) => Promise<T>): Promise<T> {
+    await this.getDb()
+    const writer = new DatabaseService()
+    writer.db = this.db
+    writer.dbPromise = this.dbPromise
+    writer.collectedStatements = []
+    try {
+      const result = await callback(writer)
+      const statements = writer.collectedStatements
+      writer.collectedStatements = null
+      writer.collectingDb = null
+      await this.transaction(statements)
+      return result
+    } catch (error) {
+      writer.collectedStatements = null
+      writer.collectingDb = null
+      throw error
+    }
+  }
+
+  /** Append pre-built statements to an active isolated writer. */
+  stageAtomicStatements(statements: { sql: string; params?: unknown[]; expectedRows?: number }[]) {
+    if (!this.collectedStatements) throw new Error('No atomic write collection is active')
+    this.collectedStatements.push(...statements)
   }
 
   /**
@@ -219,14 +281,17 @@ class DatabaseService {
    * Returns the rows affected by each, in order. The whole batch rolls back on the first
    * error, and the rejection carries the failing statement's message.
    */
-  async transaction(statements: { sql: string; params?: unknown[] }[]): Promise<number[]> {
+  async transaction(
+    statements: { sql: string; params?: unknown[]; expectedRows?: number }[],
+  ): Promise<number[]> {
     if (statements.length === 0) return []
     // The command opens the file itself with `create_if_missing(false)`, so the plugin has
     // to have been through load and migrations first.
     await this.getDb()
     return invoke<number[]>('db_transaction', {
-      statements: statements.map(({ sql, params }) => ({
+      statements: statements.map(({ sql, params, expectedRows }) => ({
         sql,
+        expectedRows,
         // `undefined` and `NaN` both serialize to JSON null on the way over, where the
         // command can no longer tell them from a deliberate NULL and writes one. Caught
         // here, while the caller's mistake is still visible as one.
@@ -586,12 +651,49 @@ class DatabaseService {
   }
 
   // Story entries operations
+  async getWriterRecovery(
+    storyId: string,
+    branchId: string | null,
+  ): Promise<CollaborativeWriterRecovery | null> {
+    const entry = await this.getStoryEntry(`writer-recovery:${storyId}:${branchId ?? 'main'}`)
+    return entry?.metadata?.writerRecovery ?? null
+  }
+
+  async saveWriterRecovery(record: CollaborativeWriterRecovery): Promise<void> {
+    const db = await this.getDb()
+    await db.execute(
+      `INSERT INTO story_entries (id, story_id, branch_id, type, content, position, created_at, metadata)
+       VALUES (?, ?, ?, 'system', '', -1, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET metadata = excluded.metadata`,
+      [
+        `writer-recovery:${record.storyId}:${record.branchId ?? 'main'}`,
+        record.storyId,
+        record.branchId,
+        record.createdAt,
+        JSON.stringify({ source: 'collaborative-writer-recovery', writerRecovery: record }),
+      ],
+    )
+  }
+
+  async clearWriterRecovery(
+    storyId: string,
+    branchId: string | null,
+    recoveryId: string,
+  ): Promise<void> {
+    const db = await this.getDb()
+    await db.execute(
+      `DELETE FROM story_entries WHERE id = ? AND json_extract(metadata, '$.writerRecovery.id') = ?`,
+      [`writer-recovery:${storyId}:${branchId ?? 'main'}`, recoveryId],
+    )
+  }
+
   async getStoryEntries(
     storyId: string,
     options?: { limit?: number; offset?: number },
   ): Promise<StoryEntry[]> {
     const db = await this.getDb()
-    let query = 'SELECT * FROM story_entries WHERE story_id = ? ORDER BY position ASC'
+    let query =
+      "SELECT * FROM story_entries WHERE story_id = ? AND id NOT LIKE 'writer-recovery:%' ORDER BY position ASC"
     const params: any[] = [storyId]
 
     if (options?.limit !== undefined) {
@@ -628,22 +730,22 @@ class DatabaseService {
       if (maxPosition !== undefined) {
         // Limit to entries up to a certain position (for inherited entries)
         query =
-          'SELECT * FROM story_entries WHERE story_id = ? AND branch_id IS NULL AND position <= ? ORDER BY position ASC'
+          "SELECT * FROM story_entries WHERE story_id = ? AND id NOT LIKE 'writer-recovery:%' AND branch_id IS NULL AND position <= ? ORDER BY position ASC"
         params = [storyId, maxPosition]
       } else {
         query =
-          'SELECT * FROM story_entries WHERE story_id = ? AND branch_id IS NULL ORDER BY position ASC'
+          "SELECT * FROM story_entries WHERE story_id = ? AND id NOT LIKE 'writer-recovery:%' AND branch_id IS NULL ORDER BY position ASC"
         params = [storyId]
       }
     } else {
       // Specific branch
       if (maxPosition !== undefined) {
         query =
-          'SELECT * FROM story_entries WHERE story_id = ? AND branch_id = ? AND position <= ? ORDER BY position ASC'
+          "SELECT * FROM story_entries WHERE story_id = ? AND id NOT LIKE 'writer-recovery:%' AND branch_id = ? AND position <= ? ORDER BY position ASC"
         params = [storyId, branchId, maxPosition]
       } else {
         query =
-          'SELECT * FROM story_entries WHERE story_id = ? AND branch_id = ? ORDER BY position ASC'
+          "SELECT * FROM story_entries WHERE story_id = ? AND id NOT LIKE 'writer-recovery:%' AND branch_id = ? ORDER BY position ASC"
         params = [storyId, branchId]
       }
     }
@@ -665,7 +767,7 @@ class DatabaseService {
   async getStoryEntryCount(storyId: string): Promise<number> {
     const db = await this.getDb()
     const result = await db.select<{ count: number }[]>(
-      'SELECT COUNT(*) as count FROM story_entries WHERE story_id = ?',
+      "SELECT COUNT(*) as count FROM story_entries WHERE story_id = ? AND id NOT LIKE 'writer-recovery:%'",
       [storyId],
     )
     return result[0]?.count ?? 0
@@ -679,7 +781,7 @@ class DatabaseService {
     const db = await this.getDb()
     // Get the last N entries by position
     const results = await db.select<any[]>(
-      `SELECT * FROM story_entries WHERE story_id = ?
+      `SELECT * FROM story_entries WHERE story_id = ? AND id NOT LIKE \'writer-recovery:%\'
        ORDER BY position DESC LIMIT ?`,
       [storyId, count],
     )
@@ -1486,14 +1588,15 @@ class DatabaseService {
     const db = await this.getDb()
     await db.execute(
       `INSERT INTO checkpoints (
-        id, story_id, name, last_entry_id, last_entry_preview, entry_count,
+        id, story_id, branch_id, name, last_entry_id, last_entry_preview, entry_count,
         entries_snapshot, characters_snapshot, locations_snapshot,
         items_snapshot, story_beats_snapshot, chapters_snapshot, time_tracker_snapshot,
         lorebook_entries_snapshot, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         checkpoint.id,
         checkpoint.storyId,
+        checkpoint.branchId ?? null,
         checkpoint.name,
         checkpoint.lastEntryId,
         checkpoint.lastEntryPreview,
@@ -2219,83 +2322,19 @@ class DatabaseService {
   }
 
   async bulkInsertEntries(entries: Entry[]): Promise<void> {
-    if (entries.length === 0) return
-    const db = await this.getDb()
-
-    // Single INSERT statement = single atomic SQLite operation.
-    // tauri-plugin-sql v2 exposes no JS transaction API and uses a sqlx connection
-    // pool, so BEGIN/COMMIT across separate execute() calls is unsafe (different
-    // pool connections). A single multi-row INSERT is atomically guaranteed by
-    // SQLite itself. Modern SQLite (3.32+, bundled with sqlx) supports up to
-    // 32,766 bind variables — at 21 params/row that's ~1,560 entries, well beyond
-    // any realistic lorebook size.
-    const valuePlaceholders = entries
-      .map(() => '(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
-      .join(',')
-    const values: unknown[] = []
-
-    for (const entry of entries) {
-      values.push(
-        entry.id,
-        entry.storyId,
-        entry.name,
-        entry.type,
-        entry.description,
-        entry.hiddenInfo,
-        JSON.stringify(entry.aliases),
-        JSON.stringify(entry.state),
-        entry.adventureState ? JSON.stringify(entry.adventureState) : null,
-        entry.creativeState ? JSON.stringify(entry.creativeState) : null,
-        JSON.stringify(entry.injection),
-        entry.createdBy,
-        entry.createdAt,
-        entry.updatedAt,
-        entry.loreManagementBlacklisted ? 1 : 0,
-        entry.branchId || null,
-        entry.overridesId || null,
-        entry.deleted ? 1 : 0,
-      )
+    const statements = loreInsertStatements(entries)
+    if (!statements.length) return
+    if (this.collectedStatements) {
+      this.stageAtomicStatements(statements)
+    } else {
+      await this.transaction(statements)
     }
-
-    await db.execute(
-      `INSERT INTO entries (
-        id, story_id, name, type, description, hidden_info, aliases,
-        state, adventure_state, creative_state, injection, created_by,
-        created_at, updated_at, lore_management_blacklisted, branch_id, overrides_id, deleted
-      ) VALUES ${valuePlaceholders}`,
-      values,
-    )
   }
 
   async addEntry(entry: Entry): Promise<void> {
     const db = await this.getDb()
-    await db.execute(
-      `INSERT INTO entries (
-        id, story_id, name, type, description, hidden_info, aliases,
-        state, adventure_state, creative_state, injection, created_by,
-        created_at, updated_at, lore_management_blacklisted, branch_id, overrides_id, deleted
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        entry.id,
-        entry.storyId,
-        entry.name,
-        entry.type,
-        entry.description,
-        entry.hiddenInfo,
-        JSON.stringify(entry.aliases),
-        JSON.stringify(entry.state),
-        entry.adventureState ? JSON.stringify(entry.adventureState) : null,
-        entry.creativeState ? JSON.stringify(entry.creativeState) : null,
-        JSON.stringify(entry.injection),
-        entry.createdBy,
-        entry.createdAt,
-        entry.updatedAt,
-        entry.loreManagementBlacklisted ? 1 : 0,
-        entry.branchId || null,
-        entry.overridesId || null,
-        entry.deleted ? 1 : 0,
-      ],
-    )
+    const statement = loreInsertStatements([entry])[0]!
+    await db.execute(statement.sql, statement.params)
   }
 
   async updateEntry(id: string, updates: Partial<Entry>): Promise<void> {
@@ -2412,11 +2451,15 @@ class DatabaseService {
    * through `getEmbeddedImagesForEntry`: that reads `*`, and the base64 of every image in
    * the entry is what `getEmbeddedImageMetaForStory` below exists to keep off the bridge.
    */
-  async getEmbeddedImageSourceTextsForEntry(entryId: string): Promise<string[]> {
+  async getEmbeddedImageSourceTextsForEntry(
+    entryId: string,
+    contentVersion?: string,
+    includeLegacy = true,
+  ): Promise<string[]> {
     const db = await this.getDb()
     const results = await db.select<{ source_text: string | null }[]>(
-      'SELECT source_text FROM embedded_images WHERE entry_id = ?',
-      [entryId],
+      `SELECT source_text FROM embedded_images WHERE entry_id = ?${contentVersion ? ' AND (content_version = ? OR (content_version IS NULL AND ?))' : ''}`,
+      contentVersion ? [entryId, contentVersion, includeLegacy ? 1 : 0] : [entryId],
     )
     return results.map((r) => r.source_text ?? '').filter(Boolean)
   }
@@ -2433,7 +2476,7 @@ class DatabaseService {
     const db = await this.getDb()
     const results = await db.select<any[]>(
       `SELECT id, story_id, entry_id, source_text, prompt, style_id, model,
-              width, height, status, error_message, created_at
+              width, height, status, error_message, created_at, content_version
        FROM embedded_images WHERE story_id = ? ORDER BY created_at ASC`,
       [storyId],
     )
@@ -2446,8 +2489,8 @@ class DatabaseService {
     await db.execute(
       `INSERT INTO embedded_images (
         id, story_id, entry_id, source_text, prompt, style_id, model,
-        image_data, width, height, status, error_message, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        image_data, width, height, status, error_message, created_at, content_version
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         image.id,
         image.storyId,
@@ -2462,6 +2505,7 @@ class DatabaseService {
         image.status,
         image.errorMessage ?? null,
         now,
+        image.contentVersion ?? null,
       ],
     )
     return { ...image, createdAt: now }
@@ -2703,6 +2747,7 @@ class DatabaseService {
       storyId: row.story_id,
       entryId: row.entry_id,
       sourceText: sourceText,
+      contentVersion: row.content_version ?? undefined,
       prompt: row.prompt,
       styleId: row.style_id,
       model: row.model,
@@ -2898,6 +2943,7 @@ class DatabaseService {
     return {
       id: row.id,
       storyId: row.story_id,
+      branchId: row.branch_id ?? null,
       name: row.name,
       lastEntryId: row.last_entry_id,
       lastEntryPreview: row.last_entry_preview,
@@ -2938,20 +2984,25 @@ class DatabaseService {
   }
 
   private mapEntry(row: any): Entry {
+    const validTypes: EntryType[] = ['character', 'location', 'item', 'faction', 'concept', 'event']
+    const type: EntryType = validTypes.includes(row.type) ? row.type : 'concept'
+    const rawState = parseJsonOr<unknown>(row.state, null)
+    const state =
+      rawState && typeof rawState === 'object' && !Array.isArray(rawState)
+        ? (rawState as Entry['state'])
+        : ({ type } as Entry['state'])
     return {
       id: row.id,
       storyId: row.story_id,
-      name: row.name,
-      type: row.type,
-      description: row.description || '',
-      hiddenInfo: row.hidden_info,
-      aliases: row.aliases ? JSON.parse(row.aliases) : [],
-      state: row.state ? JSON.parse(row.state) : { type: row.type },
-      adventureState: row.adventure_state ? JSON.parse(row.adventure_state) : null,
-      creativeState: row.creative_state ? JSON.parse(row.creative_state) : null,
-      injection: row.injection
-        ? JSON.parse(row.injection)
-        : { mode: 'keyword', keywords: [], priority: 0 },
+      name: typeof row.name === 'string' ? row.name : '',
+      type,
+      description: typeof row.description === 'string' ? row.description : '',
+      hiddenInfo: typeof row.hidden_info === 'string' ? row.hidden_info : null,
+      aliases: normalizeStringArray(parseJsonOr(row.aliases, [])),
+      state,
+      adventureState: parseJsonOr(row.adventure_state, null),
+      creativeState: parseJsonOr(row.creative_state, null),
+      injection: normalizeEntryInjection(parseJsonOr(row.injection, null)),
       createdBy: row.created_by || 'user',
       createdAt: row.created_at,
       updatedAt: row.updated_at,
@@ -3652,6 +3703,134 @@ class DatabaseService {
     return { ...pack, createdAt: now, updatedAt: now }
   }
 
+  /**
+   * Clone a Pack and all of its definitions in one transaction. Story bindings and entity
+   * runtime values intentionally stay with the source Pack; the clone is a new independent set.
+   */
+  async duplicatePack(
+    sourcePackId: string,
+    pack: Omit<PresetPack, 'createdAt' | 'updatedAt'>,
+  ): Promise<PresetPack> {
+    const source = await this.getPack(sourcePackId)
+    if (!source) throw new Error('Source Pack not found')
+
+    const db = await this.getDb()
+    const nameRows = await db.select<{ id: string }[]>(
+      'SELECT id FROM preset_packs WHERE lower(name) = lower(?) LIMIT 1',
+      [pack.name],
+    )
+    if (nameRows.length > 0) throw new Error(`提示词包名称已存在：${pack.name}`)
+
+    const [templates, variables, runtimeVariables] = await Promise.all([
+      this.getPackTemplates(sourcePackId),
+      this.getPackVariables(sourcePackId),
+      this.getRuntimeVariables(sourcePackId),
+    ])
+    const now = Date.now()
+    const statements: { sql: string; params: unknown[] }[] = [
+      {
+        sql: 'INSERT INTO preset_packs (id, name, description, author, is_default, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+        params: [pack.id, pack.name, pack.description, pack.author, 0, now, now],
+      },
+    ]
+
+    for (const template of templates) {
+      statements.push({
+        sql: `INSERT INTO pack_templates (id, pack_id, template_id, content, content_hash, baseline_hash, created_at, updated_at)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        params: [
+          crypto.randomUUID(),
+          pack.id,
+          template.templateId,
+          template.content,
+          template.contentHash,
+          template.baselineHash,
+          now,
+          now,
+        ],
+      })
+    }
+    for (const variable of variables) {
+      statements.push({
+        sql: `INSERT INTO pack_variables (id, pack_id, variable_name, display_name, description, variable_type, is_required, sort_order, default_value, enum_options, created_at)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        params: [
+          crypto.randomUUID(),
+          pack.id,
+          variable.variableName,
+          variable.displayName,
+          variable.description ?? null,
+          variable.variableType,
+          variable.isRequired ? 1 : 0,
+          variable.sortOrder,
+          variable.defaultValue ?? null,
+          variable.enumOptions ? JSON.stringify(variable.enumOptions) : null,
+          now,
+        ],
+      })
+    }
+    for (const variable of runtimeVariables) {
+      statements.push({
+        sql: `INSERT INTO pack_runtime_variables (id, pack_id, entity_type, variable_name, display_name, description, variable_type, default_value, min_value, max_value, enum_options, color, icon, pinned, sort_order, created_at)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        params: [
+          crypto.randomUUID(),
+          pack.id,
+          variable.entityType,
+          variable.variableName,
+          variable.displayName,
+          variable.description ?? null,
+          variable.variableType,
+          variable.defaultValue ?? null,
+          variable.minValue ?? null,
+          variable.maxValue ?? null,
+          variable.enumOptions ? JSON.stringify(variable.enumOptions) : null,
+          variable.color,
+          variable.icon ?? null,
+          variable.pinned ? 1 : 0,
+          variable.sortOrder,
+          now,
+        ],
+      })
+    }
+
+    await this.transaction(statements)
+    return { ...pack, createdAt: now, updatedAt: now }
+  }
+
+  async getPackUsageStories(packId: string): Promise<PackUsageStory[]> {
+    const db = await this.getDb()
+    const rows = await db.select<{ id: string; title: string; updated_at: number }[]>(
+      'SELECT id, title, updated_at FROM stories WHERE pack_id = ? ORDER BY updated_at DESC',
+      [packId],
+    )
+    return rows.map((row) => ({ id: row.id, title: row.title, updatedAt: row.updated_at }))
+  }
+
+  /** Atomically move existing stories to another Pack. Variable preflight happens in PackService. */
+  async reassignStoriesPack(storyIds: string[], targetPackId: string): Promise<void> {
+    const ids = [...new Set(storyIds)]
+    if (ids.length === 0) return
+    const target = await this.getPack(targetPackId)
+    if (!target) throw new Error('Target Pack not found')
+
+    const db = await this.getDb()
+    const placeholders = ids.map(() => '?').join(', ')
+    const rows = await db.select<{ id: string }[]>(
+      `SELECT id FROM stories WHERE id IN (${placeholders})`,
+      ids,
+    )
+    if (rows.length !== ids.length) throw new Error('One or more stories no longer exist')
+
+    await this.transaction([
+      {
+        sql: `UPDATE stories SET pack_id = ? WHERE id IN (${placeholders})`,
+        params: [targetPackId, ...ids],
+        expectedRows: ids.length,
+      },
+    ])
+  }
+
   async updatePack(
     id: string,
     updates: { name?: string; description?: string | null; author?: string | null },
@@ -3679,8 +3858,13 @@ class DatabaseService {
   }
 
   async deletePack(id: string): Promise<void> {
-    const db = await this.getDb()
-    await db.execute('DELETE FROM preset_packs WHERE id = ? AND is_default = 0', [id])
+    await this.transaction([
+      { sql: 'DELETE FROM preset_packs WHERE id = ? AND is_default = 0', params: [id] },
+      {
+        sql: 'DELETE FROM settings WHERE key = ? AND value = ? AND NOT EXISTS (SELECT 1 FROM preset_packs WHERE id = ?)',
+        params: [COLLABORATIVE_IMPORT_DEFAULT_PACK_KEY, id, id],
+      },
+    ])
   }
 
   /**
@@ -4269,6 +4453,23 @@ class DatabaseService {
   async setStoryPack(storyId: string, packId: string): Promise<void> {
     const db = await this.getDb()
     await db.execute('UPDATE stories SET pack_id = ? WHERE id = ?', [packId, storyId])
+  }
+
+  /** Change a story's Pack and variable overrides together. */
+  async rebindStoryPack(
+    storyId: string,
+    packId: string,
+    values: Record<string, string>,
+  ): Promise<void> {
+    const pack = await this.getPack(packId)
+    if (!pack) throw new Error('Target Pack not found')
+    await this.transaction([
+      {
+        sql: 'UPDATE stories SET pack_id = ?, custom_variable_values = ? WHERE id = ?',
+        params: [packId, JSON.stringify(values), storyId],
+        expectedRows: 1,
+      },
+    ])
   }
 
   /**

@@ -1,3 +1,5 @@
+export const COLLABORATIVE_IMPORT_DEFAULT_PACK_KEY = 'collaborative_import_default_pack_id'
+
 /** Custom variable type for pack variables (extends VariableType with textarea). */
 export type CustomVariableType = 'text' | 'textarea' | 'enum' | 'number' | 'boolean'
 
@@ -80,6 +82,13 @@ export interface PresetPack {
   /** Creation timestamp (epoch milliseconds) */
   createdAt: number
   /** Last modification timestamp (epoch milliseconds) */
+  updatedAt: number
+}
+
+/** Lightweight story information shown when managing Pack bindings. */
+export interface PackUsageStory {
+  id: string
+  title: string
   updatedAt: number
 }
 

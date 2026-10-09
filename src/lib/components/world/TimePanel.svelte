@@ -52,7 +52,7 @@
 <div class="flex flex-col gap-1 pb-12">
   <!-- Header -->
   <div class="mb-2 flex items-center justify-between">
-    <h3 class="text-foreground text-xl font-bold tracking-tight">Time</h3>
+    <h3 class="text-foreground text-xl font-bold tracking-tight">时间</h3>
     {#if !isEditing}
       <div class="flex items-center gap-1">
         <Button
@@ -60,7 +60,7 @@
           size="icon"
           class="text-muted-foreground hover:text-foreground h-6 w-6"
           onclick={startEdit}
-          title="Edit time"
+          title="编辑时间"
         >
           <Pencil class="h-4 w-4" />
         </Button>
@@ -69,7 +69,7 @@
           size="icon"
           class="text-muted-foreground hover:text-destructive h-6 w-6"
           onclick={resetTime}
-          title="Reset time"
+          title="重置时间"
         >
           <RotateCcw class="h-4 w-4" />
         </Button>
@@ -81,30 +81,30 @@
     <div class="border-border bg-card rounded-lg border p-3 shadow-sm">
       <div class="mb-3 grid grid-cols-2 gap-3">
         <div class="space-y-1">
-          <Label class="text-xs">Years</Label>
+          <Label class="text-xs">年</Label>
           <Input type="number" bind:value={editYears} min="0" class="h-8 text-sm" />
         </div>
         <div class="space-y-1">
-          <Label class="text-xs">Days</Label>
+          <Label class="text-xs">天</Label>
           <Input type="number" bind:value={editDays} min="0" max="364" class="h-8 text-sm" />
         </div>
         <div class="space-y-1">
-          <Label class="text-xs">Hours</Label>
+          <Label class="text-xs">小时</Label>
           <Input type="number" bind:value={editHours} min="0" max="23" class="h-8 text-sm" />
         </div>
         <div class="space-y-1">
-          <Label class="text-xs">Minutes</Label>
+          <Label class="text-xs">分钟</Label>
           <Input type="number" bind:value={editMinutes} min="0" max="59" class="h-8 text-sm" />
         </div>
       </div>
 
-      <p class="text-muted-foreground mb-3 text-xs">Time will be automatically normalized.</p>
+      <p class="text-muted-foreground mb-3 text-xs">时间将自动换算为规范格式。</p>
 
       <div class="border-border flex justify-end gap-2 border-t pt-2">
-        <Button variant="text" size="sm" class="h-7 text-xs" onclick={cancelEdit}>Cancel</Button>
+        <Button variant="text" size="sm" class="h-7 text-xs" onclick={cancelEdit}>取消</Button>
         <Button size="sm" class="h-7 px-4 text-xs" onclick={saveEdit}>
           <Save class="h-3.5 w-3.5" />
-          Save
+          保存
         </Button>
       </div>
     </div>
@@ -117,7 +117,7 @@
             {story.timeTracker.years}
           </div>
           <div class="text-muted-foreground text-[10px] font-medium tracking-wider uppercase">
-            Years
+            年
           </div>
         </div>
         <div class="bg-muted/50 border-border/50 rounded border p-2">
@@ -125,7 +125,7 @@
             {story.timeTracker.days}
           </div>
           <div class="text-muted-foreground text-[10px] font-medium tracking-wider uppercase">
-            Days
+            天
           </div>
         </div>
         <div class="bg-muted/50 border-border/50 rounded border p-2">
@@ -133,7 +133,7 @@
             {pad(story.timeTracker.hours)}
           </div>
           <div class="text-muted-foreground text-[10px] font-medium tracking-wider uppercase">
-            Hours
+            小时
           </div>
         </div>
         <div class="bg-muted/50 border-border/50 rounded border p-2">
@@ -141,14 +141,12 @@
             {pad(story.timeTracker.minutes)}
           </div>
           <div class="text-muted-foreground text-[10px] font-medium tracking-wider uppercase">
-            Min
+            分钟
           </div>
         </div>
       </div>
     </div>
 
-    <p class="text-muted-foreground mt-2 px-1 text-xs">
-      Time is tracked automatically as the story progresses.
-    </p>
+    <p class="text-muted-foreground mt-2 px-1 text-xs">时间会随故事发展自动更新。</p>
   {/if}
 </div>

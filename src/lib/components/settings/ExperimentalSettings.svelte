@@ -150,7 +150,7 @@
 
     // Pick the backup file. On Android this returns a SAF content:// URI; on desktop a real path.
     const selected = await open({
-      title: 'Select Aventura Backup to Restore',
+      title: '选择要恢复的 Aventura 备份',
       // openFilters drops these on Android. It matters here: SAF appends " (1)" AFTER ".zip" for
       // duplicate names, and Android cannot resolve a MIME type for "backup.zip (1)", so a
       // zip-filtered picker would grey out the very backup the user is trying to restore.
@@ -199,7 +199,7 @@
       // Recommend backup before enabling
       const shouldContinue = await ask(
         'It is strongly recommended to download a full backup before enabling experimental features.\n\nWould you like to continue without a backup?',
-        { title: 'Enable State Tracking', kind: 'warning' },
+        { title: '启用状态跟踪', kind: 'warning' },
       )
       if (!shouldContinue) {
         stateTrackingChecked = !checked // revert visual state
@@ -287,10 +287,10 @@
   <div class="flex items-start gap-3 rounded-lg border border-amber-500/30 bg-amber-500/10 p-4">
     <AlertTriangle class="mt-0.5 h-5 w-5 shrink-0 text-amber-500" />
     <div class="space-y-1">
-      <p class="text-sm font-medium text-amber-500">Experimental Features</p>
+      <p class="text-sm font-medium text-amber-500">实验功能</p>
       <p class="text-muted-foreground text-xs">
-        These features are in active development. They may change behavior or data formats.
-        <strong>Always create a backup before enabling.</strong>
+        这些功能仍在开发中，行为或数据格式可能发生变化。
+        <strong>启用前请先创建备份。</strong>
       </p>
     </div>
   </div>
@@ -299,12 +299,11 @@
   <div class="bg-muted/30 space-y-3 rounded-lg border p-4">
     <div class="flex items-center gap-2">
       <ShieldCheck class="text-primary h-4 w-4" />
-      <Label class="text-sm font-medium">Data Safety</Label>
+      <Label class="text-sm font-medium">数据备份与恢复</Label>
     </div>
     <p class="text-muted-foreground text-xs">
-      Download a full backup of your database as a ZIP archive. It contains the raw SQLite database,
-      which holds every story, lorebook entry and image. You can restore from a backup to revert to
-      a previous state.
+      将完整数据库备份为 ZIP 文件，包含保存故事、世界书条目和图片的 SQLite
+      数据库。可通过恢复备份返回此前状态。
     </p>
     <div class="flex items-center gap-3">
       <Button
@@ -316,10 +315,10 @@
       >
         {#if isBackingUp}
           <Loader2 class="h-4 w-4 animate-spin" />
-          Creating Backup...
+          正在创建备份…
         {:else}
           <Download class="h-4 w-4" />
-          Download Backup
+          下载备份
         {/if}
       </Button>
       <Button
@@ -331,10 +330,10 @@
       >
         {#if isRestoring}
           <Loader2 class="h-4 w-4 animate-spin" />
-          Restoring...
+          正在恢复…
         {:else}
           <Upload class="h-4 w-4" />
-          Restore from Backup
+          从备份恢复
         {/if}
       </Button>
     </div>
@@ -356,7 +355,7 @@
   <div class="space-y-5">
     <div class="flex items-center gap-2">
       <FlaskConical class="text-muted-foreground h-4 w-4" />
-      <Label class="text-sm font-medium">Feature Toggles</Label>
+      <Label class="text-sm font-medium">功能开关</Label>
     </div>
 
     <!-- State Tracking -->
@@ -364,16 +363,13 @@
       <div class="space-y-0.5">
         <div class="flex items-center gap-2">
           <Database class="text-muted-foreground h-4 w-4" />
-          <Label>State Tracking</Label>
+          <Label>状态变化记录</Label>
         </div>
         <p class="text-muted-foreground text-xs">
-          Record world state changes (deltas) on each story entry after AI classification. This is
-          the foundation for rollback and lightweight branches.
+          AI 完成状态提取后，在每段故事上记录世界状态变化，为回滚和轻量分支提供依据。
         </p>
         {#if settings.experimentalFeatures.stateTracking}
-          <p class="pt-1 text-xs font-medium text-amber-500">
-            Active — deltas will be recorded on new entries.
-          </p>
+          <p class="pt-1 text-xs font-medium text-amber-500">已启用，新段落将记录状态变化。</p>
         {/if}
       </div>
       <Switch bind:checked={stateTrackingChecked} onCheckedChange={handleStateTrackingToggle} />
@@ -389,19 +385,16 @@
       <div class="space-y-0.5">
         <div class="flex items-center gap-2">
           <Undo2 class="text-muted-foreground h-4 w-4" />
-          <Label>Rollback on Delete</Label>
+          <Label>删除时回滚状态</Label>
         </div>
         <p class="text-muted-foreground text-xs">
-          When deleting a message, automatically undo all world state changes from that point
-          onward. Entries after the deleted one are also removed (cascade).
+          删除消息时，自动撤销从该处开始的所有世界状态变化，并一并删除后续内容。
         </p>
         {#if !settings.experimentalFeatures.stateTracking}
-          <p class="text-muted-foreground pt-1 text-xs italic">
-            Requires State Tracking to be enabled.
-          </p>
+          <p class="text-muted-foreground pt-1 text-xs italic">需要先启用状态变化记录。</p>
         {:else if settings.experimentalFeatures.rollbackOnDelete}
           <p class="pt-1 text-xs font-medium text-amber-500">
-            Active — deleting entries will cascade and rollback state.
+            已启用，删除内容时会同时删除后续内容并回滚状态。
           </p>
         {/if}
       </div>
@@ -422,20 +415,15 @@
       <div class="space-y-0.5">
         <div class="flex items-center gap-2">
           <GitBranch class="text-muted-foreground h-4 w-4" />
-          <Label>Lightweight Branches</Label>
+          <Label>轻量分支</Label>
         </div>
         <p class="text-muted-foreground text-xs">
-          New branches share parent world state instead of copying all entities. Changes are
-          copy-on-write — only modified entities get duplicated.
+          新分支共享父分支的世界状态，只有修改过的实体才会创建副本。
         </p>
         {#if !settings.experimentalFeatures.stateTracking}
-          <p class="text-muted-foreground pt-1 text-xs italic">
-            Requires State Tracking to be enabled.
-          </p>
+          <p class="text-muted-foreground pt-1 text-xs italic">需要先启用状态变化记录。</p>
         {:else if settings.experimentalFeatures.lightweightBranches}
-          <p class="pt-1 text-xs font-medium text-amber-500">
-            Active — new branches will use copy-on-write.
-          </p>
+          <p class="pt-1 text-xs font-medium text-amber-500">已启用，新分支仅复制修改过的实体。</p>
         {/if}
       </div>
       <Switch
@@ -452,11 +440,10 @@
   <div class="space-y-3 {!settings.experimentalFeatures.stateTracking ? 'opacity-50' : ''}">
     <div class="flex items-center gap-2">
       <Clock class="text-muted-foreground h-4 w-4" />
-      <Label>Auto-Snapshot Interval</Label>
+      <Label>自动快照间隔</Label>
     </div>
     <p class="text-muted-foreground text-xs">
-      Number of entries between automatic world state snapshots. Lower values allow faster rollback
-      but use more storage.
+      每隔多少段内容保存一次世界状态快照。间隔越短，回滚越快，但占用更多存储空间。
     </p>
     <div class="flex items-center gap-4">
       <Slider
@@ -481,20 +468,17 @@
   <div class="space-y-5">
     <div class="flex items-center gap-2">
       <Package class="text-muted-foreground h-4 w-4" />
-      <Label class="text-sm font-medium">Story Import</Label>
+      <Label class="text-sm font-medium">故事导入</Label>
     </div>
 
     <div class="flex flex-row items-center justify-between">
       <div class="space-y-0.5">
-        <Label>Choose a prompt pack for older story files</Label>
+        <Label>为旧版故事文件选择提示词包</Label>
         <p class="text-muted-foreground text-xs">
-          Story files saved before Aventuras recorded prompt packs carry no pack of their own, and
-          import using the built-in one. Turn this on to be asked which of your packs such a file
-          should use. Files that do record a pack bind to a matching installed pack, and ask only
-          when the match is uncertain or a required value is missing, whatever this is set to.
+          旧版故事文件未记录提示词包，默认使用内置包导入。开启后，导入此类文件时会让你选择提示词包。已记录提示词包的文件会自动匹配已安装的包，仅在无法确定匹配或缺少必填变量时询问。
         </p>
         <p class="text-muted-foreground pt-1 text-xs italic">
-          No effect if you only have one pack installed — there would be nothing to choose.
+          只有一个已安装提示词包时，此选项不影响导入。
         </p>
       </div>
       <Switch
@@ -511,7 +495,7 @@
     <div class="space-y-5">
       <div class="flex items-center gap-2">
         <Smartphone class="text-muted-foreground h-4 w-4" />
-        <Label class="text-sm font-medium">Android Background Generation</Label>
+        <Label class="text-sm font-medium">Android 后台生成</Label>
       </div>
 
       <!-- Background Generation toggle -->
@@ -519,15 +503,14 @@
         <div class="space-y-0.5">
           <div class="flex items-center gap-2">
             <Smartphone class="text-muted-foreground h-4 w-4" />
-            <Label>Background Generation</Label>
+            <Label>后台生成</Label>
           </div>
           <p class="text-muted-foreground text-xs">
-            Keeps the app alive during text generation when you switch apps or lock your screen.
-            Uses a foreground service and wake lock — may use slightly more battery.
+            切换应用或锁屏后继续生成正文。使用前台服务和唤醒锁，可能略微增加耗电。
           </p>
           {#if settings.experimentalFeatures.backgroundGeneration}
             <p class="pt-1 text-xs font-medium text-amber-500">
-              Active — generation will continue when the app is backgrounded.
+              已启用，应用进入后台后会继续生成。
             </p>
           {/if}
         </div>
@@ -547,15 +530,11 @@
         <div class="space-y-0.5">
           <div class="flex items-center gap-2">
             <Bell class="text-muted-foreground h-4 w-4" />
-            <Label>Completion Notifications</Label>
+            <Label>生成完成通知</Label>
           </div>
-          <p class="text-muted-foreground text-xs">
-            Send a notification when text generation finishes while the app is in the background.
-          </p>
+          <p class="text-muted-foreground text-xs">应用在后台完成正文生成后发送通知。</p>
           {#if !settings.experimentalFeatures.backgroundGeneration}
-            <p class="text-muted-foreground pt-1 text-xs italic">
-              Requires Background Generation to be enabled.
-            </p>
+            <p class="text-muted-foreground pt-1 text-xs italic">需要先启用后台生成。</p>
           {/if}
         </div>
         <Switch
@@ -575,15 +554,11 @@
         <div class="space-y-0.5">
           <div class="flex items-center gap-2">
             <Eye class="text-muted-foreground h-4 w-4" />
-            <Label>Include Preview</Label>
+            <Label>通知中显示预览</Label>
           </div>
-          <p class="text-muted-foreground text-xs">
-            Show the first few lines of generated text in the notification body.
-          </p>
+          <p class="text-muted-foreground text-xs">在通知中显示生成正文的前几行。</p>
           {#if !settings.experimentalFeatures.generationNotifications}
-            <p class="text-muted-foreground pt-1 text-xs italic">
-              Requires Completion Notifications to be enabled.
-            </p>
+            <p class="text-muted-foreground pt-1 text-xs italic">需要先启用生成完成通知。</p>
           {/if}
         </div>
         <Switch
@@ -594,9 +569,8 @@
       </div>
 
       <p class="text-muted-foreground text-xs italic">
-        Note: Some phone manufacturers (Xiaomi, Huawei, Samsung, etc.) have aggressive battery
-        optimization that may still interrupt generation. You may need to exempt Aventura from
-        battery optimization in your device settings.
+        部分手机的电池优化机制仍可能中断生成。必要时，请在设备设置中将 Aventuras
+        排除在电池优化之外。
       </p>
     </div>
 
@@ -606,14 +580,12 @@
   <!-- Reset Button -->
   <div class="flex items-center justify-between">
     <div class="space-y-0.5">
-      <p class="text-sm font-medium">Reset Experimental Features</p>
-      <p class="text-muted-foreground text-xs">
-        Disable all experimental features and reset to defaults.
-      </p>
+      <p class="text-sm font-medium">重置实验功能</p>
+      <p class="text-muted-foreground text-xs">关闭所有实验功能并恢复默认值。</p>
     </div>
     <Button variant="outline" size="sm" onclick={handleResetAll} class="gap-2">
       <RotateCcw class="h-4 w-4" />
-      Reset
+      重置
     </Button>
   </div>
 
@@ -624,11 +596,9 @@
     <div class="space-y-0.5">
       <div class="flex items-center gap-2">
         <Terminal class="text-muted-foreground h-4 w-4" />
-        <Label>SQL Query Console</Label>
+        <Label>SQL 查询控制台</Label>
       </div>
-      <p class="text-muted-foreground text-xs">
-        Run raw SQL queries directly against the internal SQLite database.
-      </p>
+      <p class="text-muted-foreground text-xs">直接对应用的 SQLite 数据库执行 SQL 查询。</p>
     </div>
     <Switch checked={showSqlEditor} onCheckedChange={(v) => (showSqlEditor = v)} />
   </div>
@@ -640,10 +610,9 @@
       >
         <AlertTriangle class="text-destructive mt-0.5 h-4 w-4 shrink-0" />
         <p class="text-destructive text-xs">
-          <strong>Danger zone.</strong> Write queries (INSERT, UPDATE, DELETE, DROP) can permanently
-          modify or corrupt your data. Always create a backup first. Press
-          <kbd class="bg-destructive/20 rounded px-1 py-0.5 font-mono text-[10px]">Ctrl+Enter</kbd> to
-          run.
+          <strong>高风险操作区域。</strong>
+          写入语句（INSERT、UPDATE、DELETE、DROP）可能永久修改或损坏数据，请先备份。按
+          <kbd class="bg-destructive/20 rounded px-1 py-0.5 font-mono text-[10px]">Ctrl+Enter</kbd> 执行。
         </p>
       </div>
 
@@ -668,19 +637,19 @@
         >
           {#if isQuerying}
             <Loader2 class="h-4 w-4 animate-spin" />
-            Running...
+            正在执行…
           {:else}
             <Play class="h-4 w-4" />
-            Run Query
+            执行查询
           {/if}
         </Button>
         {#if queryResult}
           <Button variant="ghost" size="sm" onclick={handleCopyResults} class="gap-2">
             <Copy class="h-4 w-4" />
-            Copy JSON
+            复制 JSON
           </Button>
           <span class="text-muted-foreground text-xs">
-            {queryResult.rows.length} row{queryResult.rows.length !== 1 ? 's' : ''} in {queryTime}ms
+            {queryResult.rows.length} 行 用时 {queryTime}ms
           </span>
         {/if}
       </div>
@@ -724,7 +693,7 @@
           </table>
         </div>
       {:else if queryResult && queryResult.rows.length === 0}
-        <p class="text-muted-foreground text-xs italic">Query returned no rows.</p>
+        <p class="text-muted-foreground text-xs italic">查询未返回数据。</p>
       {/if}
     </div>
   {/if}
@@ -736,24 +705,24 @@
     <Dialog.Header>
       <Dialog.Title class="flex items-center gap-2">
         <AlertTriangle class="h-5 w-5 text-amber-500" />
-        Backup Contains Sensitive Data
+        备份包含敏感信息
       </Dialog.Title>
       <Dialog.Description class="space-y-3 pt-2">
         <p>
-          The backup includes your <strong>full settings</strong>, which contain your
-          <strong class="text-destructive">API keys</strong> and
-          <strong class="text-destructive">API provider profiles</strong>.
+          备份包含你的 <strong>完整设置</strong>，其中包括
+          <strong class="text-destructive">API 密钥</strong> 和
+          <strong class="text-destructive">模型服务商配置</strong>.
         </p>
         <p class="font-medium text-amber-500">
-          Do not share this file with others — anyone with the backup can access your API keys.
+          请勿与他人分享此文件，持有备份的人可以读取其中的 API 密钥。
         </p>
       </Dialog.Description>
     </Dialog.Header>
     <Dialog.Footer class="gap-2 sm:gap-0">
-      <Button variant="outline" onclick={() => (showBackupConfirm = false)}>Cancel</Button>
+      <Button variant="outline" onclick={() => (showBackupConfirm = false)}>取消</Button>
       <Button onclick={handleBackupConfirmed} class="gap-2">
         <Download class="h-4 w-4" />
-        Continue
+        继续
       </Button>
     </Dialog.Footer>
   </Dialog.Content>
@@ -765,31 +734,28 @@
     <Dialog.Header>
       <Dialog.Title class="flex items-center gap-2">
         <AlertTriangle class="h-5 w-5 text-amber-500" />
-        Restore from Backup
+        从备份恢复
       </Dialog.Title>
       <Dialog.Description class="space-y-3 pt-2">
         <p>
-          This will <strong class="text-destructive">replace your entire database</strong> with the one
-          from the backup ZIP.
+          此操作将 <strong class="text-destructive">替换整个数据库</strong> ，使用备份 ZIP 中的数据库。
         </p>
         <p>
-          A safety copy of your current database will be saved as
-          <span class="font-mono text-xs">aventura-pre-restore.db</span> in the app data folder.
+          当前数据库会另存一份安全副本，文件名为
+          <span class="font-mono text-xs">aventura-pre-restore.db</span> ，位于应用数据目录。
         </p>
-        <p class="font-medium text-amber-500">
-          The application will close after restoring. You will need to reopen it manually.
-        </p>
+        <p class="font-medium text-amber-500">恢复后应用将关闭，需要手动重新打开。</p>
       </Dialog.Description>
     </Dialog.Header>
     <Dialog.Footer class="mt-4 justify-between sm:justify-between">
-      <Button variant="outline" onclick={() => (showRestoreConfirm = false)}>Cancel</Button>
+      <Button variant="outline" onclick={() => (showRestoreConfirm = false)}>取消</Button>
       <Button
         variant="outline"
         onclick={handleRestoreConfirmed}
         class="border-destructive text-destructive hover:bg-destructive/10 gap-2"
       >
         <Upload class="h-4 w-4" />
-        Restore & Close App
+        恢复并关闭应用
       </Button>
     </Dialog.Footer>
   </Dialog.Content>

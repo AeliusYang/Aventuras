@@ -305,12 +305,12 @@
   <div>
     <div class="flex items-center justify-between">
       <div>
-        <h3 class="text-lg font-semibold">API Profiles</h3>
-        <p class="text-muted-foreground text-sm">Setup your API endpoints</p>
+        <h3 class="text-lg font-semibold">模型连接配置</h3>
+        <p class="text-muted-foreground text-sm">配置模型服务商和 API 地址</p>
       </div>
       <Button onclick={startNewProfile}>
         <Plus class="h-4 w-4" />
-        Add Profile
+        添加配置
       </Button>
     </div>
   </div>
@@ -321,7 +321,7 @@
       <CardContent>
         <div class="mb-3 flex items-center gap-2">
           <Star class="text-primary h-4 w-4" />
-          <span class="text-primary text-sm font-medium">New Profile</span>
+          <span class="text-primary text-sm font-medium">新建配置</span>
         </div>
 
         <Separator class="mb-4" />
@@ -348,7 +348,7 @@
         >
           {#snippet footer()}
             <div class="flex gap-2 pt-2">
-              <Button variant="outline" onclick={cancelEdit} class="flex-1">Cancel</Button>
+              <Button variant="outline" onclick={cancelEdit} class="flex-1">取消</Button>
               <Button
                 onclick={handleSave}
                 disabled={!formName.trim() ||
@@ -356,7 +356,7 @@
                 class="flex-1"
               >
                 <Check class="h-4 w-4" />
-                Create Profile
+                创建配置
               </Button>
             </div>
           {/snippet}
@@ -389,10 +389,10 @@
                     <Badge
                       variant="default"
                       class="hidden shrink-0 items-center justify-center md:flex"
-                      title="Used when agent profiles don't specify an API profile"
+                      title="当任务配置未指定模型连接时使用"
                     >
                       <Star class="mr-1 h-3 w-3" />
-                      Fallback
+                      默认连接
                     </Badge>
                   {/if}
                 </div>
@@ -402,7 +402,7 @@
                   </Badge>
                   <Badge variant="outline" class="text-muted-foreground text-xs">
                     {settings.getProfileModels(profile.id).length}
-                    models
+                    个模型
                   </Badge>
                 </div>
               </div>
@@ -417,9 +417,9 @@
                   <Badge
                     variant="default"
                     class="shrink-0 text-xs md:hidden"
-                    title="Used when agent profiles don't specify an API profile"
+                    title="当任务配置未指定模型连接时使用"
                   >
-                    Fallback
+                    默认连接
                   </Badge>
                 {/if}
                 {#if settings.apiSettings.profiles.length > 1 && profile.id !== settings.apiSettings.defaultProfileId}
@@ -428,7 +428,7 @@
                     size="icon"
                     class="w-5"
                     onclick={() => handleSetDefault(profile.id)}
-                    title="Set as fallback profile"
+                    title="设为默认连接"
                   >
                     <Star class="h-4 w-4" />
                   </Button>
@@ -461,11 +461,11 @@
               />
               <p class="text-muted-foreground mt-2 min-h-[1lh] text-right text-xs">
                 {#if saveStatus === 'saving'}
-                  Saving...
+                  正在保存…
                 {:else if saveStatus === 'saved'}
-                  ✓ Saved
+                  ✓ 已保存
                 {:else if saveStatus === 'error'}
-                  <span class="text-destructive">⚠ Save failed</span>
+                  <span class="text-destructive">⚠ 保存失败</span>
                 {/if}
               </p>
             </div>
@@ -482,13 +482,11 @@
           >
             <KeyIcon class="text-muted-foreground h-6 w-6" />
           </div>
-          <h4 class="mb-2 font-medium">No API profiles yet</h4>
-          <p class="text-muted-foreground mb-4 text-sm">
-            Add an API profile to connect to your LLM provider
-          </p>
+          <h4 class="mb-2 font-medium">尚未添加模型连接</h4>
+          <p class="text-muted-foreground mb-4 text-sm">添加连接配置以使用你的模型服务商</p>
           <Button onclick={startNewProfile}>
             <Plus class=" h-4 w-4" />
-            Add Your First Profile
+            添加第一个连接
           </Button>
         </CardContent>
       </Card>

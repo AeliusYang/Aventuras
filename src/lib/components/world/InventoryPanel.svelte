@@ -196,13 +196,13 @@
 <div class="flex flex-col gap-1 pb-12">
   <!-- Header -->
   <div class="mb-2 flex items-center justify-between">
-    <h3 class="text-foreground text-xl font-bold tracking-tight">Inventory</h3>
+    <h3 class="text-foreground text-xl font-bold tracking-tight">物品</h3>
     <Button
       variant="text"
       size="icon"
       class="text-muted-foreground hover:text-foreground h-6 w-6"
       onclick={() => (showAddForm = !showAddForm)}
-      title="Add item"
+      title="添加物品"
     >
       <Plus class="h-6! w-6!" />
     </Button>
@@ -211,25 +211,25 @@
   {#if showAddForm}
     <div class="border-border bg-card mb-2 rounded-lg border p-3 shadow-sm">
       <div class="space-y-3">
-        <Input type="text" bind:value={newName} placeholder="Item name" class="h-8 text-sm" />
+        <Input type="text" bind:value={newName} placeholder="物品名称" class="h-8 text-sm" />
         <Textarea
           bind:value={newDescription}
-          placeholder="Description (optional)"
+          placeholder="描述（选填）"
           class="min-h-15 resize-none text-sm"
           rows={2}
         />
         <div class="flex items-center justify-end gap-3">
           <div class="flex items-center gap-2">
-            <Label class="text-muted-foreground text-xs">Quantity</Label>
+            <Label class="text-muted-foreground text-xs">数量</Label>
             <Input type="number" bind:value={newQuantity} min="1" class="h-8 w-20 text-sm" />
           </div>
         </div>
       </div>
       <div class="mt-3 flex justify-end gap-2">
         <Button variant="text" size="sm" class="h-7" onclick={() => (showAddForm = false)}>
-          Cancel
+          取消
         </Button>
-        <Button size="sm" class="h-7" onclick={addItem} disabled={!newName.trim()}>Add</Button>
+        <Button size="sm" class="h-7" onclick={addItem} disabled={!newName.trim()}>添加</Button>
       </div>
     </div>
   {/if}
@@ -238,7 +238,7 @@
   {#if story.equippedItems.length > 0}
     <div class="mb-4 space-y-2">
       <h4 class="text-muted-foreground pl-1 text-xs font-semibold tracking-wider uppercase">
-        Equipped
+        已装备
       </h4>
       {#each story.equippedItems as item (item.id)}
         {@const isCollapsed = ui.isEntityCollapsed(item.id)}
@@ -255,7 +255,7 @@
             <div class="space-y-3">
               <div class="mb-2 flex items-center justify-between">
                 <h4 class="text-muted-foreground text-xs font-semibold tracking-wider uppercase">
-                  Editing {item.name}
+                  编辑中 {item.name}
                 </h4>
                 <Button variant="text" size="icon" class="h-6 w-6" onclick={cancelEdit}
                   ><X class="h-4 w-4" /></Button
@@ -264,16 +264,16 @@
 
               <div class="grid grid-cols-2 gap-3">
                 <div class="col-span-2 space-y-1 sm:col-span-1">
-                  <Label class="text-xs">Name</Label>
+                  <Label class="text-xs">名称</Label>
                   <Input
                     type="text"
                     bind:value={editName}
-                    placeholder="Item name"
+                    placeholder="物品名称"
                     class="h-8 text-sm"
                   />
                 </div>
                 <div class="col-span-2 space-y-1 sm:col-span-1">
-                  <Label class="text-xs">Quantity</Label>
+                  <Label class="text-xs">数量</Label>
                   <Input type="number" bind:value={editQuantity} min="1" class="h-8 text-sm" />
                 </div>
               </div>
@@ -284,15 +284,15 @@
                   for="edit-equipped-{item.id}"
                   class="text-sm leading-none font-medium peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
                 >
-                  Equipped
+                  已装备
                 </Label>
               </div>
 
               <div class="space-y-1">
-                <Label class="text-xs">Description</Label>
+                <Label class="text-xs">说明</Label>
                 <Textarea
                   bind:value={editDescription}
-                  placeholder="Description"
+                  placeholder="说明"
                   class="min-h-15 resize-none text-xs"
                 />
               </div>
@@ -312,7 +312,7 @@
 
               <div class="border-border flex justify-end gap-2 border-t pt-2">
                 <Button variant="text" size="sm" class="h-7 text-xs" onclick={cancelEdit}>
-                  Cancel
+                  取消
                 </Button>
                 <Button
                   size="sm"
@@ -321,7 +321,7 @@
                   disabled={!editName.trim()}
                 >
                   <Save class="mr-1.5 h-3.5 w-3.5" />
-                  Save
+                  保存
                 </Button>
               </div>
             </div>
@@ -330,21 +330,20 @@
             <div class="space-y-3">
               <div class="text-muted-foreground mb-2 flex items-center gap-2 text-sm">
                 <MapPin class="h-3.5 w-3.5" />
-                <span>Drop item at...</span>
+                <span>将物品放置于…</span>
               </div>
 
               <Select.Root type="single" bind:value={dropLocationId}>
                 <Select.Trigger class="h-8 text-xs">
                   <div class="flex items-center gap-2 overflow-hidden">
                     <span class="truncate">
-                      {story.locations.find((l) => l.id === dropLocationId)?.name ||
-                        'Select location'}
+                      {story.locations.find((l) => l.id === dropLocationId)?.name || '选择地点'}
                     </span>
                   </div>
                 </Select.Trigger>
                 <Select.Content class="max-h-50">
                   {#if story.locations.length === 0}
-                    <Select.Item value="" disabled>No locations available</Select.Item>
+                    <Select.Item value="" disabled>没有可用地点</Select.Item>
                   {:else}
                     {#each story.locations as location (location.id)}
                       <Select.Item value={location.id} label={location.name}
@@ -357,7 +356,7 @@
 
               <div class="flex justify-end gap-2">
                 <Button variant="text" size="sm" class="h-7 text-xs" onclick={cancelDrop}>
-                  Cancel
+                  取消
                 </Button>
                 <Button
                   size="sm"
@@ -365,7 +364,7 @@
                   onclick={() => dropItem(item)}
                   disabled={!dropLocationId}
                 >
-                  Drop
+                  放下
                 </Button>
               </div>
             </div>
@@ -389,7 +388,7 @@
                     variant="default"
                     class="h-4 w-fit px-1.5 py-0 text-[10px] tracking-wide uppercase"
                   >
-                    Equipped
+                    已装备
                   </Badge>
                   {#if item.quantity > 1}
                     <Badge variant="secondary" class="h-4 px-1.5 text-[10px]">
@@ -438,7 +437,7 @@
                     size="icon"
                     class="text-muted-foreground hover:text-foreground h-6 w-6"
                     onclick={() => toggleCollapse(item.id)}
-                    title={isCollapsed ? 'Show details' : 'Hide details'}
+                    title={isCollapsed ? '展开详情' : '收起详情'}
                   >
                     <ChevronDown
                       class={cn(
@@ -456,7 +455,7 @@
                   size="icon"
                   class="text-muted-foreground hover:text-foreground h-6 w-6"
                   onclick={() => beginDrop(item)}
-                  title="Drop item"
+                  title="放下物品"
                 >
                   <ArrowDown class="h-3.5 w-3.5" />
                 </Button>
@@ -465,7 +464,7 @@
                   size="icon"
                   class="text-muted-foreground hover:text-foreground h-6 w-6"
                   onclick={() => startEdit(item)}
-                  title="Edit"
+                  title="编辑"
                 >
                   <Pencil class="h-3.5 w-3.5" />
                 </Button>
@@ -482,7 +481,7 @@
     <div class="space-y-2">
       {#if story.equippedItems.length > 0}
         <h4 class="text-muted-foreground mt-4 pl-1 text-xs font-semibold tracking-wider uppercase">
-          Backpack
+          背包
         </h4>
       {/if}
       {#each story.inventoryItems.filter((item) => !item.equipped) as item (item.id)}
@@ -500,7 +499,7 @@
             <div class="space-y-3">
               <div class="mb-2 flex items-center justify-between">
                 <h4 class="text-muted-foreground text-xs font-semibold tracking-wider uppercase">
-                  Editing {item.name}
+                  编辑中 {item.name}
                 </h4>
                 <Button variant="text" size="icon" class="h-6 w-6" onclick={cancelEdit}
                   ><X class="h-4 w-4" /></Button
@@ -509,16 +508,16 @@
 
               <div class="grid grid-cols-2 gap-3">
                 <div class="col-span-2 space-y-1 sm:col-span-1">
-                  <Label class="text-xs">Name</Label>
+                  <Label class="text-xs">名称</Label>
                   <Input
                     type="text"
                     bind:value={editName}
-                    placeholder="Item name"
+                    placeholder="物品名称"
                     class="h-8 text-sm"
                   />
                 </div>
                 <div class="col-span-2 space-y-1 sm:col-span-1">
-                  <Label class="text-xs">Quantity</Label>
+                  <Label class="text-xs">数量</Label>
                   <Input type="number" bind:value={editQuantity} min="1" class="h-8 text-sm" />
                 </div>
               </div>
@@ -529,15 +528,15 @@
                   for="edit-equipped-{item.id}"
                   class="text-sm leading-none font-medium peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
                 >
-                  Equipped
+                  已装备
                 </Label>
               </div>
 
               <div class="space-y-1">
-                <Label class="text-xs">Description</Label>
+                <Label class="text-xs">说明</Label>
                 <Textarea
                   bind:value={editDescription}
-                  placeholder="Description"
+                  placeholder="说明"
                   class="min-h-[60px] resize-none text-xs"
                 />
               </div>
@@ -557,7 +556,7 @@
 
               <div class="border-border flex justify-end gap-2 border-t pt-2">
                 <Button variant="text" size="sm" class="h-7 text-xs" onclick={cancelEdit}>
-                  Cancel
+                  取消
                 </Button>
                 <Button
                   size="sm"
@@ -566,7 +565,7 @@
                   disabled={!editName.trim()}
                 >
                   <Save class="mr-1.5 h-3.5 w-3.5" />
-                  Save
+                  保存
                 </Button>
               </div>
             </div>
@@ -575,21 +574,20 @@
             <div class="space-y-3">
               <div class="text-muted-foreground mb-2 flex items-center gap-2 text-sm">
                 <MapPin class="h-3.5 w-3.5" />
-                <span>Drop item at...</span>
+                <span>将物品放置于…</span>
               </div>
 
               <Select.Root type="single" bind:value={dropLocationId}>
                 <Select.Trigger class="h-8 text-xs">
                   <div class="flex items-center gap-2 overflow-hidden">
                     <span class="truncate">
-                      {story.locations.find((l) => l.id === dropLocationId)?.name ||
-                        'Select location'}
+                      {story.locations.find((l) => l.id === dropLocationId)?.name || '选择地点'}
                     </span>
                   </div>
                 </Select.Trigger>
                 <Select.Content class="max-h-[200px]">
                   {#if story.locations.length === 0}
-                    <Select.Item value="" disabled>No locations available</Select.Item>
+                    <Select.Item value="" disabled>没有可用地点</Select.Item>
                   {:else}
                     {#each story.locations as location (location.id)}
                       <Select.Item value={location.id} label={location.name}
@@ -602,7 +600,7 @@
 
               <div class="flex justify-end gap-2">
                 <Button variant="text" size="sm" class="h-7 text-xs" onclick={cancelDrop}>
-                  Cancel
+                  取消
                 </Button>
                 <Button
                   size="sm"
@@ -610,7 +608,7 @@
                   onclick={() => dropItem(item)}
                   disabled={!dropLocationId}
                 >
-                  Drop
+                  放下
                 </Button>
               </div>
             </div>
@@ -675,7 +673,7 @@
                     size="icon"
                     class="text-muted-foreground hover:text-foreground h-6 w-6"
                     onclick={() => toggleCollapse(item.id)}
-                    title={isCollapsed ? 'Show details' : 'Hide details'}
+                    title={isCollapsed ? '展开详情' : '收起详情'}
                   >
                     <ChevronDown
                       class={cn(
@@ -693,7 +691,7 @@
                   size="icon"
                   class="text-muted-foreground hover:text-foreground h-6 w-6"
                   onclick={() => beginDrop(item)}
-                  title="Drop item"
+                  title="放下物品"
                 >
                   <ArrowDown class="h-3.5 w-3.5" />
                 </Button>
@@ -702,7 +700,7 @@
                   size="icon"
                   class="text-muted-foreground hover:text-foreground h-6 w-6"
                   onclick={() => startEdit(item)}
-                  title="Edit"
+                  title="编辑"
                 >
                   <Pencil class="h-3.5 w-3.5" />
                 </Button>
@@ -722,14 +720,14 @@
       <div class="bg-muted mb-3 rounded-full p-3">
         <Package class="text-muted-foreground h-6 w-6" />
       </div>
-      <p class="text-muted-foreground text-sm">Empty inventory</p>
+      <p class="text-muted-foreground text-sm">背包为空</p>
       <Button
         variant="text"
         class="text-primary mt-1 h-auto p-0 text-xs"
         onclick={() => (showAddForm = true)}
       >
         <Plus class="h-3.5 w-3.5" />
-        Add first item
+        添加第一个物品
       </Button>
     </div>
   {/if}
@@ -738,7 +736,7 @@
   {#if worldItems.length > 0}
     <div class="mt-4 space-y-2">
       <h4 class="text-muted-foreground pl-1 text-xs font-semibold tracking-wider uppercase">
-        World Items
+        世界中的物品
       </h4>
       {#each worldItems as item (item.id)}
         {@const isCollapsed = ui.isEntityCollapsed(item.id)}
@@ -755,7 +753,7 @@
             <div class="space-y-3">
               <div class="mb-2 flex items-center justify-between">
                 <h4 class="text-muted-foreground text-xs font-semibold tracking-wider uppercase">
-                  Editing {item.name}
+                  编辑中 {item.name}
                 </h4>
                 <Button variant="text" size="icon" class="h-6 w-6" onclick={cancelEdit}
                   ><X class="h-4 w-4" /></Button
@@ -764,16 +762,16 @@
 
               <div class="grid grid-cols-2 gap-3">
                 <div class="col-span-2 space-y-1 sm:col-span-1">
-                  <Label class="text-xs">Name</Label>
+                  <Label class="text-xs">名称</Label>
                   <Input
                     type="text"
                     bind:value={editName}
-                    placeholder="Item name"
+                    placeholder="物品名称"
                     class="h-8 text-sm"
                   />
                 </div>
                 <div class="col-span-2 space-y-1 sm:col-span-1">
-                  <Label class="text-xs">Quantity</Label>
+                  <Label class="text-xs">数量</Label>
                   <Input type="number" bind:value={editQuantity} min="1" class="h-8 text-sm" />
                 </div>
               </div>
@@ -782,10 +780,10 @@
               <!-- The saveEdit function handles forcing equipped=false for non-inventory items -->
 
               <div class="space-y-1">
-                <Label class="text-xs">Description</Label>
+                <Label class="text-xs">说明</Label>
                 <Textarea
                   bind:value={editDescription}
-                  placeholder="Description"
+                  placeholder="说明"
                   class="min-h-15 resize-none text-xs"
                 />
               </div>
@@ -805,7 +803,7 @@
 
               <div class="border-border flex justify-end gap-2 border-t pt-2">
                 <Button variant="text" size="sm" class="h-7 text-xs" onclick={cancelEdit}>
-                  Cancel
+                  取消
                 </Button>
                 <Button
                   size="sm"
@@ -814,7 +812,7 @@
                   disabled={!editName.trim()}
                 >
                   <Save class="mr-1.5 h-3.5 w-3.5" />
-                  Save
+                  保存
                 </Button>
               </div>
             </div>
@@ -823,21 +821,20 @@
             <div class="space-y-3">
               <div class="text-muted-foreground mb-2 flex items-center gap-2 text-sm">
                 <MapPin class="h-3.5 w-3.5" />
-                <span>Move item to...</span>
+                <span>将物品移动到…</span>
               </div>
 
               <Select.Root type="single" bind:value={dropLocationId}>
                 <Select.Trigger class="h-8 text-xs">
                   <div class="flex items-center gap-2 overflow-hidden">
                     <span class="truncate">
-                      {story.locations.find((l) => l.id === dropLocationId)?.name ||
-                        'Select location'}
+                      {story.locations.find((l) => l.id === dropLocationId)?.name || '选择地点'}
                     </span>
                   </div>
                 </Select.Trigger>
                 <Select.Content class="max-h-[200px]">
                   {#if story.locations.length === 0}
-                    <Select.Item value="" disabled>No locations available</Select.Item>
+                    <Select.Item value="" disabled>没有可用地点</Select.Item>
                   {:else}
                     {#each story.locations as location (location.id)}
                       <Select.Item value={location.id} label={location.name}
@@ -850,7 +847,7 @@
 
               <div class="flex justify-end gap-2">
                 <Button variant="text" size="sm" class="h-7 text-xs" onclick={cancelDrop}>
-                  Cancel
+                  取消
                 </Button>
                 <Button
                   size="sm"
@@ -858,7 +855,7 @@
                   onclick={() => moveItemToLocation(item)}
                   disabled={!dropLocationId}
                 >
-                  Move
+                  移动
                 </Button>
               </div>
             </div>
@@ -931,7 +928,7 @@
                     size="icon"
                     class="text-muted-foreground hover:text-foreground h-6 w-6"
                     onclick={() => toggleCollapse(item.id)}
-                    title={isCollapsed ? 'Show details' : 'Hide details'}
+                    title={isCollapsed ? '展开详情' : '收起详情'}
                   >
                     <ChevronDown
                       class={cn(
@@ -949,7 +946,7 @@
                   size="icon"
                   class="text-muted-foreground hover:text-foreground h-6 w-6"
                   onclick={() => pickUpItem(item)}
-                  title="Pick up"
+                  title="拾取"
                 >
                   <ArrowUp class="h-3.5 w-3.5" />
                 </Button>
@@ -958,7 +955,7 @@
                   size="icon"
                   class="text-muted-foreground hover:text-foreground h-6 w-6"
                   onclick={() => beginDrop(item)}
-                  title="Move item"
+                  title="移动物品"
                 >
                   <MapPin class="h-3.5 w-3.5" />
                 </Button>
@@ -967,7 +964,7 @@
                   size="icon"
                   class="text-muted-foreground hover:text-foreground h-6 w-6"
                   onclick={() => startEdit(item)}
-                  title="Edit"
+                  title="编辑"
                 >
                   <Pencil class="h-3.5 w-3.5" />
                 </Button>

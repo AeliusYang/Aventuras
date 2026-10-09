@@ -6,6 +6,7 @@
   import { retryImageGeneration } from '$lib/services/ai/image'
   import { errMessage } from '$lib/utils/error'
   import type { EmbeddedImageMeta } from '$lib/types'
+  import { imageMatchesEntry } from '$lib/services/image/imageScope'
   import {
     Download,
     ImageIcon,
@@ -24,7 +25,19 @@
 
   const SWIPE_THRESHOLD = 50
 
-  let images = $state<EmbeddedImageMeta[]>([])
+  let allImages = $state<EmbeddedImageMeta[]>([])
+  const images = $derived.by(() => {
+    if (
+      story.currentStory?.mode === 'creative-writing' &&
+      story.currentStory.settings?.imageGenerationMode !== 'manual'
+    )
+      return []
+    const entries = new Map(story.entries.map((entry) => [entry.id, entry]))
+    return allImages.filter((image) => {
+      const entry = entries.get(image.entryId)
+      return image.storyId === story.currentStory?.id && !!entry && imageMatchesEntry(image, entry)
+    })
+  })
   // Lazy-loaded base64 payloads, keyed by image id. The grid/lightbox only loads the
   // pixels that are actually visible, so a story with many images never pulls all of
   // them through the SQL/IPC bridge at once (which caused Android OOM crashes).
@@ -160,11 +173,11 @@
     try {
       const loaded = await database.getEmbeddedImageMetaForStory(storyId)
       ui.setGalleryImages(storyId, loaded)
-      images = loaded
+      if (story.currentStory?.id === storyId) allImages = loaded
     } catch (error) {
       console.error('[Gallery] Failed to load images:', error)
       ui.showToast('Failed to load gallery images', 'error')
-      images = []
+      if (story.currentStory?.id === storyId) allImages = []
     } finally {
       isLoading = false
     }
@@ -187,13 +200,13 @@
     if (storyId) {
       const cached = ui.getGalleryImages(storyId)
       if (cached) {
-        images = cached
+        allImages = cached
         isLoading = false
       } else {
         loadImagesForStory(storyId)
       }
     } else {
-      images = []
+      allImages = []
       isLoading = false
     }
   })
@@ -323,6 +336,10 @@
 
   // Update prompt and lazily load pixels (current + neighbors) when navigating the lightbox
   $effect(() => {
+    if (!images.length) {
+      lightboxOpen = false
+      isEditingImage = false
+    }
     if (lightboxOpen && images.length > 0) {
       const image = images[lightboxImageIndex]
       if (image) {
@@ -356,7 +373,11 @@
     closeLightbox()
 
     // Use centralized retry logic from ImageGenerationService
-    await retryImageGeneration(editingImageId, fullPrompt)
+    try {
+      await retryImageGeneration(editingImageId, fullPrompt)
+    } catch (error) {
+      ui.showToast(errMessage(error), 'error')
+    }
 
     editingImageId = null
     editingImagePrompt = ''
@@ -372,7 +393,7 @@
     <div class="flex items-center justify-between">
       <div class="flex items-center gap-2">
         <ImageIcon class="text-accent-400 h-5 w-5" />
-        <h2 class="text-surface-100 text-lg font-semibold">Gallery</h2>
+        <h2 class="text-surface-100 text-lg font-semibold">图库</h2>
         {#if images.length > 0}
           <span class="text-surface-500 text-sm">({images.length})</span>
         {/if}
@@ -386,7 +407,7 @@
             size="icon"
             onclick={refreshImages}
             disabled={isLoading || !story.currentStory}
-            title="Refresh gallery"
+            title="刷新图库"
             class="h-8 w-8"
           >
             <RefreshCw class="h-3.5 w-3.5 {isLoading ? 'animate-spin' : ''}" />
@@ -399,22 +420,22 @@
             onclick={handleSaveImages}
             disabled={isSaving}
             title={isSaving
-              ? 'Saving images...'
+              ? '正在保存图片…'
               : selectedImageIds.size > 0
                 ? `Save ${selectedImageIds.size} selected`
-                : 'Save all images'}
+                : '保存所有图片'}
             class="h-8 gap-1.5 px-2.5 text-xs"
           >
             <Download class="h-3.5 w-3.5" />
             <span class="hidden sm:inline">
               {isSaving
-                ? 'Saving...'
+                ? '正在保存…'
                 : selectedImageIds.size > 0
                   ? `Save ${selectedImageIds.size}`
-                  : 'Save All'}
+                  : '全部保存'}
             </span>
             <span class="sm:hidden">
-              {isSaving ? '...' : selectedImageIds.size > 0 ? selectedImageIds.size : 'All'}
+              {isSaving ? '...' : selectedImageIds.size > 0 ? selectedImageIds.size : '全部'}
             </span>
           </Button>
 
@@ -423,11 +444,11 @@
             variant="outline"
             size="sm"
             onclick={closeGallery}
-            title="Close gallery (Esc)"
+            title="关闭图库（Esc）"
             class="h-8 gap-1 px-2.5 text-xs"
           >
             <X class="h-3.5 w-3.5" />
-            <span class="hidden sm:inline">Close</span>
+            <span class="hidden sm:inline">关闭</span>
           </Button>
         </div>
       {/if}
@@ -442,13 +463,13 @@
       <Checkbox
         checked={selectAllChecked}
         onCheckedChange={toggleSelectAll}
-        aria-label="Select all images"
+        aria-label="选择所有图片"
       />
       <span class="text-surface-400 text-xs sm:text-sm">
         {selectedImageIds.size === 0
-          ? 'Select images to download'
+          ? '选择要下载的图片'
           : selectedImageIds.size === images.length
-            ? 'All selected'
+            ? '已全部选择'
             : `${selectedImageIds.size} selected`}
       </span>
     </div>
@@ -463,17 +484,15 @@
           <div
             class="border-surface-600 border-t-accent-400 h-8 w-8 animate-spin rounded-full border-2"
           ></div>
-          <p class="text-surface-400 text-sm">Loading images...</p>
+          <p class="text-surface-400 text-sm">正在加载图片…</p>
         </div>
       </div>
     {:else if images.length === 0}
       <!-- Empty state -->
       <div class="flex flex-col items-center justify-center py-12 text-center">
         <ImageIcon class="text-surface-700 mb-3 h-12 w-12" />
-        <p class="text-surface-300 font-medium">No generated images yet</p>
-        <p class="text-surface-500 mt-1 text-sm">
-          Generate images using the image generation feature in your story
-        </p>
+        <p class="text-surface-300 font-medium">尚无生成的图片</p>
+        <p class="text-surface-500 mt-1 text-sm">在故事中使用图片生成功能添加图片</p>
       </div>
     {:else}
       <!-- Images grid -->
@@ -490,7 +509,7 @@
               <Checkbox
                 checked={selectedImageIds.has(image.id)}
                 onCheckedChange={() => toggleImageSelection(image.id)}
-                aria-label="Select image"
+                aria-label="选择图片"
                 class="bg-surface-900/80 border-surface-500"
               />
             </div>
@@ -518,7 +537,7 @@
                   }}
                 >
                   <RefreshCw class="h-4 w-4" />
-                  Retry
+                  重试
                 </button>
               {:else}
                 <div class="flex h-full w-full items-center justify-center">
@@ -531,7 +550,7 @@
               <div
                 class="absolute inset-0 hidden items-center justify-center bg-black/40 opacity-0 transition-opacity duration-200 group-hover:opacity-100 sm:flex"
               >
-                <Button variant="default" size="sm">View</Button>
+                <Button variant="default" size="sm">查看</Button>
               </div>
             </div>
 
@@ -540,25 +559,25 @@
               <div class="text-surface-400 space-y-1">
                 {#if image.model}
                   <p class="truncate">
-                    <span class="text-surface-500 font-medium">Model:</span>
+                    <span class="text-surface-500 font-medium">模型：</span>
                     {image.model}
                   </p>
                 {/if}
                 {#if image.styleId}
                   <p class="truncate">
-                    <span class="text-surface-500 font-medium">Style:</span>
+                    <span class="text-surface-500 font-medium">风格：</span>
                     {image.styleId}
                   </p>
                 {/if}
                 {#if image.width && image.height}
                   <p>
-                    <span class="text-surface-500 font-medium">Size:</span>
+                    <span class="text-surface-500 font-medium">尺寸：</span>
                     {image.width}×{image.height}
                   </p>
                 {/if}
                 {#if image.generationMode}
                   <p class="capitalize">
-                    <span class="text-surface-500 font-medium">Mode:</span>
+                    <span class="text-surface-500 font-medium">模式：</span>
                     {image.generationMode}
                   </p>
                 {/if}
@@ -601,7 +620,7 @@
           onclick={previousImage}
           disabled={lightboxImageIndex === 0}
           class="bg-surface-800/80 hover:bg-surface-700 text-surface-300 absolute top-1/2 left-2 -translate-y-1/2 rounded-full p-2 transition-colors hover:text-white disabled:cursor-not-allowed disabled:opacity-30"
-          title="Previous (←)"
+          title="上一张（←）"
         >
           <ChevronLeft class="h-5 w-5" />
         </button>
@@ -625,7 +644,7 @@
                 onclick={() => ensureImageData(images[lightboxImageIndex].id)}
               >
                 <RefreshCw class="h-4 w-4" />
-                Retry
+                重试
               </Button>
             </div>
           {:else}
@@ -641,7 +660,7 @@
                 <div
                   class="border-surface-400 border-t-accent-400 h-6 w-6 animate-spin rounded-full border-2"
                 ></div>
-                <span class="text-surface-300 text-sm">Regenerating...</span>
+                <span class="text-surface-300 text-sm">正在重新生成…</span>
               </div>
             </div>
           {/if}
@@ -654,7 +673,7 @@
           onclick={nextImage}
           disabled={lightboxImageIndex === images.length - 1}
           class="bg-surface-800/80 hover:bg-surface-700 text-surface-300 absolute top-1/2 right-2 -translate-y-1/2 rounded-full p-2 transition-colors hover:text-white disabled:cursor-not-allowed disabled:opacity-30"
-          title="Next (→)"
+          title="下一张（→）"
         >
           <ChevronRight class="h-5 w-5" />
         </button>
@@ -664,10 +683,10 @@
     <!-- Edit area -->
     <div class="bg-surface-900 border-surface-800 border-t px-4 py-3">
       <!-- svelte-ignore a11y_label_has_associated_control -->
-      <label class="text-surface-400 mb-1.5 block text-xs">Image Prompt</label>
+      <label class="text-surface-400 mb-1.5 block text-xs">图片提示词</label>
       <Textarea
         bind:value={editingImagePrompt}
-        placeholder="Describe the image you want to generate..."
+        placeholder="描述你想生成的图片…"
         rows={3}
         class="resize-none text-sm"
       />
@@ -680,16 +699,16 @@
       <!-- Counter -->
       <div class="text-surface-400 text-sm tabular-nums">
         {#if images.length > 1}
-          {lightboxImageIndex + 1} of {images.length}
+          {lightboxImageIndex + 1} / {images.length}
         {:else}
-          1 image
+          1 张图片
         {/if}
       </div>
 
       <!-- Actions -->
       <div class="flex items-center gap-2">
         <Button variant="outline" size="sm" onclick={closeLightbox} class="h-8 text-xs">
-          Close
+          关闭
         </Button>
         {#if lightboxImage}
           <Button
@@ -712,7 +731,7 @@
             {:else}
               <RotateCcw class="h-3.5 w-3.5" />
             {/if}
-            Regenerate
+            重新生成
           </Button>
         {/if}
       </div>

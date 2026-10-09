@@ -1,0 +1,236 @@
+{
+  "input": {
+    "scope": {
+      "storyId": "story-fixture",
+      "branchId": "branch-a"
+    },
+    "fromPosition": 2,
+    "plan": {
+      "entries": [],
+      "operations": [
+        {
+          "action": "restore",
+          "entity": "character",
+          "id": "char-a",
+          "before": {
+            "id": "char-a",
+            "name": "测试人物甲",
+            "status": "active",
+            "relationship": "合作但有保留",
+            "traits": ["谨慎"],
+            "visualDescriptors": {
+              "eyes": "褐色"
+            },
+            "metadata": {
+              "source": "正文",
+              "uncertain": true
+            }
+          }
+        },
+        {
+          "action": "restore",
+          "entity": "location",
+          "id": "loc-a",
+          "before": {
+            "id": "loc-a",
+            "name": "测试场所",
+            "visited": true,
+            "current": true,
+            "description": "有测试柜台和水壶",
+            "metadata": null
+          }
+        },
+        {
+          "action": "restore",
+          "entity": "item",
+          "id": "item-a",
+          "before": {
+            "id": "item-a",
+            "name": "测试物品",
+            "quantity": 1,
+            "equipped": false,
+            "location": "测试柜台",
+            "metadata": {
+              "provenance": "来源尚未核实"
+            }
+          }
+        },
+        {
+          "action": "restore",
+          "entity": "storyBeat",
+          "id": "beat-a",
+          "before": {
+            "id": "beat-a",
+            "title": "测试事项",
+            "status": "active",
+            "description": "测试事项尚未完成",
+            "resolvedAt": null,
+            "metadata": null
+          }
+        },
+        {
+          "action": "delete",
+          "entity": "item",
+          "id": "item-created-a"
+        }
+      ],
+      "targetCurrentLocationId": "loc-a",
+      "targetTimeTracker": {
+        "years": 0,
+        "days": 1,
+        "hours": 2,
+        "minutes": 3
+      }
+    },
+    "updatedAt": 200,
+    "settings": {
+      "collaborativeNovelPattern": {
+        "confirmed": "允许自主行动",
+        "needsReview": true
+      }
+    }
+  },
+  "statements": [
+    {
+      "sql": "UPDATE characters SET name = ?, status = ?, relationship = ?, traits = ?, visual_descriptors = ?, metadata = ? WHERE id = ? AND story_id = ? AND branch_id IS ?",
+      "params": [
+        "测试人物甲",
+        "active",
+        "合作但有保留",
+        "[\"谨慎\"]",
+        "{\"eyes\":\"褐色\"}",
+        "{\"source\":\"正文\",\"uncertain\":true}",
+        "char-a",
+        "story-fixture",
+        "branch-a"
+      ],
+      "expectedRows": 1
+    },
+    {
+      "sql": "UPDATE locations SET name = ?, visited = ?, current = ?, description = ?, metadata = ? WHERE id = ? AND story_id = ? AND branch_id IS ?",
+      "params": ["测试场所", 1, 1, "有测试柜台和水壶", null, "loc-a", "story-fixture", "branch-a"],
+      "expectedRows": 1
+    },
+    {
+      "sql": "UPDATE items SET name = ?, quantity = ?, equipped = ?, location = ?, metadata = ? WHERE id = ? AND story_id = ? AND branch_id IS ?",
+      "params": [
+        "测试物品",
+        1,
+        0,
+        "测试柜台",
+        "{\"provenance\":\"来源尚未核实\"}",
+        "item-a",
+        "story-fixture",
+        "branch-a"
+      ],
+      "expectedRows": 1
+    },
+    {
+      "sql": "UPDATE story_beats SET title = ?, status = ?, description = ?, resolved_at = ?, metadata = ? WHERE id = ? AND story_id = ? AND branch_id IS ?",
+      "params": [
+        "测试事项",
+        "active",
+        "测试事项尚未完成",
+        null,
+        null,
+        "beat-a",
+        "story-fixture",
+        "branch-a"
+      ],
+      "expectedRows": 1
+    },
+    {
+      "sql": "DELETE FROM items WHERE id = ? AND story_id = ? AND branch_id IS ?",
+      "params": ["item-created-a", "story-fixture", "branch-a"],
+      "expectedRows": 1
+    },
+    {
+      "sql": "UPDATE locations SET current = 0 WHERE story_id = ? AND branch_id IS ?",
+      "params": ["story-fixture", "branch-a"]
+    },
+    {
+      "sql": "UPDATE locations SET current = 1 WHERE id = ? AND story_id = ? AND branch_id IS ?",
+      "params": ["loc-a", "story-fixture", "branch-a"]
+    },
+    {
+      "sql": "UPDATE stories SET time_tracker = ? WHERE id = ? AND current_branch_id IS ?",
+      "params": ["{\"days\":1,\"hours\":2,\"minutes\":3,\"years\":0}", "story-fixture", "branch-a"]
+    },
+    {
+      "sql": "DELETE FROM chapters WHERE story_id = ? AND branch_id IS ? AND (start_entry_id IN (SELECT id FROM story_entries WHERE story_id = ? AND branch_id IS ? AND position >= ?) OR end_entry_id IN (SELECT id FROM story_entries WHERE story_id = ? AND branch_id IS ? AND position >= ?))",
+      "params": [
+        "story-fixture",
+        "branch-a",
+        "story-fixture",
+        "branch-a",
+        2,
+        "story-fixture",
+        "branch-a",
+        2
+      ]
+    },
+    {
+      "sql": "DELETE FROM checkpoints WHERE story_id = ? AND last_entry_id IN (SELECT id FROM story_entries WHERE story_id = ? AND branch_id IS ? AND position >= ?)",
+      "params": ["story-fixture", "story-fixture", "branch-a", 2]
+    },
+    {
+      "sql": "DELETE FROM world_state_snapshots WHERE story_id = ? AND branch_id IS ? AND entry_position >= ?",
+      "params": ["story-fixture", "branch-a", 2]
+    },
+    {
+      "sql": "DELETE FROM embedded_images WHERE story_id = ? AND entry_id IN (SELECT id FROM story_entries WHERE story_id = ? AND branch_id IS ? AND position >= ?)",
+      "params": ["story-fixture", "story-fixture", "branch-a", 2]
+    },
+    {
+      "sql": "DELETE FROM story_entries WHERE story_id = ? AND branch_id IS ? AND position >= ?",
+      "params": ["story-fixture", "branch-a", 2]
+    },
+    {
+      "sql": "UPDATE stories SET updated_at = ?, settings = ? WHERE id = ? AND current_branch_id IS ?",
+      "params": [
+        200,
+        "{\"collaborativeNovelPattern\":{\"confirmed\":\"允许自主行动\",\"needsReview\":true}}",
+        "story-fixture",
+        "branch-a"
+      ],
+      "expectedRows": 1
+    }
+  ],
+  "mainInput": {
+    "scope": {
+      "storyId": "story-fixture",
+      "branchId": null
+    },
+    "state": {
+      "id": "char-root",
+      "name": "主线人物",
+      "status": "active",
+      "relationship": "合作但有保留",
+      "traits": ["谨慎"],
+      "visualDescriptors": {
+        "eyes": "褐色"
+      },
+      "metadata": {
+        "source": "正文",
+        "uncertain": true
+      }
+    }
+  },
+  "mainStatements": [
+    {
+      "sql": "UPDATE characters SET name = ?, status = ?, relationship = ?, traits = ?, visual_descriptors = ?, metadata = ? WHERE id = ? AND story_id = ? AND branch_id IS ?",
+      "params": [
+        "主线人物",
+        "active",
+        "合作但有保留",
+        "[\"谨慎\"]",
+        "{\"eyes\":\"褐色\"}",
+        "{\"source\":\"正文\",\"uncertain\":true}",
+        "char-root",
+        "story-fixture",
+        null
+      ],
+      "expectedRows": 1
+    }
+  ]
+}

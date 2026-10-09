@@ -8,6 +8,7 @@
  * - Retry on empty responses (up to 3 attempts)
  */
 
+import type { NovelTurn } from '$lib/types/collaborative'
 import type {
   GenerationEvent,
   PhaseStartEvent,
@@ -21,6 +22,11 @@ import type {
 import type { Story, StoryEntry } from '$lib/types'
 import type { StyleReviewResult } from '$lib/services/ai/generation/StyleReviewerService'
 import type { StreamChunk } from '$lib/services/ai/core/types'
+import { recordNovelOutput } from '../collaborative'
+import { asError } from '$lib/utils/error'
+import { createRequestDeadline } from '$lib/utils/requestDeadline'
+import { LLM_TIMEOUT_DEFAULT } from '$lib/constants/timeout'
+import { settings } from '$lib/stores/settings.svelte'
 
 const MAX_EMPTY_RESPONSE_RETRIES = 3
 
@@ -35,11 +41,13 @@ export interface NarrativeDependencies {
     signal: AbortSignal | undefined,
     timelineFillResult: RetrievalResult['timelineFillResult'],
     worldStateBlock: string | null | undefined,
+    novelTurn?: NovelTurn,
   ) => AsyncIterable<StreamChunk>
 }
 
 /** Input for the narrative phase */
 export interface NarrativeInput {
+  novelTurn?: NovelTurn
   visibleEntries: StoryEntry[]
   worldState: WorldState
   story: Story | null | undefined
@@ -53,6 +61,12 @@ export interface NarrativeResult {
   content: string
   reasoning: string
   chunkCount: number
+  actualChineseCharacters?: number
+  outputTruncated?: boolean
+  requestedLength?: string
+  shortStopReason?: string
+  finishReason?: string
+  outputMetricsWarning?: string
 }
 
 /**
@@ -65,6 +79,44 @@ export class NarrativePhase {
 
   /** Execute the narrative phase - yields chunk events and phase events */
   async *execute(input: NarrativeInput): AsyncGenerator<GenerationEvent, NarrativeResult | null> {
+    if (!input.novelTurn) return yield* this.executeNarrative(input)
+    const preset = settings.getPresetConfig(
+      settings.getServicePresetId('collaborativeWriter'),
+      'collaborativeWriter',
+    )
+    const budget = createRequestDeadline(
+      preset?.timeoutMs ?? LLM_TIMEOUT_DEFAULT,
+      input.abortSignal,
+      'collaborative:writer',
+    )
+    const iterator = this.executeNarrative({ ...input, abortSignal: budget.signal })
+    try {
+      while (true) {
+        const next = await budget.wait(iterator.next())
+        if (next.done) return next.value
+        yield next.value
+      }
+    } catch (error) {
+      if (input.abortSignal?.aborted) {
+        yield { type: 'aborted', phase: 'narrative' } satisfies AbortedEvent
+      } else {
+        yield {
+          type: 'error',
+          phase: 'narrative',
+          fatal: true,
+          error: asError(error, 'Writer 生成失败。'),
+        } satisfies ErrorEvent
+      }
+      return null
+    } finally {
+      budget.dispose()
+      void iterator.return(null).catch(() => {})
+    }
+  }
+
+  private async *executeNarrative(
+    input: NarrativeInput,
+  ): AsyncGenerator<GenerationEvent, NarrativeResult | null> {
     yield { type: 'phase_start', phase: 'narrative' } satisfies PhaseStartEvent
 
     const { visibleEntries, worldState, story, retrievalResult, styleReview, abortSignal } = input
@@ -73,6 +125,7 @@ export class NarrativePhase {
     let fullReasoning = ''
     let chunkCount = 0
     let retryCount = 0
+    let finishReason: string | undefined
 
     while (retryCount < MAX_EMPTY_RESPONSE_RETRIES) {
       if (abortSignal?.aborted) {
@@ -83,6 +136,7 @@ export class NarrativePhase {
       fullResponse = ''
       fullReasoning = ''
       chunkCount = 0
+      finishReason = undefined
 
       try {
         for await (const chunk of this.deps.streamNarrative(
@@ -94,6 +148,7 @@ export class NarrativePhase {
           abortSignal,
           retrievalResult.timelineFillResult,
           retrievalResult.worldStateBlock,
+          ...(input.novelTurn ? [input.novelTurn] : []),
         )) {
           if (abortSignal?.aborted) {
             yield { type: 'aborted', phase: 'narrative' } satisfies AbortedEvent
@@ -101,6 +156,7 @@ export class NarrativePhase {
           }
 
           chunkCount++
+          if (chunk.finishReason !== undefined) finishReason = chunk.finishReason
 
           // Accumulate content and reasoning
           if (chunk.content) {
@@ -127,6 +183,9 @@ export class NarrativePhase {
         if (fullResponse.trim()) {
           break // Success
         }
+        if (input.novelTurn && finishReason === 'length') {
+          throw new Error('Writer 输出额度已耗尽，但未返回正文；已停止相同参数的自动重试。')
+        }
         retryCount++
       } catch (error) {
         if (error instanceof Error && error.name === 'AbortError') {
@@ -136,7 +195,7 @@ export class NarrativePhase {
         yield {
           type: 'error',
           phase: 'narrative',
-          error: error instanceof Error ? error : new Error(String(error)),
+          error: asError(error, 'Writer 返回了无法识别的错误。'),
           fatal: true,
         } satisfies ErrorEvent
         return null
@@ -162,6 +221,27 @@ export class NarrativePhase {
       content: fullResponse,
       reasoning: fullReasoning,
       chunkCount,
+      ...(finishReason !== undefined ? { finishReason } : {}),
+    }
+    if (input.novelTurn) {
+      try {
+        Object.assign(result, recordNovelOutput(input.novelTurn, fullResponse, finishReason))
+      } catch (error) {
+        // Diagnostic bookkeeping must not prevent completed prose from being saved.
+        const fallback = {
+          requestedLength: input.novelTurn.requestedLength,
+          actualChineseCharacters: (fullResponse.match(/\p{Script=Han}/gu) ?? []).length,
+          outputTruncated:
+            finishReason === 'length' ? true : finishReason === 'stop' ? false : undefined,
+          shortStopReason:
+            finishReason === 'length'
+              ? '模型因输出 Token 上限停止，正文可能被截断；未自动扩写。'
+              : undefined,
+          outputMetricsWarning: `篇幅统计失败，正文已保留：${asError(error, '未知统计错误').message}`,
+        }
+        Object.assign(result, fallback)
+        Object.assign(input.novelTurn, fallback, { finishReason })
+      }
     }
 
     yield {

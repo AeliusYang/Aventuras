@@ -5,6 +5,7 @@
  */
 
 import { generateImage, supportsImageGeneration, requiresApiKey } from './providers/registry'
+import { imageMatchesEntry } from '$lib/services/image/imageScope'
 import { database } from '$lib/services/database'
 import { settings } from '$lib/stores/settings.svelte'
 import type { EmbeddedImage, StorySettings } from '$lib/types'
@@ -40,12 +41,8 @@ export function isImageGenerationEnabled(
   storySettings?: StorySettings,
   type: ImageProfileSlot = 'standard',
 ): boolean {
-  const imageSettings = settings.systemServicesSettings.imageGeneration
-
   if (storySettings) {
     if (type !== 'background' && storySettings.imageGenerationMode === 'none') return false
-  } else {
-    if (!imageSettings?.profileId) return false
   }
 
   const profileId = slotProfileId(type)
@@ -61,15 +58,29 @@ export function isImageGenerationEnabled(
  * Check if required credentials are configured for a given image slot.
  */
 export function hasRequiredCredentials(slot: ImageProfileSlot = 'standard'): boolean {
+  return getImageConfigurationIssue(slot) === null
+}
+
+/** Shared validation for controls and calls. A slot never borrows another slot's profile. */
+export function getImageConfigurationIssue(slot: ImageProfileSlot = 'standard'): string | null {
+  const label = {
+    standard: '故事插图',
+    background: '背景图片',
+    portrait: '角色肖像',
+    reference: '参考图',
+  }[slot]
   const profileId = slotProfileId(slot)
-  if (!profileId) return false
+  if (!profileId) return `尚未选择${label}配置。`
 
   const profile = settings.getImageProfile(profileId)
-  if (!profile) return false
+  if (!profile) return `${label}配置已不存在，请重新选择。`
 
-  if (!supportsImageGeneration(profile.providerType)) return false
+  if (!supportsImageGeneration(profile.providerType)) return `${label}服务不支持生图。`
+  if (!profile.model?.trim()) return `${label}配置尚未选择模型。`
 
-  return !requiresApiKey(profile.providerType) || !!profile.apiKey
+  return requiresApiKey(profile.providerType) && !profile.apiKey?.trim()
+    ? `${label}配置缺少 API 密钥。`
+    : null
 }
 
 /**
@@ -136,8 +147,7 @@ export interface ImageGenerationRequest {
   model: string
   size: ImageSpec
   referenceImages?: string[]
-  /** Also raise the user-facing failure notice. Off for analyzed scenes, which report
-   *  their failures through the analysis phase instead. */
+  /** Raise a user-facing failure notice for explicit generation and retry requests. */
   notifyFailure?: boolean
   /** Written with the flip to `generating`, so a caller resetting the row for a fresh
    *  attempt spends one round trip and not two. */
@@ -182,7 +192,7 @@ export async function runImageGeneration(request: ImageGenerationRequest): Promi
   await recordImageResult(imageId, entryId, { base64, error: failure })
 
   if (failure && request.notifyFailure) {
-    emitImageAnalysisFailed(entryId, failure)
+    emitImageAnalysisFailed(entryId, `插图生成失败，可在图片旁重试：${failure}`)
   }
 
   return base64
@@ -198,16 +208,27 @@ export async function runImageGeneration(request: ImageGenerationRequest): Promi
  * and the character keeps the one it has.
  */
 export async function retryImageGeneration(imageId: string, prompt: string): Promise<void> {
-  if (!isImageGenerationEnabled()) {
-    log('Cannot retry - image generation not enabled')
-    return
-  }
+  const issue = getImageConfigurationIssue()
+  if (issue) throw new Error(issue)
 
   const image = await database.getEmbeddedImage(imageId)
   if (!image) {
     log('Cannot retry - image not found', { imageId })
     return
   }
+  const [sourceStory, entry] = await Promise.all([
+    database.getStory(image.storyId),
+    database.getStoryEntry(image.entryId),
+  ])
+  if (
+    !sourceStory ||
+    sourceStory.settings?.imageGenerationMode === 'none' ||
+    (sourceStory.mode === 'creative-writing' &&
+      sourceStory.settings?.imageGenerationMode !== 'manual')
+  )
+    throw new Error('请先在故事设置中启用插图。')
+  if (!entry || !imageMatchesEntry(image, entry))
+    throw new Error('这张插图属于另一版正文，请先切回对应版本。')
 
   const imageSettings = settings.systemServicesSettings.imageGeneration
   const profileId = imageSettings.profileId
@@ -246,6 +267,8 @@ export async function retryImageGeneration(imageId: string, prompt: string): Pro
  * Returns the base64 image data on success.
  */
 export async function generatePortrait(prompt: string): Promise<string> {
+  const issue = getImageConfigurationIssue('portrait')
+  if (issue) throw new Error(issue)
   const imageSettings = settings.systemServicesSettings.imageGeneration
 
   const profileId = imageSettings.portraitProfileId

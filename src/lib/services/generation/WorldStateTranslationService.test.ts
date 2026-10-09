@@ -3,6 +3,27 @@ import { WorldStateTranslationService } from './WorldStateTranslationService'
 import type { Character } from '$lib/types'
 
 describe('WorldStateTranslationService', () => {
+  it('does not call translation dependencies in collaborative mode', async () => {
+    const translateUIElements = vi.fn()
+    const service = new WorldStateTranslationService({ translateUIElements })
+    const result = await service.translateEntities(
+      {
+        isCollaborative: true,
+        storyId: 's',
+        targetLanguage: 'en',
+        classificationResult: {
+          newCharacters: [],
+          newLocations: [],
+          newItems: [],
+          newStoryBeats: [],
+        },
+        worldState: { characters: [], locations: [], items: [], storyBeats: [] },
+      },
+      {} as any,
+    )
+    expect(result).toEqual({ translatedCount: 0 })
+    expect(translateUIElements).not.toHaveBeenCalled()
+  })
   it('returns translatedCount 0 when no matching entities are found', async () => {
     const translateUIElements = vi.fn()
     const service = new WorldStateTranslationService({ translateUIElements })

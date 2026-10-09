@@ -29,9 +29,9 @@
   // Type options
   const entryTypes: EntryType[] = ['character', 'location', 'item', 'faction', 'concept', 'event']
   const injectionModes: Array<{ value: EntryInjectionMode; label: string; description: string }> = [
-    { value: 'always', label: 'Always Active', description: 'Always included in every response' },
-    { value: 'keyword', label: 'Automatic', description: 'Matched by keywords or AI relevance' },
-    { value: 'never', label: 'Disabled', description: 'Not included in AI context' },
+    { value: 'always', label: '始终启用', description: '每次生成均包含' },
+    { value: 'keyword', label: '自动', description: '按关键词或 AI 相关性匹配' },
+    { value: 'never', label: '禁用', description: '不加入 AI 上下文' },
   ]
 
   function handleInput() {
@@ -41,12 +41,12 @@
 
 <div class="space-y-6">
   <div class="space-y-2 {changed('name')}">
-    <Label for="entry-name">Entry Name</Label>
-    <Input id="entry-name" bind:value={data.name} oninput={handleInput} placeholder="Entry Name" />
+    <Label for="entry-name">条目名称</Label>
+    <Input id="entry-name" bind:value={data.name} oninput={handleInput} placeholder="条目名称" />
   </div>
 
   <div class="space-y-2 {changed('type')}">
-    <Label>Entry Type</Label>
+    <Label>条目类型</Label>
     <Select
       type="single"
       value={data.type}
@@ -56,7 +56,7 @@
       }}
     >
       <SelectTrigger id="entry-type">
-        {`${data.type.charAt(0).toUpperCase() + data.type.slice(1)}` || 'Select type'}
+        {`${data.type.charAt(0).toUpperCase() + data.type.slice(1)}` || '选择类型'}
       </SelectTrigger>
       <SelectContent>
         {#each entryTypes as option (option)}
@@ -67,7 +67,7 @@
   </div>
 
   <div class="space-y-2 {changed('keywords')}">
-    <Label>Keywords</Label>
+    <Label>关键词</Label>
     <Input
       value={data.keywords?.join(', ') ?? ''}
       oninput={(e) => {
@@ -77,15 +77,13 @@
           .filter(Boolean)
         handleInput()
       }}
-      placeholder="Comma-separated keywords..."
+      placeholder="关键词，用英文逗号分隔…"
     />
-    <p class="text-muted-foreground text-[0.8rem]">
-      Terms that trigger this entry when using 'Keyword' injection mode.
-    </p>
+    <p class="text-muted-foreground text-[0.8rem]">在“关键词”注入模式下，用于触发本条目的词语。</p>
   </div>
 
   <div class="space-y-2 {changed('aliases')}">
-    <Label>Aliases</Label>
+    <Label>别名</Label>
     <Input
       value={data.aliases?.join(', ') ?? ''}
       oninput={(e) => {
@@ -95,30 +93,28 @@
           .filter(Boolean)
         handleInput()
       }}
-      placeholder="Comma-separated alternative names..."
+      placeholder="别名，用英文逗号分隔…"
     />
-    <p class="text-muted-foreground text-[0.8rem]">
-      Alternative names or spellings for this entry.
-    </p>
+    <p class="text-muted-foreground text-[0.8rem]">本条目的其他名称或拼写。</p>
   </div>
 
   <div class="flex flex-1 flex-col space-y-2 {changed('description')}">
-    <Label>Description / Content</Label>
+    <Label>描述／内容</Label>
     <Textarea
       bind:value={data.description}
       bind:ref={textareaRef}
       oninput={handleInput}
       class="min-h-[200px] font-mono text-sm leading-relaxed"
-      placeholder="Enter the lore content here..."
+      placeholder="在此输入设定内容…"
     />
   </div>
 
   <div class="bg-muted/30 space-y-4 rounded-lg border p-4">
-    <h4 class="text-sm font-medium">Injection Settings</h4>
+    <h4 class="text-sm font-medium">注入设置</h4>
 
     <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
       <div class="space-y-2 {changed('injectionMode')}">
-        <Label class="text-xs">Injection Mode</Label>
+        <Label class="text-xs">注入模式</Label>
         <Select
           type="single"
           value={data.injectionMode}
@@ -128,7 +124,7 @@
           }}
         >
           <SelectTrigger id="injection-mode">
-            {injectionModes.find((m) => m.value === data.injectionMode)?.label || 'Select mode'}
+            {injectionModes.find((m) => m.value === data.injectionMode)?.label || '选择模式'}
           </SelectTrigger>
           <SelectContent>
             {#each injectionModes as mode (mode.value)}
@@ -142,7 +138,7 @@
       </div>
 
       <div class="space-y-2 {changed('priority')}">
-        <Label class="text-xs">Priority</Label>
+        <Label class="text-xs">优先级</Label>
         <Input type="number" bind:value={data.priority} oninput={handleInput} />
       </div>
     </div>

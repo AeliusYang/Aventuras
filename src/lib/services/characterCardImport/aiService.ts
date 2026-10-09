@@ -1,3 +1,7 @@
+import { buildCardContext, importOrganizationRules } from './cardContext'
+import { generateStructured } from '$lib/services/ai/sdk/generate'
+import { countTokens } from '$lib/services/tokenizer'
+import { settings } from '$lib/stores/settings.svelte'
 import { createLogger } from '$lib/log'
 import type { ServiceId } from '$lib/stores/settings.svelte'
 import { BaseAIService } from '$lib/services/ai/BaseAIService'
@@ -15,27 +19,50 @@ function normalizeUserMacro(text: string): string {
   return text.replace(/\{\{user}}/gi, '{{user}}')
 }
 
-function buildCardContext(card: ParsedCard): string {
-  const sections: string[] = []
+export interface OrganizationOptions {
+  signal?: AbortSignal
+  variables?: Record<string, string>
+}
 
-  if (card.scenario.trim()) {
-    sections.push(`<scenario>\n${normalizeUserMacro(card.scenario)}\n</scenario>`)
+export async function inspectCardImport(
+  packId: string | undefined,
+  card: ParsedCard,
+  templateId: string,
+  options: OrganizationOptions = {},
+  genre = 'custom',
+) {
+  const ctx = await ContextBuilder.forPackId(packId)
+  // These tokens are literal SillyTavern macros, not missing Liquid variables.
+  ctx.add({
+    ...options.variables,
+    user: '{{user}}',
+    char: '{{char}}',
+    title: card.name,
+    genre,
+    cardContent: buildCardContext(card),
+  })
+  const inspected = await ctx.inspectTemplate(templateId)
+  if (inspected.renderErrors.length) throw new Error('整理提示词存在语法错误，请在提示词包中修复。')
+  const presetId = settings.getServicePresetId('characterCardImport')
+  const preset = settings.getPresetConfig(presetId, templateId)
+  const profile = settings.getProfile(
+    preset.profileId ?? settings.apiSettings.mainNarrativeProfileId,
+  )
+  return {
+    ...inspected,
+    system: inspected.system + importOrganizationRules,
+    preset,
+    profile,
+    stPresetSource: '现有角色卡整理模板；无内置 STpreset 来源',
+    context: ctx.getContext(),
   }
-  if (card.description.trim()) {
-    sections.push(
-      `<character_description>\n${normalizeUserMacro(card.description)}\n</character_description>`,
-    )
-  }
-  if (card.personality.trim()) {
-    sections.push(`<personality>\n${normalizeUserMacro(card.personality)}\n</personality>`)
-  }
-  if (card.exampleMessages.trim()) {
-    sections.push(
-      `<example_messages>\n${normalizeUserMacro(card.exampleMessages)}\n</example_messages>`,
-    )
-  }
+}
 
-  return sections.join('\n\n')
+function checkInputBudget(system: string, prompt: string) {
+  if (countTokens(system + '\n' + prompt) > 24000)
+    throw new Error(
+      '角色卡材料超过单次整理安全预算（24000 tokens）。未截断内容；可跳过整理，按原资料导入。',
+    )
 }
 
 class AIService extends BaseAIService {
@@ -47,18 +74,25 @@ class AIService extends BaseAIService {
     packId: string | undefined,
     parsedCard: ParsedCard,
     genre: Genre,
+    options: OrganizationOptions = {},
   ): Promise<CardImportResult> {
     const cardTitle = parsedCard.name
-    const cardContent = buildCardContext(parsedCard)
-
-    const ctx = await ContextBuilder.forPackId(packId)
-    ctx.add({ title: cardTitle, genre, cardContent })
-    const { system, user: prompt } = await ctx.render('character-card-import')
-
-    const result = await this.generate(
-      cardImportResultSchema,
-      system,
-      prompt,
+    const inspected = await inspectCardImport(
+      packId,
+      parsedCard,
+      'character-card-import',
+      options,
+      genre,
+    )
+    checkInputBudget(inspected.system, inspected.user)
+    const result = await generateStructured(
+      {
+        presetId: this.presetId,
+        schema: cardImportResultSchema,
+        system: inspected.system,
+        prompt: inspected.user,
+        signal: options.signal,
+      },
       'character-card-import',
     )
 
@@ -93,17 +127,18 @@ class AIService extends BaseAIService {
   async sanitizeCharacterCard(
     packId: string | undefined,
     parsedCard: ParsedCard,
+    options: OrganizationOptions = {},
   ): Promise<SanitizedCharacter> {
-    const cardContent = buildCardContext(parsedCard)
-
-    const ctx = await ContextBuilder.forPackId(packId)
-    ctx.add({ cardContent })
-    const { system, user: prompt } = await ctx.render('vault-character-import')
-
-    const result = await this.generate(
-      vaultCharacterImportSchema,
-      system,
-      prompt,
+    const inspected = await inspectCardImport(packId, parsedCard, 'vault-character-import', options)
+    checkInputBudget(inspected.system, inspected.user)
+    const result = await generateStructured(
+      {
+        presetId: this.presetId,
+        schema: vaultCharacterImportSchema,
+        system: inspected.system,
+        prompt: inspected.user,
+        signal: options.signal,
+      },
       'vault-character-import',
     )
 
@@ -127,6 +162,7 @@ export async function clean(
   packId: string | undefined,
   jsonString: string,
   genre: Genre = 'fantasy',
+  options: OrganizationOptions = {},
 ): Promise<CardImportResult> {
   const card = parseJson(jsonString)
   if (!card) {
@@ -146,7 +182,7 @@ export async function clean(
 
   log('Parsed card:', { name: card.name, version: card.version })
 
-  return await aiService.convertCardToScenario(packId, card, genre)
+  return await aiService.convertCardToScenario(packId, card, genre, options)
 }
 
 /**
@@ -155,6 +191,7 @@ export async function clean(
 export async function sanitize(
   packId: string | undefined,
   jsonString: string,
+  options: OrganizationOptions = {},
 ): Promise<SanitizedCharacter | null> {
   const card = parseJson(jsonString)
   if (!card) {
@@ -162,5 +199,5 @@ export async function sanitize(
     return null
   }
 
-  return await aiService.sanitizeCharacterCard(packId, card)
+  return await aiService.sanitizeCharacterCard(packId, card, options)
 }

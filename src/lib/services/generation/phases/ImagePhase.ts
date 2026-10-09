@@ -11,12 +11,15 @@ import type {
   AbortedEvent,
   ErrorEvent,
 } from '../types'
-import type { ImageGenerationContext } from '$lib/services/ai'
+import { asError } from '$lib/utils/error'
+import type { ImageGenerationContext, ImageGenerationResult } from '$lib/services/ai'
 import type { Character, ImageGenerationMode } from '$lib/types'
 
 /** Dependencies for image phase - injected to avoid tight coupling */
 export interface ImageDependencies {
-  generateImagesForNarrative: (context: ImageGenerationContext) => Promise<void>
+  generateImagesForNarrative: (
+    context: ImageGenerationContext,
+  ) => Promise<ImageGenerationResult | void>
   isImageGenerationEnabled: (
     storySettings?: any,
     type?: 'standard' | 'background' | 'portrait' | 'reference',
@@ -48,7 +51,13 @@ export interface ImageInput {
 /** Result from image phase */
 export interface ImageResult {
   started: boolean
-  skippedReason?: 'disabled' | 'agentic_generate_off' | 'not_configured' | 'aborted' | 'inline_mode'
+  skippedReason?:
+    | 'disabled'
+    | 'agentic_generate_off'
+    | 'not_configured'
+    | 'aborted'
+    | 'inline_mode'
+    | 'classification_failed'
 }
 
 /** Coordinates image generation. Errors are non-fatal. */
@@ -145,7 +154,7 @@ export class ImagePhase {
       yield {
         type: 'error',
         phase: 'image',
-        error: error instanceof Error ? error : new Error(String(error)),
+        error: asError(error, '图像阶段返回了无法识别的错误。'),
         fatal: false,
       } satisfies ErrorEvent
 

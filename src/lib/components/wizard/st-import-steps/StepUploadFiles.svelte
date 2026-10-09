@@ -79,16 +79,14 @@
 </script>
 
 <div class="space-y-5">
-  <p class="text-muted-foreground">
-    Upload your SillyTavern character card and optionally a chat export.
-  </p>
+  <p class="text-muted-foreground">上传 SillyTavern 角色卡，也可以同时上传聊天记录。</p>
 
   <!-- Character Card Upload -->
   <div class="space-y-2">
     <h4 class="flex items-center gap-2 text-sm font-medium">
       <User class="h-4 w-4" />
-      Character Card
-      <Badge variant="secondary" class="text-xs">Required</Badge>
+      角色卡
+      <Badge variant="secondary" class="text-xs">必填</Badge>
     </h4>
 
     {#if cardParsedData}
@@ -111,13 +109,13 @@
               <div class="text-muted-foreground flex flex-wrap gap-1.5 text-xs">
                 <span>{cardParsedData.version.toUpperCase()}</span>
                 {#if cardParsedData.firstMessage}
-                  <span>· Has greeting</span>
+                  <span>· 含开场白</span>
                 {/if}
                 {#if cardParsedData.alternateGreetings.length > 0}
-                  <span>· {cardParsedData.alternateGreetings.length} alt greetings</span>
+                  <span>· {cardParsedData.alternateGreetings.length} 条备选开场白</span>
                 {/if}
                 {#if cardParsedData.characterBook}
-                  <span>· Has lorebook</span>
+                  <span>· 含世界书</span>
                 {/if}
               </div>
             </div>
@@ -145,8 +143,8 @@
         onkeydown={(e) => e.key === 'Enter' && cardFileInput?.click()}
       >
         <ImageIcon class="text-muted-foreground mb-2 h-8 w-8" />
-        <p class="text-sm font-medium">Drop character card here or click to browse</p>
-        <p class="text-muted-foreground mt-1 text-xs">PNG or JSON character card file</p>
+        <p class="text-sm font-medium">将角色卡拖到此处，或点击选择文件</p>
+        <p class="text-muted-foreground mt-1 text-xs">PNG 或 JSON 格式的角色卡文件</p>
       </div>
       <input
         type="file"
@@ -169,8 +167,8 @@
   <div class="space-y-2">
     <h4 class="flex items-center gap-2 text-sm font-medium">
       <MessageSquare class="h-4 w-4" />
-      Chat Import
-      <Badge variant="outline" class="text-xs">Optional</Badge>
+      聊天记录导入
+      <Badge variant="outline" class="text-xs">选填</Badge>
     </h4>
 
     {#if chatParseResult}
@@ -183,9 +181,9 @@
             <div>
               <p class="text-sm font-medium">{chatParseResult.characterName}</p>
               <p class="text-muted-foreground text-xs">
-                {userCount} user messages · {narrationCount} narrations
+                {userCount} 条用户消息 · {narrationCount} 段正文
                 {#if chatParseResult.totalSkipped > 0}
-                  · {chatParseResult.totalSkipped} skipped
+                  · {chatParseResult.totalSkipped} 已跳过
                 {/if}
               </p>
             </div>
@@ -213,8 +211,8 @@
         onkeydown={(e) => e.key === 'Enter' && chatFileInput?.click()}
       >
         <Upload class="text-muted-foreground mb-2 h-8 w-8" />
-        <p class="text-sm font-medium">Drop .jsonl file here or click to browse</p>
-        <p class="text-muted-foreground mt-1 text-xs">SillyTavern chat file (.jsonl)</p>
+        <p class="text-sm font-medium">将 .jsonl 文件拖到此处，或点击选择文件</p>
+        <p class="text-muted-foreground mt-1 text-xs">SillyTavern 聊天记录文件（.jsonl）</p>
       </div>
       <input
         type="file"

@@ -42,7 +42,7 @@
     <Dialog.Close>
       <Button variant="destructive" size="icon">
         <X class="size-6!" />
-        <span class="sr-only">Close</span>
+        <span class="sr-only">关闭</span>
       </Button>
     </Dialog.Close>
   </div>

@@ -86,7 +86,7 @@ The story is an append-only list of `StoryEntry` rows (`user_action`, `narration
   clearing the first. Both are gone from the schema.
 
   **Presence is reported, departure is inferred.** The classifier answers one question about the
-  cast — `scene.presentCharacterNames`, every *other* character in the scene at the end of the
+  cast — `scene.presentCharacterNames`, every _other_ character in the scene at the end of the
   passage; the protagonist is in every scene by definition and is added by the consumers — and
   `resolveCharacterPresence` (`services/generation/characterPresence.ts`) turns the complement into
   `inactive`. Asking a model to name thirty absent characters produces nothing; asking it to name
@@ -113,16 +113,31 @@ The story is an append-only list of `StoryEntry` rows (`user_action`, `narration
 
 ## Generation Pipeline
 
+Stories whose `mode` is `creative-writing` insert a Director phase after retrieval and before the
+narrator; this mode is the Chinese collaborative-novel workflow and has no separate master switch.
+The Director combines input interpretation and short scene direction in one raw-text,
+streaming call. Its output is passed to the Writer together with the original user input through a
+natural-language protocol; there is no provider-native structured-output request, local Director JSON
+contract, field parser, or field validator. A Director timeout, empty response, or provider error is
+recorded and shown, then an explicit fallback lets the Writer continue from the remaining context. Missing
+configuration or prompt preparation can still fail before that fallback is available. Long planning
+and pattern review are story-gated, user-requested tools whose confirmed results are only read by the
+per-turn Director; they never run periodically. `adventure` stories keep the original pipeline. See
+[collaborative novel](../development/collaborative-novel.md).
+
 A narrator turn is a sequence of phases under `src/lib/services/generation/phases/`, each an async
 generator that yields typed events and returns a result. Dependencies are injected, which is what makes
 them testable without a provider.
 
-`Retrieval → Narrative → Classification → Translation → Image / BackgroundImage → PostGeneration`, with
-`PreGeneration` preparing the retry backup first.
+The base path is `PreGeneration → Retrieval → Narrative → Classification → Translation → Image /
+BackgroundImage → PostGeneration`. Collaborative stories insert `Director` between retrieval and
+narrative.
 
-Only the narrative phase is fatal on failure — there is no turn without a narration. Every other phase
-degrades: a failed classification leaves world state untouched, a failed translation keeps the original
-text, failed images leave the entry without one.
+The narrative phase is fatal on failure — there is no turn without a narration. A collaborative
+Director provider failure degrades to a visible fallback, while a failure to prepare its required
+configuration can still stop the turn before narration. Post-narration phases degrade: a failed
+classification leaves world state untouched, a failed translation keeps the original text, and failed
+images leave the entry without one.
 
 `RetrievalPhase` runs in two stages on purpose. Stage A (world state + lorebook selection) must finish
 before stage B (memory retrieval), because the memory step is told what the narrator's prompt already

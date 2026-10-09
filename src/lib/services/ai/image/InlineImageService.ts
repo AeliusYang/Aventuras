@@ -20,6 +20,7 @@ import { normalizeImageDataUrl, expectedPixels } from '$lib/utils/image'
 import { extractPicTags, type ParsedPicTag } from '$lib/utils/inlineImageParser'
 import { resolveStylePrompt } from './stylePrompt'
 import { createLogger } from '$lib/log'
+import { imageContentVersion } from '$lib/services/image/imageScope'
 
 const log = createLogger('InlineImageGen')
 
@@ -27,6 +28,7 @@ export interface InlineImageContext {
   storyId: string
   entryId: string
   narrativeContent: string
+  contentVersion?: string
   presentCharacters: Character[]
   referenceMode: boolean
 }
@@ -40,6 +42,11 @@ export class InlineImageGenerationService {
    * @returns how many tags were queued, so a caller can tell a no-op from work done.
    */
   async processNarrativeForInlineImages(context: InlineImageContext): Promise<number> {
+    const entry = await database.getStoryEntry(context.entryId)
+    if (!entry || entry.storyId !== context.storyId) return 0
+    const contentVersion = context.contentVersion ?? imageContentVersion(entry)
+    if (contentVersion !== imageContentVersion(entry)) return 0
+    context = { ...context, contentVersion }
     const imageSettings = settings.systemServicesSettings.imageGeneration
 
     // Extract all <pic> tags from the narrative
@@ -62,7 +69,11 @@ export class InlineImageGenerationService {
     // are none and this costs one empty query; on the recovery rescan it is the whole
     // point, since a second record for a tag shadows the first — the render map is keyed
     // on `sourceText` — and the working image is replaced by a fresh generation.
-    const recordedTexts = await database.getEmbeddedImageSourceTextsForEntry(context.entryId)
+    const recordedTexts = await database.getEmbeddedImageSourceTextsForEntry(
+      context.entryId,
+      contentVersion,
+      (entry.metadata?.variantSet?.variants.length ?? 0) <= 1,
+    )
 
     // The set carries the tags accepted so far as well as the recorded ones: a narration
     // can repeat a tag verbatim, and two records under one `sourceText` shadow each other
@@ -184,6 +195,7 @@ export class InlineImageGenerationService {
       storyId: context.storyId,
       entryId: context.entryId,
       sourceText: tag.originalTag,
+      contentVersion: context.contentVersion,
       prompt: fullPrompt,
       styleId: imageSettings.styleId,
       model: modelToUse,

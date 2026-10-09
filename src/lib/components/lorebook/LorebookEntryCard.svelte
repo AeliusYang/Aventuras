@@ -42,10 +42,10 @@
   }
 
   const injectionLabels: Record<string, string> = {
-    always: 'Always',
-    keyword: 'Auto',
-    relevant: 'Auto', // Same as keyword - both use keywords + AI
-    never: 'Manual',
+    always: '常驻',
+    keyword: '自动',
+    relevant: '自动', // Same as keyword - both use keywords + AI
+    never: '禁用',
   }
 
   const Icon = $derived(typeIcons[entry.type] || BookOpen)
@@ -92,10 +92,19 @@
         <span class="text-foreground truncate font-medium">{entry.name}</span>
       </div>
       <div class="text-muted-foreground mt-0.5 flex items-center gap-2 text-xs">
-        <span class="capitalize">{entry.type}</span>
+        <span class="capitalize"
+          >{{
+            character: '角色',
+            location: '地点',
+            item: '物品',
+            faction: '阵营',
+            concept: '概念',
+            event: '事件',
+          }[entry.type]}</span
+        >
         {#if keywordCount > 0}
           <span class="opacity-50">|</span>
-          <span>{keywordCount} keyword{keywordCount !== 1 ? 's' : ''}</span>
+          <span>{keywordCount} 个关键词</span>
         {/if}
         <span class="opacity-50">|</span>
         <span class="capitalize">{injectionLabels[entry.injection.mode]}</span>

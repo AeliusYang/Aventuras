@@ -17,6 +17,10 @@
   import { Separator } from '$lib/components/ui/separator'
   import { getSupportedLanguages } from '$lib/services/ai/utils/TranslationService'
   import { updaterService, UpdateError } from '$lib/services/updater'
+  import {
+    UPSTREAM_UPDATES_ENABLED,
+    LOCAL_RELEASE_UPDATE_NOTICE,
+  } from '$lib/constants/localRelease'
   import { updateNotifier } from '$lib/stores/updateNotifier.svelte'
   import { isAndroid } from '$lib/utils/platform'
   import { RefreshCw, Loader2, Languages, Plus, X, Trash2 } from '@lucide/svelte'
@@ -146,6 +150,7 @@
   }
 
   async function handleCheckForUpdates() {
+    if (!UPSTREAM_UPDATES_ENABLED) return
     isCheckingUpdates = true
     updateMessage = null
     try {
@@ -171,25 +176,25 @@
   import type { FontSizeOption } from '$lib/types'
 
   const fontSizes = [
-    { value: 'small', label: 'Small' },
-    { value: 'medium', label: 'Medium' },
-    { value: 'large', label: 'Large' },
-    { value: 'xlarge', label: 'X-Large' },
-    { value: 'xxlarge', label: 'XX-Large' },
+    { value: 'small', label: '小' },
+    { value: 'medium', label: '中' },
+    { value: 'large', label: '大' },
+    { value: 'xlarge', label: '特大' },
+    { value: 'xxlarge', label: '超大' },
   ] as const
 </script>
 
 <div class="space-y-4">
   <!-- Theme Selection -->
   <div>
-    <Label class="mb-2 block">Theme</Label>
+    <Label class="mb-2 block">主题</Label>
     <Select.Root
       type="single"
       value={settings.uiSettings.theme}
       onValueChange={(v) => settings.setTheme(v)}
     >
       <Select.Trigger class="h-10 w-full">
-        {THEMES.find((t) => t.id === settings.uiSettings.theme)?.label ?? 'Select theme'}
+        {THEMES.find((t) => t.id === settings.uiSettings.theme)?.label ?? '选择主题'}
       </Select.Trigger>
       <Select.Content>
         {#each THEMES as theme (theme.id)}
@@ -206,14 +211,14 @@
 
   <!-- Font Size -->
   <div>
-    <Label class="mb-2 block">Font Size</Label>
+    <Label class="mb-2 block">字号</Label>
     <Select.Root
       type="single"
       value={settings.uiSettings.fontSize}
       onValueChange={(v) => settings.setFontSize(v as FontSizeOption)}
     >
       <Select.Trigger class="h-10 w-full">
-        {fontSizes.find((s) => s.value === settings.uiSettings.fontSize)?.label ?? 'Select size'}
+        {fontSizes.find((s) => s.value === settings.uiSettings.fontSize)?.label ?? '选择尺寸'}
       </Select.Trigger>
       <Select.Content>
         {#each fontSizes as size (size.value)}
@@ -228,14 +233,12 @@
   <!-- Story Content Width -->
   <div class="space-y-2">
     <div class="flex items-center justify-between">
-      <Label>Story Content Width</Label>
+      <Label>正文宽度</Label>
       <span class="text-muted-foreground text-sm">
-        {STORY_WIDTH_OPTIONS[storyWidthIndex]?.label ?? 'Default'}
+        {STORY_WIDTH_OPTIONS[storyWidthIndex]?.label ?? '默认'}
       </span>
     </div>
-    <p class="text-muted-foreground text-xs">
-      Max width of the story area — applies to text and inline images
-    </p>
+    <p class="text-muted-foreground text-xs">故事区域的最大宽度，同时影响正文和内嵌图片</p>
     <Slider
       type="single"
       min={0}
@@ -253,10 +256,8 @@
   <!-- Word Count Toggle -->
   <div class="flex items-center justify-between">
     <div>
-      <Label>Word Count</Label>
-      <p class="text-muted-foreground text-xs">
-        Display current story word count in the status bar
-      </p>
+      <Label>正文字符统计</Label>
+      <p class="text-muted-foreground text-xs">在状态栏显示当前故事的正文字符数</p>
     </div>
     <Switch
       checked={settings.uiSettings.showWordCount}
@@ -271,9 +272,9 @@
   <div class="space-y-3">
     <div class="flex items-center justify-between">
       <div>
-        <Label>Highlight Dialogue</Label>
+        <Label>对白高亮</Label>
         <p class="text-muted-foreground text-xs">
-          Colour quoted speech in the story text. No effect on stories using Visual Prose Styling.
+          为正文中引号内的对白着色。使用可视化正文样式的故事不受影响。
         </p>
       </div>
       <Switch
@@ -285,17 +286,15 @@
     {#if settings.uiSettings.highlightDialogue}
       <div class="flex items-center justify-between gap-3 pl-1">
         <div>
-          <Label class="text-sm">Dialogue Colour</Label>
+          <Label class="text-sm">对白颜色</Label>
           <p class="text-muted-foreground text-xs">
-            {settings.uiSettings.dialogueColor
-              ? 'Custom colour'
-              : "Following the current theme's accent"}
+            {settings.uiSettings.dialogueColor ? '自定义颜色' : '使用当前主题的强调色'}
           </p>
         </div>
         <div class="flex shrink-0 items-center gap-2">
           {#if settings.uiSettings.dialogueColor}
             <Button variant="ghost" size="sm" onclick={() => settings.setDialogueColor('')}>
-              Use theme accent
+              使用主题强调色
             </Button>
           {/if}
           <ColorPicker
@@ -306,10 +305,8 @@
       </div>
 
       <p class="prose-content border-border text-muted-foreground rounded-md border p-3 text-sm">
-        The captain leaned closer.
-        <span class="dialogue-line" style:color={effectiveDialogueColor}>
-          "We sail before dawn."
-        </span>
+        船长靠近了一些。
+        <span class="dialogue-line" style:color={effectiveDialogueColor}> “天亮之前启航。” </span>
       </p>
     {/if}
   </div>
@@ -317,8 +314,8 @@
   <!-- Spellcheck Toggle -->
   <div class="flex items-center justify-between">
     <div>
-      <Label>Spellcheck</Label>
-      <p class="text-muted-foreground text-xs">Grammar and spelling suggestions while typing</p>
+      <Label>拼写检查</Label>
+      <p class="text-muted-foreground text-xs">输入时提供语法和拼写建议</p>
     </div>
     <Switch
       checked={settings.uiSettings.spellcheckEnabled}
@@ -330,9 +327,9 @@
   <div class="space-y-3 rounded-lg border p-3">
     <div class="flex flex-wrap items-start justify-between gap-2">
       <div>
-        <Label>Custom Dictionary</Label>
+        <Label>自定义词典</Label>
         <p class="text-muted-foreground text-xs">
-          Permanently ignore these spellings ({customDictionaryWords.length} words)
+          始终忽略以下拼写（{customDictionaryWords.length} 词)
         </p>
       </div>
       <Button
@@ -342,13 +339,13 @@
         disabled={customDictionaryBusy || customDictionaryWords.length === 0}
       >
         <Trash2 class="mr-1.5 h-3.5 w-3.5" />
-        Clear all
+        全部清空
       </Button>
     </div>
 
     <div class="flex gap-2">
       <Input
-        placeholder="Add custom word..."
+        placeholder="添加自定义词语…"
         bind:value={customDictionaryInput}
         onkeydown={handleCustomDictionaryInputKeydown}
       />
@@ -357,16 +354,16 @@
         size="icon"
         onclick={handleAddCustomWord}
         disabled={customDictionaryBusy || !customDictionaryInput.trim()}
-        title="Add custom word"
+        title="添加自定义词语"
       >
         <Plus class="h-4 w-4" />
       </Button>
     </div>
 
     {#if loadingCustomDictionary}
-      <p class="text-muted-foreground text-xs">Loading dictionary...</p>
+      <p class="text-muted-foreground text-xs">正在加载词典…</p>
     {:else if customDictionaryWords.length === 0}
-      <p class="text-muted-foreground text-xs">No custom words saved yet.</p>
+      <p class="text-muted-foreground text-xs">尚未保存自定义词语。</p>
     {:else}
       <ScrollArea class="h-24 w-full rounded-md border">
         <div class="flex flex-wrap gap-1 p-2">
@@ -376,7 +373,7 @@
               <button
                 class="hover:text-destructive text-muted-foreground p-0 transition-colors"
                 onclick={() => handleRemoveCustomWord(word)}
-                title="Remove word"
+                title="移除词语"
                 disabled={customDictionaryBusy}
               >
                 <X class="h-3 w-3" />
@@ -391,10 +388,8 @@
   <!-- Suggestions Toggle -->
   <div class="flex items-center justify-between">
     <div>
-      <Label>Suggestions</Label>
-      <p class="text-muted-foreground text-xs">
-        Show AI-generated action choices and plot suggestions
-      </p>
+      <Label>创作建议</Label>
+      <p class="text-muted-foreground text-xs">显示 AI 生成的行动选项和剧情建议</p>
     </div>
     <Switch
       checked={!settings.uiSettings.disableSuggestions}
@@ -405,8 +400,8 @@
   <!-- Action Prefixes Toggle -->
   <div class="flex items-center justify-between">
     <div>
-      <Label>Action Prefixes</Label>
-      <p class="text-muted-foreground text-xs">Show Do/Say/Think buttons for input</p>
+      <Label>输入类型按钮</Label>
+      <p class="text-muted-foreground text-xs">显示“行动／对白／想法”等输入类型按钮</p>
     </div>
     <Switch
       checked={!settings.uiSettings.disableActionPrefixes}
@@ -417,8 +412,8 @@
   <!-- Show Reasoning Toggle -->
   <div class="flex items-center justify-between">
     <div>
-      <Label>Reasoning Block</Label>
-      <p class="text-muted-foreground text-xs">Show thought process display</p>
+      <Label>推理过程</Label>
+      <p class="text-muted-foreground text-xs">显示模型返回的推理过程</p>
     </div>
     <Switch
       checked={settings.uiSettings.showReasoning}
@@ -429,10 +424,8 @@
   <!-- Auto Scroll Toggle -->
   <div class="flex items-center justify-between">
     <div>
-      <Label>Auto Scroll</Label>
-      <p class="text-muted-foreground text-xs">
-        Automatically scroll to the latest message during generation
-      </p>
+      <Label>自动滚动</Label>
+      <p class="text-muted-foreground text-xs">生成时自动滚动到最新内容</p>
     </div>
     <Switch
       checked={settings.uiSettings.autoScroll}
@@ -443,10 +436,8 @@
   <!-- Scroll to Top Toggle -->
   <div class="flex items-center justify-between">
     <div>
-      <Label>Floating Scroll to Top Button</Label>
-      <p class="text-muted-foreground text-xs">
-        Show a floating button to jump to the first story entry
-      </p>
+      <Label>悬浮返回顶部按钮</Label>
+      <p class="text-muted-foreground text-xs">显示跳转到故事首段的悬浮按钮</p>
     </div>
     <Switch
       checked={settings.uiSettings.showScrollToTop}
@@ -457,10 +448,8 @@
   <!-- Scroll to Bottom Toggle -->
   <div class="flex items-center justify-between">
     <div>
-      <Label>Floating Scroll to Bottom Button</Label>
-      <p class="text-muted-foreground text-xs">
-        Show a floating button to jump to the latest story entry
-      </p>
+      <Label>悬浮返回底部按钮</Label>
+      <p class="text-muted-foreground text-xs">显示跳转到故事最新段落的悬浮按钮</p>
     </div>
     <Switch
       checked={settings.uiSettings.showScrollToBottom}
@@ -472,9 +461,9 @@
     <!-- Incognito Keyboard Toggle -->
     <div class="flex items-center justify-between">
       <div>
-        <Label>Incognito Keyboard</Label>
+        <Label>键盘隐私模式</Label>
         <p class="text-muted-foreground text-xs">
-          Ask the keyboard not to learn from what you type. Not all keyboards honour this.
+          请求键盘不学习你的输入内容；部分键盘可能不支持。
         </p>
       </div>
       <Switch
@@ -488,15 +477,14 @@
   <div class="space-y-3">
     <div class="flex items-center gap-2">
       <Languages class="text-muted-foreground h-4 w-4" />
-      <Label class="text-base font-medium">Translation</Label>
+      <Label class="text-base font-medium">内容翻译</Label>
     </div>
 
     <div class="flex items-center justify-between">
       <div>
-        <Label>Enable Translation</Label>
+        <Label>启用内容翻译</Label>
         <p class="text-muted-foreground text-xs">
-          Translate AI responses to your language while keeping English prompts for optimal LLM
-          performance
+          将 AI 回复翻译为目标语言，同时保留原有英文提示词
         </p>
       </div>
       <Switch
@@ -511,7 +499,7 @@
     {#if settings.translationSettings.enabled}
       <!-- Target Language -->
       <div>
-        <Label class="mb-2 block">Target Language</Label>
+        <Label class="mb-2 block">目标语言</Label>
         <Select.Root
           type="single"
           value={settings.translationSettings.targetLanguage}
@@ -523,7 +511,7 @@
           <Select.Trigger class="h-10 w-full">
             {getSupportedLanguages().find(
               (l) => l.code === settings.translationSettings.targetLanguage,
-            )?.name ?? 'Select language'}
+            )?.name ?? '选择语言'}
           </Select.Trigger>
           <Select.Content class="max-h-60">
             {#each getSupportedLanguages() as lang (lang.code)}
@@ -533,16 +521,14 @@
             {/each}
           </Select.Content>
         </Select.Root>
-        <p class="text-muted-foreground mt-1 text-xs">Language for translated content display</p>
+        <p class="text-muted-foreground mt-1 text-xs">翻译后内容的显示语言</p>
       </div>
 
       <!-- Translate Narration -->
       <div class="flex items-center justify-between">
         <div>
-          <Label>Translate Narration</Label>
-          <p class="text-muted-foreground text-xs">
-            Translate AI-generated story content after generation
-          </p>
+          <Label>翻译正文</Label>
+          <p class="text-muted-foreground text-xs">正文生成后，再翻译故事内容</p>
         </div>
         <Switch
           checked={settings.translationSettings.translateNarration}
@@ -556,10 +542,8 @@
       <!-- Translate User Input -->
       <div class="flex items-center justify-between">
         <div>
-          <Label>Translate User Input</Label>
-          <p class="text-muted-foreground text-xs">
-            Translate your input to English before sending to the AI
-          </p>
+          <Label>翻译用户输入</Label>
+          <p class="text-muted-foreground text-xs">将你的输入翻译成英文后再发送给 AI</p>
         </div>
         <Switch
           checked={settings.translationSettings.translateUserInput}
@@ -573,10 +557,8 @@
       <!-- Translate World State -->
       <div class="flex items-center justify-between">
         <div>
-          <Label>Translate World State</Label>
-          <p class="text-muted-foreground text-xs">
-            Translate character names, locations, and items in the UI
-          </p>
+          <Label>翻译世界状态</Label>
+          <p class="text-muted-foreground text-xs">翻译界面中显示的角色名、地点和物品</p>
         </div>
         <Switch
           checked={settings.translationSettings.translateWorldState}
@@ -593,41 +575,43 @@
 
   <!-- Updates Section -->
   <div class="space-y-4">
-    <Label class="text-base font-medium">Updates</Label>
+    <Label class="text-base font-medium">软件更新</Label>
 
-    <!-- Check for Updates Button -->
-    <div class="flex items-center gap-2">
-      <Button
-        variant="outline"
-        size="sm"
-        onclick={handleCheckForUpdates}
-        disabled={isCheckingUpdates}
-      >
-        {#if isCheckingUpdates}
-          <Loader2 class="mr-2 h-4 w-4 animate-spin" />
-          Checking...
-        {:else}
-          <RefreshCw class="mr-2 h-4 w-4" />
-          Check for Updates
+    {#if !UPSTREAM_UPDATES_ENABLED}
+      <p class="text-muted-foreground text-sm">{LOCAL_RELEASE_UPDATE_NOTICE}</p>
+    {:else}
+      <!-- Check for Updates Button -->
+      <div class="flex items-center gap-2">
+        <Button
+          variant="outline"
+          size="sm"
+          onclick={handleCheckForUpdates}
+          disabled={isCheckingUpdates}
+        >
+          {#if isCheckingUpdates}
+            <Loader2 class="mr-2 h-4 w-4 animate-spin" />
+            正在检查…
+          {:else}
+            <RefreshCw class="mr-2 h-4 w-4" />
+            检查更新
+          {/if}
+        </Button>
+        {#if updateMessage}
+          <span class="text-muted-foreground text-sm">{updateMessage}</span>
         {/if}
-      </Button>
-      {#if updateMessage}
-        <span class="text-muted-foreground text-sm">{updateMessage}</span>
-      {/if}
-    </div>
-
-    <!-- Check on Startup Toggle -->
-    <div class="flex items-center justify-between">
-      <div>
-        <Label>Check on Startup</Label>
-        <p class="text-muted-foreground text-xs">
-          Look for a new version when the app starts, and offer it if one is found
-        </p>
       </div>
-      <Switch
-        checked={settings.updateSettings.autoCheck}
-        onCheckedChange={(v) => settings.setAutoCheck(v)}
-      />
-    </div>
+
+      <!-- Check on Startup Toggle -->
+      <div class="flex items-center justify-between">
+        <div>
+          <Label>启动时检查更新</Label>
+          <p class="text-muted-foreground text-xs">启动应用时检查新版本，发现更新后提示</p>
+        </div>
+        <Switch
+          checked={settings.updateSettings.autoCheck}
+          onCheckedChange={(v) => settings.setAutoCheck(v)}
+        />
+      </div>
+    {/if}
   </div>
 </div>

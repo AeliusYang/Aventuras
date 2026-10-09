@@ -34,7 +34,7 @@
     }}
     itemLabel={(p) => p.label}
     itemValue={(p) => p.value}
-    placeholder="Select provider"
+    placeholder="选择服务商"
     searchPlaceholder="Search providers..."
     itemHeight={48}
   >

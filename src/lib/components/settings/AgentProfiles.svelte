@@ -47,191 +47,227 @@
 
   // All system services that can be assigned to profiles
   const systemServices = [
+    {
+      id: 'collaborativeSceneDirector',
+      label: '中文写作：意图与场景导演',
+      icon: Wand2,
+      description: '解释自然输入并以原始文字指导本轮正文',
+    },
+    {
+      id: 'collaborativeNarrativePlanner',
+      label: '中文写作：长期叙事规划',
+      icon: Brain,
+      description: '中文写作的长期目标、关系、伏笔与软规划',
+    },
+    {
+      id: 'collaborativePatternReviewer',
+      label: '中文写作：结构重复规避',
+      icon: Sparkles,
+      description: '按需分析近期正文，给导演提供结构规避指导',
+    },
+    {
+      id: 'collaborativeWriter',
+      label: '中文写作：中文正文 Writer',
+      icon: BookOpen,
+      description: '执行导演原文并生成中文小说正文',
+    },
+    {
+      id: 'collaborativeFactStateExtractor',
+      label: '中文写作：事实与状态提取',
+      icon: Bot,
+      description: '正文生成后提取结构化事实与状态',
+    },
+    {
+      id: 'collaborativePlotSuggestions',
+      label: '中文写作：短期剧情建议',
+      icon: Lightbulb,
+      description: '用户主动请求的结构化短期剧情建议',
+    },
     // Classification tasks
     {
       id: 'classifier',
-      label: 'World State Classifier',
+      label: '世界状态提取',
       icon: Bot,
-      description: 'Reads the narration and updates characters, locations, items & quests',
+      description: '读取正文，更新角色、地点、物品和剧情线索',
     },
     {
       id: 'lorebookClassifier',
-      label: 'Lorebook Import',
+      label: '世界书导入',
       icon: BookOpen,
-      description: 'Classifies imported entries',
+      description: '为导入的世界书条目分类',
     },
     {
       id: 'entryRetrieval',
-      label: 'Entry Retrieval',
+      label: '世界书条目检索',
       icon: Search,
-      description: 'Selects relevant lorebook entries',
+      description: '选择当前场景相关的世界书条目',
     },
     {
       id: 'worldStateInjection',
-      label: 'World State Injection',
+      label: '世界状态注入',
       icon: Users,
-      description: 'Injects live characters, locations, items & quests into the prompt',
+      description: '将当前角色、地点、物品和剧情线索加入上下文',
     },
     {
       id: 'characterCardImport',
-      label: 'Card Import',
+      label: '角色卡导入',
       icon: Download,
-      description: 'Converts character cards',
+      description: '转换角色卡内容',
     },
     // Memory & Context tasks
     {
       id: 'memory',
-      label: 'Memory System',
+      label: '记忆系统',
       icon: Brain,
-      description: 'Analyzes chapters and context',
+      description: '分析章节和上下文',
     },
     {
       id: 'chapterQuery',
-      label: 'Chapter Query',
+      label: '章节查询',
       icon: Search,
-      description: 'Queries chapter details',
+      description: '查询章节细节',
     },
     {
       id: 'timelineFill',
-      label: 'Timeline Fill',
+      label: '时间线补全',
       icon: Clock,
-      description: 'Fills timeline gaps',
+      description: '补全时间线中的缺口',
     },
     // Suggestions tasks
     {
       id: 'suggestions',
-      label: 'Suggestions',
+      label: '创作建议',
       icon: Lightbulb,
-      description: 'Generates plot suggestions',
+      description: '生成剧情建议',
     },
     {
       id: 'actionChoices',
-      label: 'Action Choices',
+      label: '行动选项',
       icon: ListChecks,
-      description: 'Generates RPG choices',
+      description: '生成行动选项',
     },
     {
       id: 'styleReviewer',
-      label: 'Style Reviewer',
+      label: '文风与重复分析',
       icon: Sparkles,
-      description: 'Analyzes prose quality',
+      description: '分析正文质量与重复模式',
     },
     {
       id: 'imageGeneration',
-      label: 'Image Gen',
+      label: '图片生成',
       icon: Wand2,
-      description: 'Generates image prompts',
+      description: '生成图片提示词',
     },
     {
       id: 'bgImageGeneration',
-      label: 'BG Image generation analyzer',
+      label: '背景图场景分析',
       icon: Wand2,
-      description: 'Generates background image prompts',
+      description: '生成背景图提示词',
     },
     // Agentic tasks
     {
       id: 'loreManagement',
-      label: 'Lore Manager',
+      label: '世界书管理',
       icon: BookOpen,
-      description: 'Autonomous lore maintenance',
+      description: '自动维护世界书',
     },
     {
       id: 'agenticRetrieval',
-      label: 'Agentic Retrieval',
+      label: '智能记忆检索',
       icon: Search,
-      description: 'Active context search',
+      description: '主动检索相关上下文',
     },
     {
       id: 'interactiveVault',
-      label: 'Vault Assistant',
+      label: '素材库助手',
       icon: BookOpen,
-      description: 'AI vault assistant',
+      description: '协助管理素材库',
     },
     // Wizard tasks
     {
       id: 'wizard:settingExpansion',
-      label: 'Setting Expansion',
+      label: '世界设定扩写',
       icon: Wand2,
-      description: 'Expands story settings',
+      description: '扩写世界设定',
     },
     {
       id: 'wizard:settingRefinement',
-      label: 'Setting Refinement',
+      label: '世界设定润色',
       icon: Wand2,
-      description: 'Refines story settings',
+      description: '润色世界设定',
     },
     {
       id: 'wizard:protagonistGeneration',
-      label: 'Protagonist Gen',
+      label: '主角生成',
       icon: Wand2,
-      description: 'Generates protagonists',
+      description: '生成主角',
     },
     {
       id: 'wizard:characterElaboration',
-      label: 'Character Elaboration',
+      label: '角色设定扩写',
       icon: Wand2,
-      description: 'Elaborates characters',
+      description: '扩写角色设定',
     },
     {
       id: 'wizard:characterRefinement',
-      label: 'Character Refinement',
+      label: '角色设定润色',
       icon: Wand2,
-      description: 'Refines characters',
+      description: '润色角色设定',
     },
     {
       id: 'wizard:supportingCharacters',
-      label: 'Supporting Cast',
+      label: '配角生成',
       icon: Wand2,
-      description: 'Generates NPCs',
+      description: '生成配角',
     },
     {
       id: 'wizard:openingGeneration',
-      label: 'Opening Gen',
+      label: '开场生成',
       icon: Wand2,
-      description: 'Generates story opening',
+      description: '生成故事开场',
     },
     {
       id: 'wizard:openingRefinement',
-      label: 'Opening Refinement',
+      label: '开场润色',
       icon: Wand2,
-      description: 'Refines story opening',
+      description: '润色故事开场',
     },
     // Translation tasks
     {
       id: 'translation:narration',
-      label: 'Translate Narration',
+      label: '翻译正文',
       icon: Languages,
-      description: 'Translates AI responses',
+      description: '翻译 AI 生成的正文',
     },
     {
       id: 'translation:input',
-      label: 'Translate Input',
+      label: '输入翻译',
       icon: Languages,
-      description: 'Translates user input to English',
+      description: '将用户输入翻译为英文',
     },
     {
       id: 'translation:ui',
-      label: 'Translate UI',
+      label: '界面状态翻译',
       icon: Languages,
-      description: 'Translates world state elements',
+      description: '翻译界面中的世界状态',
     },
     {
       id: 'translation:suggestions',
-      label: 'Translate Suggestions',
+      label: '创作建议翻译',
       icon: Languages,
-      description: 'Translates plot suggestions',
+      description: '翻译剧情建议',
     },
     {
       id: 'translation:actionChoices',
-      label: 'Translate Choices',
+      label: '行动选项翻译',
       icon: Languages,
-      description: 'Translates action choices',
+      description: '翻译行动选项',
     },
     {
       id: 'translation:wizard',
-      label: 'Translate Wizard',
+      label: '创建向导翻译',
       icon: Languages,
-      description: 'Translates wizard content',
+      description: '翻译创建向导中的内容',
     },
   ] as const satisfies readonly {
     id: ServiceId
@@ -357,7 +393,7 @@
     const confirmed = await ask(
       `Delete profile "${preset.name}"? Tasks assigned to it will revert to Unassigned.`,
       {
-        title: 'Delete Profile',
+        title: '删除配置',
         kind: 'warning',
       },
     )
@@ -382,8 +418,8 @@
 
   async function handleApplyMainToAll() {
     const confirmed = await ask(
-      'Apply the Main Narrative profile and model to all agent profiles?',
-      { title: 'Apply Main to All', kind: 'warning' },
+      '将冒险正文的连接与模型复制到所有 Agent Profile？其他生成参数保持各 Profile 的设置。',
+      { title: '将主模型应用到所有任务', kind: 'warning' },
     )
     if (!confirmed) return
 
@@ -429,21 +465,21 @@
   }
 </script>
 
-<div class="border-t pt-6">
+<div>
   <div class="mb-4 flex items-start justify-between sm:items-center">
     <div>
-      <h3 class="text-base font-medium">Agent Profiles</h3>
-      <p class="text-muted-foreground text-xs">Click a task to move it between profiles.</p>
+      <h3 class="text-base font-medium">任务模型配置</h3>
+      <p class="text-muted-foreground text-xs">点击任务，可将其分配到其他模型配置。</p>
     </div>
     <div class="flex items-center gap-2">
       {#if resettingProfiles}
-        <span class="text-muted-foreground text-xs font-medium"> Reset all? </span>
+        <span class="text-muted-foreground text-xs font-medium"> 重置全部配置？ </span>
         <Button
           variant="ghost"
           size="sm"
           class="text-muted-foreground hover:text-foreground w-5 px-0 hover:bg-transparent"
           onclick={() => (resettingProfiles = false)}
-          title="Cancel"
+          title="取消"
         >
           <X class="h-3.5 w-3.5" />
         </Button>
@@ -455,7 +491,7 @@
             resettingProfiles = false
             handleResetProfiles()
           }}
-          title="Confirm Reset"
+          title="确认重置"
         >
           <Check class="h-3.5 w-3.5" />
         </Button>
@@ -464,25 +500,25 @@
           variant="ghost"
           size="sm"
           onclick={() => (resettingProfiles = true)}
-          title="Reset all profiles to defaults"
+          title="将所有任务配置恢复为默认值"
           class="text-xs"
         >
           <RotateCcw class="mr-1 h-3 w-3" />
-          Reset
+          重置
         </Button>
         <Button
           variant="ghost"
           size="sm"
           onclick={handleApplyMainToAll}
-          title="Apply Main Narrative profile and model to all agent profiles"
+          title="将冒险正文的连接与模型应用到所有任务配置"
           class="text-xs"
         >
           <Copy class="mr-1 h-3 w-3" />
-          Apply Main
+          统一使用正文模型
         </Button>
         <Button variant="secondary" size="sm" onclick={createNewPreset} class="text-xs">
           <Plus class="mr-1 h-3 w-3" />
-          New Profile
+          新建配置
         </Button>
       {/if}
     </div>
@@ -496,8 +532,8 @@
           <div class="flex items-start justify-between">
             <Card.Title class="text-base">
               {settings.generationPresets.find((p) => p.id === editingPresetId)
-                ? 'Edit Profile'
-                : 'Create Profile'}
+                ? '编辑配置'
+                : '创建配置'}
             </Card.Title>
             <Button
               variant="text"
@@ -513,21 +549,21 @@
         <Card.Content class="grid gap-4">
           <div class="grid grid-cols-2 gap-3">
             <div class="grid gap-2">
-              <Label>Name</Label>
+              <Label>名称</Label>
               <Input
                 type="text"
                 bind:value={preset.name}
                 oninput={() => debouncedSave()}
-                placeholder="e.g. Classification, Memory"
+                placeholder="例如：状态提取、记忆"
               />
             </div>
             <div class="grid gap-2">
-              <Label>Description</Label>
+              <Label>说明</Label>
               <Input
                 type="text"
                 bind:value={preset.description}
                 oninput={() => debouncedSave()}
-                placeholder="Brief description"
+                placeholder="简短说明"
               />
             </div>
           </div>
@@ -538,7 +574,7 @@
               class="flex items-center gap-2 rounded border border-red-500/20 bg-red-500/10 px-3 py-2 text-sm text-red-600 dark:text-red-400"
             >
               <AlertCircle class="h-4 w-4 shrink-0" />
-              No model configured — story generation is blocked until you set one.
+              尚未配置模型，设置后才能生成故事。
             </div>
           {/if}
 
@@ -548,6 +584,7 @@
             temperature={preset.temperature}
             maxTokens={preset.maxTokens}
             reasoningEffort={preset.reasoningEffort}
+            timeoutMs={preset.timeoutMs ?? settings.apiSettings.llmTimeoutMs}
             onProfileChange={async (id) => {
               const previousModel = preset.model
               preset.profileId = id
@@ -576,6 +613,10 @@
               preset.reasoningEffort = v
               debouncedSave()
             }}
+            onTimeoutChange={(v) => {
+              preset.timeoutMs = v
+              debouncedSave()
+            }}
             onRefreshModels={fetchModelsForPreset}
             isRefreshingModels={isLoadingPresetModels}
             isManualMode={settings.advancedRequestSettings.manualMode}
@@ -583,7 +624,7 @@
 
           <!-- Structured Output (unchanged) -->
           <div class="grid gap-2">
-            <Label>Structured Output</Label>
+            <Label>结构化输出</Label>
             <div class="flex rounded-md border">
               {#each [['auto', 'Auto'], ['on', 'Force On'], ['off', 'Force Off']] as [val, label] (val)}
                 {@const isActive = (preset.structuredOutputOverride ?? 'auto') === val}
@@ -602,8 +643,7 @@
               {/each}
             </div>
             <p class="text-muted-foreground text-xs">
-              Auto uses provider/model capability detection. Force On/Off to override. Using
-              structured output can break reasoning when using local model servers.
+              自动模式根据服务商和模型能力判断，也可强制开启或关闭。部分本地模型服务的结构化输出可能影响推理。
             </p>
           </div>
 
@@ -612,11 +652,10 @@
           {#if nudgeApplies(preset)}
             <div class="flex flex-row items-center justify-between gap-3">
               <div class="space-y-0.5">
-                <Label class="text-sm">Thinking nudge</Label>
+                <Label class="text-sm">推理标签引导</Label>
                 <p class="text-muted-foreground text-xs">
-                  Inject a prompt to encourage the model to use <code>&lt;think&gt;</code> tags properly.
-                  Useful for some local models such as Mistral models, but may cause issues with other
-                  models such as Qwen 3.5.
+                  添加提示词，引导模型正确使用 <code>&lt;think&gt;</code> 标签。适用于部分本地模型（如
+                  Mistral），但可能影响其他模型（如 Qwen 3.5）。
                 </p>
               </div>
               <Switch
@@ -632,7 +671,7 @@
           <!-- Manual Request Body (unchanged) -->
           {#if settings.advancedRequestSettings.manualMode}
             <div class="border-t pt-2">
-              <Label class="mb-2 block">Manual Request Body (JSON)</Label>
+              <Label class="mb-2 block">自定义请求体（JSON）</Label>
               <Textarea
                 bind:value={preset.manualBody}
                 onblur={() => debouncedSave()}
@@ -641,7 +680,7 @@
                 placeholder={'{"temperature": 0.7, "top_p": 0.9}'}
               />
               <p class="text-muted-foreground mt-1 text-xs">
-                Overrides request parameters; messages and tools are managed by Aventuras.
+                覆盖请求参数；消息与工具由 Aventuras 管理。
               </p>
             </div>
           {/if}
@@ -664,19 +703,19 @@
                 class="truncate text-xs"
                 class:text-muted-foreground={preset.model}
                 class:text-destructive={!preset.model}
-                title={preset.model || 'Model not configured'}
+                title={preset.model || '尚未配置模型'}
               >
-                {preset.model || 'NEED TO SET MODEL'}
+                {preset.model || '请配置模型'}
               </div>
               {#if !preset.model}
                 <div class="text-destructive mt-0.5 flex items-center gap-1 text-xs">
                   <AlertCircle class="h-3 w-3" />
-                  Click to configure
+                  点击配置
                 </div>
               {:else if preset.profileId && !settings.getProfile(preset.profileId)}
                 <div class="text-destructive mt-0.5 flex items-center gap-1 text-xs">
                   <AlertCircle class="h-3 w-3" />
-                  No API profile
+                  未选择模型连接
                 </div>
               {:else}
                 {@const _profileId = preset.profileId || settings.getDefaultProfileIdForProvider()}
@@ -685,16 +724,16 @@
                 {#if _models.length > 0 && !_models.find((m) => m.id === preset.model)}
                   <div class="mt-0.5 flex items-center gap-1 text-xs text-yellow-500">
                     <AlertTriangle class="h-3 w-3" />
-                    Model not in profile
+                    模型不在连接配置中
                   </div>
                 {:else if _models.length === 0 && _profile?.fetchedModels.length}
                   <div class="mt-0.5 flex items-center gap-1 text-xs text-red-500">
                     <AlertTriangle class="h-3 w-3" />
-                    No models available
+                    没有可用模型
                   </div>
                 {:else if _models.length === 0}
                   <div class="text-muted-foreground mt-0.5 flex items-center gap-1 text-xs">
-                    No models fetched
+                    尚未获取模型
                   </div>
                 {/if}
               {/if}
@@ -705,7 +744,7 @@
                 size="icon"
                 class="text-muted-foreground hover:text-foreground h-6 w-6"
                 onclick={() => startEditingPreset(preset)}
-                title="Edit Profile"
+                title="编辑配置"
               >
                 <Settings2 class="h-3 w-3" />
               </Button>
@@ -714,7 +753,7 @@
                 size="icon"
                 class="text-muted-foreground h-6 w-6 hover:text-red-500"
                 onclick={() => handleDeletePreset(preset.id)}
-                title="Delete Profile"
+                title="删除配置"
               >
                 <Trash2 class="h-3 w-3" />
               </Button>
@@ -726,9 +765,17 @@
               <div
                 class="bg-background flex flex-col overflow-hidden rounded-md border shadow-sm transition-all"
               >
-                <button
+                <div
                   class="group hover:bg-muted/50 flex w-full items-center gap-2 p-2 text-left transition-colors select-none"
+                  role="button"
+                  tabindex="0"
                   onclick={(e) => handleTaskClick(e, service.id)}
+                  onkeydown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault()
+                      activeTaskMenu = activeTaskMenu === service.id ? null : service.id
+                    }
+                  }}
                   title={service.description}
                 >
                   <service.icon class="text-primary h-3 w-3 shrink-0" />
@@ -740,14 +787,14 @@
                       ? 'rotate-180'
                       : ''}"
                   />
-                </button>
+                </div>
 
                 {#if isTaskMenuOpen(service.id)}
                   <div class="bg-muted/50 flex flex-col gap-0.5 border-t p-1">
                     <div
                       class="text-muted-foreground px-2 py-1 text-[10px] font-bold tracking-wider uppercase"
                     >
-                      Move to...
+                      移动到…
                     </div>
                     {#each settings.generationPresets as targetPreset (targetPreset.id)}
                       {#if targetPreset.id !== preset.id}
@@ -769,7 +816,7 @@
                         moveTask(service.id, 'custom')
                       }}
                     >
-                      Unassigned
+                      未分配
                     </button>
                   </div>
                 {/if}
@@ -779,7 +826,7 @@
               <div
                 class="text-muted-foreground flex flex-1 items-center justify-center py-2 text-xs italic"
               >
-                No tasks assigned
+                尚未分配任务
               </div>
             {/if}
           </Card.Content>
@@ -791,7 +838,7 @@
     {#if getServicesForProfile('custom').length !== 0}
       <Card.Root class="bg-muted/20 flex h-full flex-col border-dashed">
         <div class="border-b p-3 pb-2">
-          <div class="text-muted-foreground text-sm font-medium">Unassigned</div>
+          <div class="text-muted-foreground text-sm font-medium">未分配</div>
         </div>
         <Card.Content
           class="flex flex-1 flex-col gap-2 p-3 transition-all {getServicesForProfile('custom')
@@ -803,7 +850,7 @@
             <div
               class="mb-2 rounded border border-amber-500/20 bg-amber-500/10 px-2 py-1.5 text-xs text-amber-600 dark:text-amber-400"
             >
-              Unassigned agents will not work. Assign them to a profile.
+              未分配的任务无法运行，请为其选择模型配置。
             </div>
           {/if}
           {#each getServicesForProfile('custom') as service (service.id)}
@@ -831,7 +878,7 @@
                   <div
                     class="text-muted-foreground px-2 py-1 text-[10px] font-bold tracking-wider uppercase"
                   >
-                    Move to...
+                    移动到…
                   </div>
                   {#each settings.generationPresets as targetPreset (targetPreset.id)}
                     <button

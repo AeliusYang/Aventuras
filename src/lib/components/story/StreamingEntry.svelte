@@ -3,6 +3,7 @@
   import { story } from '$lib/stores/story.svelte'
   import { BookOpen, Volume2, Pencil, Trash2 } from '@lucide/svelte'
   import { parseStoryMarkdown } from '$lib/utils/markdown'
+  import { highlightDialogueHtml } from '$lib/utils/htmlSanitize'
   import ReasoningBlock from './ReasoningBlock.svelte'
   import { settings } from '$lib/stores/settings.svelte'
   import { replacePicTagsWithPlaceholders } from '$lib/utils/inlineImageParser'
@@ -19,7 +20,11 @@
   // For Visual Prose, content is already wrapped HTML; for regular, parse as markdown
   // Also process <pic> tags to show generating placeholders when inline mode is enabled
   let renderedContent = $derived.by(() => {
-    let processed = isVisualProse ? content : parseStoryMarkdown(content)
+    let processed = isVisualProse
+      ? settings.uiSettings.highlightDialogue
+        ? highlightDialogueHtml(content)
+        : content
+      : parseStoryMarkdown(content)
     // Replace <pic> tags with generating placeholders during streaming
     if (inlineImageMode && content.includes('<pic')) {
       processed = replacePicTagsWithPlaceholders(processed)
@@ -47,7 +52,8 @@
 
 <!-- Streaming content container -->
 <div
-  class="border-border border-l-muted-foreground/40 animate-fade-in rounded-lg border border-l-4 px-4 pt-3 pb-4 shadow-sm {story.currentBgImage
+  class="border-border border-l-muted-foreground/40 animate-fade-in rounded-lg border border-l-4 px-4 pt-3 pb-4 shadow-sm {story.currentBgImage &&
+  story.currentStory?.settings?.backgroundImagesEnabled
     ? 'bg-card/60 backdrop-blur-md'
     : 'bg-card'}"
 >
@@ -119,7 +125,8 @@
     {#if content.length > 0}
       <div
         class="story-text prose-content streaming-content animate-fade-in"
-        class:dialogue-highlight={!isVisualProse}
+        class:dialogue-highlight={settings.uiSettings.highlightDialogue}
+        style:--dialogue-color={settings.uiSettings.dialogueColor || 'var(--text-accent)'}
       >
         {@html renderedContent}<span class="streaming-cursor"></span>
       </div>

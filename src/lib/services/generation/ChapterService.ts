@@ -15,6 +15,7 @@ import type {
 } from '$lib/types'
 import type { ChapterAnalysis, ChapterSummaryResult } from '$lib/services/ai/sdk/schemas/memory'
 import { createLogger } from '$lib/log'
+import { assertWriteScopeCurrent, type ScopedWriteOptions } from '$lib/utils/branchScope'
 
 const log = createLogger('ChapterService')
 
@@ -24,7 +25,7 @@ export interface ChapterAnalysisResult extends ChapterAnalysis {}
 // eslint-disable-next-line @typescript-eslint/no-empty-object-type
 export interface ChapterSummaryData extends ChapterSummaryResult {}
 
-export interface ChapterCheckInput {
+export interface ChapterCheckInput extends ScopedWriteOptions {
   storyId: string
   currentBranchId: string | null
   entries: StoryEntry[]
@@ -61,8 +62,8 @@ export interface ChapterServiceDependencies {
     summaryDetail?: SummaryDetail,
   ) => Promise<ChapterSummaryData>
 
-  getNextChapterNumber: () => Promise<number>
-  addChapter: (chapter: Chapter) => Promise<void>
+  getNextChapterNumber: (options?: ScopedWriteOptions) => Promise<number>
+  addChapter: (chapter: Chapter, options?: ScopedWriteOptions) => Promise<void>
 }
 
 export interface ChapterCreationResult {
@@ -79,6 +80,21 @@ export class ChapterService {
   }
 
   async checkAndCreateChapter(input: ChapterCheckInput): Promise<ChapterCreationResult> {
+    const { storyId, currentBranchId } = input
+    const check = () =>
+      assertWriteScopeCurrent(
+        input.isScopeCurrent?.() !== false &&
+          (!input.scope ||
+            (input.scope.storyId === storyId && input.scope.branchId === currentBranchId)),
+      )
+    const options: ScopedWriteOptions = {
+      scope: { storyId, branchId: currentBranchId },
+      isScopeCurrent: () => {
+        check()
+        return true
+      },
+    }
+    check()
     const { entries, tokensOutsideBuffer, memoryConfig, currentBranchChapters, mode, pov, tense } =
       input
 
@@ -117,7 +133,7 @@ export class ChapterService {
     }
 
     const analysis = await this.deps.analyzeForChapter(
-      input.storyId,
+      storyId,
       analysisEntries,
       input.lastChapterEndIndex,
       memoryConfig,
@@ -126,6 +142,7 @@ export class ChapterService {
       pov,
       tense,
     )
+    check()
 
     if (!analysis.shouldCreateChapter) {
       log('No chapter needed yet')
@@ -161,7 +178,7 @@ export class ChapterService {
 
     const previousChapters = [...currentBranchChapters].sort((a, b) => a.number - b.number)
     const summary = await this.deps.summarizeChapter(
-      input.storyId,
+      storyId,
       chapterEntries,
       previousChapters,
       mode,
@@ -169,7 +186,9 @@ export class ChapterService {
       tense,
       memoryConfig.summaryDetail,
     )
-    const chapterNumber = await this.deps.getNextChapterNumber()
+    check()
+    const chapterNumber = await this.deps.getNextChapterNumber(options)
+    check()
 
     const firstEntry = chapterEntries[0]
     const lastEntry = chapterEntries[chapterEntries.length - 1]
@@ -178,7 +197,7 @@ export class ChapterService {
 
     const chapter: Chapter = {
       id: crypto.randomUUID(),
-      storyId: input.storyId,
+      storyId,
       number: chapterNumber,
       title: analysis.suggestedTitle ?? summary.title ?? null,
       startEntryId: chapterEntries[0].id,
@@ -192,11 +211,13 @@ export class ChapterService {
       locations: summary.locations,
       plotThreads: summary.plotThreads,
       emotionalTone: summary.emotionalTone ?? null,
-      branchId: input.currentBranchId,
+      branchId: currentBranchId,
       createdAt: Date.now(),
     }
 
-    await this.deps.addChapter(chapter)
+    check()
+    await this.deps.addChapter(chapter, options)
+    check()
     log('Chapter created', { number: chapterNumber, title: chapter.title })
 
     return { created: true, chapter, loreManagementTriggered: true }

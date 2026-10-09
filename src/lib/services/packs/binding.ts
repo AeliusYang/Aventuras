@@ -9,9 +9,8 @@
  * One implementation, two callers: file import and sync, both of which put a dialog in front of
  * the user when the match is anything short of certain.
  *
- * Re-binding a story that already exists is a pending capability and deliberately absent here —
- * the service call it will need is better written against that change's requirements than
- * guessed at now.
+ * Existing stories can be rebound through the Pack service. Runtime variable remapping remains
+ * additive so values from an earlier Pack stay available if the story is switched back later.
  */
 
 import { database } from '$lib/services/database'

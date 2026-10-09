@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { untrack } from 'svelte'
   import { story } from '$lib/stores/story.svelte'
   import { settings } from '$lib/stores/settings.svelte'
   import { ui } from '$lib/stores/ui.svelte'
@@ -21,18 +22,20 @@
   } from '@lucide/svelte'
   import type { Character } from '$lib/types'
   import type { RuntimeVariable, RuntimeVarsMap } from '$lib/services/packs/types'
-  import {
-    hasRequiredCredentials,
-    getProviderDisplayName,
-    generatePortrait as sdkGeneratePortrait,
-  } from '$lib/services/ai/image'
+  import { generatePortrait as sdkGeneratePortrait } from '$lib/services/ai/image'
   import { database } from '$lib/services/database'
   import RuntimeVariableDisplay from './RuntimeVariableDisplay.svelte'
-  import { ContextBuilder } from '$lib/services/context'
+  import {
+    preparePortraitRequest,
+    type PreparedPortrait,
+  } from '$lib/services/ai/image/portraitRequest'
+  import { ImageIdentityConflict } from '$lib/services/image/generationContext'
+  import type { ImagePromptDiagnostic } from '$lib/services/image/diagnostics'
+  import ImagePromptDetails from '$lib/components/shared/ImagePromptDetails.svelte'
+  import ImageIdentityChoice from '$lib/components/shared/ImageIdentityChoice.svelte'
+  import { getImageConfigurationIssue } from '$lib/services/ai/image/imageUtils'
+  import { getImageAnalysisConfigurationIssue } from '$lib/services/ai/image/analysisConfig'
   import { normalizeImageDataUrl } from '$lib/utils/image'
-  import { createLogger } from '$lib/log'
-
-  const log = createLogger('CharacterPortrait')
   import { Button, buttonVariants } from '$lib/components/ui/button'
   import { Input } from '$lib/components/ui/input'
   import { Textarea } from '$lib/components/ui/textarea'
@@ -42,7 +45,6 @@
   import { Label } from '$lib/components/ui/label'
   import { cn } from '$lib/utils/cn'
   import IconRow from '$lib/components/ui/icon-row.svelte'
-  import { resolveStylePrompt } from '$lib/services/ai/image'
 
   let showAddForm = $state(false)
   let newName = $state('')
@@ -63,6 +65,47 @@
   let uploadingPortraitId = $state<string | null>(null)
   let generatingPortraitId = $state<string | null>(null)
   let portraitError = $state<string | null>(null)
+  let portraitPhase = $state<'preparing' | 'generating'>('preparing')
+  let portraitDiagnostic = $state<ImagePromptDiagnostic | null>(null)
+  let portraitConflict = $state<ImageIdentityConflict | null>(null)
+  let selectedLoreIds = $state<Record<string, string>>({})
+  let preparedPortrait = $state.raw<PreparedPortrait | null>(null)
+  let portraitRequest = 0
+  // Source serialization is independent of keystrokes in the editor.
+  const portraitSourceScope = $derived(
+    JSON.stringify([
+      story.currentStory,
+      story.characters,
+      story.lorebookEntries,
+      story.entries,
+      settings.systemServicesSettings.imageGeneration,
+      settings.generationPresets.find(
+        (value) => value.id === settings.getServicePresetId('imageGeneration'),
+      ),
+    ]),
+  )
+  const portraitScope = $derived({
+    editingId,
+    editName,
+    editDescription,
+    editTraits,
+    editVisualDescriptors,
+    source: portraitSourceScope,
+  })
+  const portraitConfigurationIssue = $derived(
+    getImageConfigurationIssue('portrait') || getImageAnalysisConfigurationIssue(),
+  )
+  $effect(() => {
+    void portraitScope
+    portraitRequest++
+    portraitDiagnostic = null
+    portraitConflict = null
+    selectedLoreIds = {}
+    portraitError = untrack(() => generatingPortraitId !== null)
+      ? '人物资料或故事上下文已变化，旧请求结果将被丢弃，请重新生成。'
+      : null
+    preparedPortrait = null
+  })
   let editPortrait = $state<string | null>(null)
   let expandedPortrait = $state<{ src: string; name: string } | null>(null)
   let savedToVaultId = $state<string | null>(null)
@@ -373,84 +416,61 @@
   }
 
   async function generatePortrait(character: Character) {
-    const imageSettings = settings.systemServicesSettings.imageGeneration
-
-    log('Starting portrait generation', {
-      characterName: character.name,
-      model: settings.getImageProfile(imageSettings.portraitProfileId ?? '')?.model ?? '',
-      styleId: imageSettings.portraitStyleId,
-    })
-
-    // Validate credentials
-    if (!hasRequiredCredentials()) {
-      const providerName = getProviderDisplayName()
-      log('Missing credentials for provider', { provider: providerName })
-      portraitError = `${providerName} API key required for portrait generation`
+    if (generatingPortraitId || !story.currentStory || editingId !== character.id) return
+    if (portraitConfigurationIssue) {
+      portraitError = portraitConfigurationIssue
       return
     }
-
-    // Get visual descriptors from current edit state or character
-    const descriptors = editVisualDescriptors
-      .split(',')
-      .map((d) => d.trim())
-      .filter(Boolean)
-
-    if (descriptors.length === 0) {
-      log('No visual descriptors provided')
-      portraitError = 'Add appearance descriptors first'
-      return
-    }
-
+    const scope = portraitScope
+    const request = ++portraitRequest
+    const canContinue = () => request === portraitRequest && scope === portraitScope
+    const input = JSON.parse(
+      JSON.stringify({
+        story: story.currentStory,
+        characters: story.characters,
+        lore: story.lorebookEntries,
+        entries: story.entries,
+        characterId: character.id,
+        selectedLoreIds,
+        edits: {
+          name: editName,
+          description: editDescription,
+          traits: editTraits,
+          visualDescriptors: editVisualDescriptors,
+        },
+      }),
+    )
     generatingPortraitId = character.id
+    portraitPhase = 'preparing'
     portraitError = null
-
-    // Captured before the awaits below: the style and the template have to come from the
-    // same story's pack even if the user switches stories mid-generation.
-    const storyId = story.currentStory?.id
-
+    portraitConflict = null
     try {
-      // Get the style prompt from database (external template)
-      const stylePrompt = await resolveStylePrompt(storyId, imageSettings.portraitStyleId)
-
-      // Build the portrait generation prompt using ContextBuilder
-      const ctx = await ContextBuilder.forPack(storyId)
-      ctx.add({
-        mode: 'adventure',
-        pov: 'second',
-        tense: 'present',
-        protagonistName: '',
-        imageStylePrompt: stylePrompt,
-        visualDescriptors: descriptors.join(', '),
-        characterName: editName || character.name,
+      const prepared = await preparePortraitRequest(input, {
+        previous: preparedPortrait,
+        canContinue,
+        onDiagnostic: (value) => {
+          if (canContinue()) portraitDiagnostic = value
+        },
       })
-      const { system: portraitPrompt } = await ctx.render('image-portrait-generation')
-
-      log('Sending portrait generation request', {
-        promptLength: portraitPrompt.length,
-        descriptorCount: descriptors.length,
-      })
-
-      // Generate the portrait using SDK
-      const base64 = await sdkGeneratePortrait(portraitPrompt)
-
-      log('Portrait generated successfully', {
-        characterName: character.name,
-      })
-
-      editPortrait = `data:image/png;base64,${base64}`
+      if (!canContinue()) return
+      preparedPortrait = prepared
+      portraitPhase = 'generating'
+      const base64 = await sdkGeneratePortrait(prepared.prompt)
+      if (canContinue()) editPortrait = 'data:image/png;base64,' + base64
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Failed to generate portrait'
-      log('Portrait generation failed', {
-        characterName: character.name,
-        error: errorMessage,
-      })
-      portraitError = errorMessage
+      if (!canContinue()) return
+      if (error instanceof ImageIdentityConflict) portraitConflict = error
+      portraitError =
+        (portraitPhase === 'preparing' ? '资料整理失败' : '图片生成失败，可重试') +
+        '：' +
+        (error instanceof Error ? error.message : '未知错误')
     } finally {
       generatingPortraitId = null
     }
   }
 
   function removePortrait() {
+    portraitRequest++
     editPortrait = null
     portraitError = null
   }
@@ -472,13 +492,13 @@
 <div class="flex flex-col gap-1 pb-12">
   <!-- Header -->
   <div class="mb-2 flex items-center justify-between">
-    <h3 class="text-foreground text-xl font-bold tracking-tight">Characters</h3>
+    <h3 class="text-foreground text-xl font-bold tracking-tight">角色</h3>
     <Button
       variant="text"
       size="icon"
       class="text-muted-foreground hover:text-foreground h-6 w-6"
       onclick={() => (showAddForm = !showAddForm)}
-      title="Add character"
+      title="添加角色"
     >
       <Plus class="h-6! w-6!" />
     </Button>
@@ -488,25 +508,26 @@
   {#if showAddForm}
     <div class="border-border bg-card rounded-lg border p-3 shadow-sm">
       <div class="space-y-3">
-        <Input type="text" bind:value={newName} placeholder="Name" class="h-8 text-sm" />
+        <Input type="text" bind:value={newName} placeholder="名称" class="h-8 text-sm" />
         <Input
           type="text"
           bind:value={newRelationship}
-          placeholder="Relationship (ally, enemy...)"
+          placeholder="关系（盟友、敌人等）"
           class="h-8 text-sm"
         />
         <Textarea
           bind:value={newDescription}
-          placeholder="Description (optional)"
+          placeholder="描述（选填）"
           class="min-h-15 resize-none text-sm"
           rows={2}
         />
       </div>
       <div class="mt-3 flex justify-end gap-2">
         <Button variant="text" size="sm" class="h-7" onclick={() => (showAddForm = false)}>
-          Cancel
+          取消
         </Button>
-        <Button size="sm" class="h-7" onclick={addCharacter} disabled={!newName.trim()}>Add</Button>
+        <Button size="sm" class="h-7" onclick={addCharacter} disabled={!newName.trim()}>添加</Button
+        >
       </div>
     </div>
   {/if}
@@ -519,14 +540,14 @@
       <div class="bg-muted mb-3 rounded-full p-3">
         <UserPlus class="text-muted-foreground h-6 w-6" />
       </div>
-      <p class="text-muted-foreground text-sm">No characters yet</p>
+      <p class="text-muted-foreground text-sm">尚无角色</p>
       <Button
         variant="link"
         class="text-primary mt-1 h-auto p-0 text-xs"
         onclick={() => (showAddForm = true)}
       >
         <Plus class="mr-1.5 h-3.5 w-3.5" />
-        Add your first character
+        添加第一个角色
       </Button>
     </div>
   {:else}
@@ -552,14 +573,14 @@
             <div class="space-y-3">
               <div class="mb-2 flex items-center justify-between">
                 <h4 class="text-muted-foreground text-xs font-semibold tracking-wider uppercase">
-                  Editing {character.name}
+                  编辑中 {character.name}
                 </h4>
                 <Button
                   variant="text"
                   size="icon"
                   class="h-6 w-6"
                   onclick={cancelEdit}
-                  title="Cancel edit"
+                  title="取消编辑"
                 >
                   <X class="h-4 w-4" />
                 </Button>
@@ -567,15 +588,15 @@
 
               <div class="grid grid-cols-2 gap-3">
                 <div class="col-span-2 space-y-1 sm:col-span-1">
-                  <Label class="text-xs">Name</Label>
-                  <Input type="text" bind:value={editName} placeholder="Name" class="h-8 text-sm" />
+                  <Label class="text-xs">名称</Label>
+                  <Input type="text" bind:value={editName} placeholder="名称" class="h-8 text-sm" />
                 </div>
                 <div class="col-span-2 space-y-1 sm:col-span-1">
-                  <Label class="text-xs">Relationship</Label>
+                  <Label class="text-xs">关系</Label>
                   <Input
                     type="text"
                     bind:value={editRelationship}
-                    placeholder={isProtagonist ? 'Protagonist' : 'Relationship'}
+                    placeholder={isProtagonist ? '主角' : '关系'}
                     class="h-8 text-sm"
                     disabled={isProtagonist}
                   />
@@ -583,7 +604,7 @@
               </div>
 
               <div class="space-y-1">
-                <Label class="text-xs">Status</Label>
+                <Label class="text-xs">状态</Label>
                 <ToggleGroup.Root
                   type="single"
                   value={editStatus}
@@ -597,46 +618,46 @@
                     class="h-7 flex-1 text-xs data-[state=on]:bg-green-500/10 data-[state=on]:text-green-600"
                   >
                     <!-- <User class="h-3 w-3" /> -->
-                    Active
+                    活跃
                   </ToggleGroup.Item>
                   <ToggleGroup.Item
                     value="inactive"
                     class="data-[state=on]:bg-muted data-[state=on]:text-foreground h-7 flex-1 text-xs"
                   >
                     <!-- <UserX class="h-3 w-3" /> -->
-                    Inactive
+                    非活跃
                   </ToggleGroup.Item>
                   <ToggleGroup.Item
                     value="deceased"
                     class="data-[state=on]:bg-destructive/10 data-[state=on]:text-destructive h-7 flex-1 text-xs"
                   >
                     <!-- <Skull class="h-3 w-3" /> -->
-                    Deceased
+                    已死亡
                   </ToggleGroup.Item>
                 </ToggleGroup.Root>
               </div>
 
               <div class="space-y-1">
-                <Label class="text-xs">Traits & Appearance</Label>
+                <Label class="text-xs">性格与外貌</Label>
                 <Input
                   type="text"
                   bind:value={editTraits}
-                  placeholder="Traits (comma separated)"
+                  placeholder="性格特征（英文逗号分隔）"
                   class="mb-2 h-8 text-xs"
                 />
                 <Input
                   type="text"
                   bind:value={editVisualDescriptors}
-                  placeholder="Appearance (comma separated)"
+                  placeholder="外貌特征（英文逗号分隔）"
                   class="h-8 text-xs"
                 />
               </div>
 
               <div class="space-y-1">
-                <Label class="text-xs">Description</Label>
+                <Label class="text-xs">说明</Label>
                 <Textarea
                   bind:value={editDescription}
-                  placeholder="Description"
+                  placeholder="说明"
                   class="min-h-[60px] resize-none text-xs"
                 />
               </div>
@@ -659,7 +680,7 @@
                 <div
                   class="text-muted-foreground mb-2 flex items-center justify-between text-xs font-medium"
                 >
-                  <span>Portrait</span>
+                  <span>肖像</span>
                   {#if editPortrait}
                     <Button
                       variant="destructive"
@@ -667,7 +688,7 @@
                       class="h-5 px-1.5 text-xs"
                       onclick={removePortrait}
                     >
-                      Remove
+                      移除
                     </Button>
                   {/if}
                 </div>
@@ -675,7 +696,7 @@
                   {#if editPortrait}
                     <img
                       src={normalizeImageDataUrl(editPortrait) ?? ''}
-                      alt="Portrait preview"
+                      alt="肖像预览"
                       class="ring-border bg-background h-16 w-16 rounded-md object-cover ring-1"
                     />
                   {:else}
@@ -694,10 +715,10 @@
                     >
                       {#if uploadingPortraitId === character.id}
                         <Loader2 class="h-3.5 w-3.5 animate-spin" />
-                        <span>Uploading...</span>
+                        <span>正在上传…</span>
                       {:else}
                         <ImageUp class="h-3.5 w-3.5" />
-                        <span>Upload</span>
+                        <span>上传</span>
                       {/if}
                       <input
                         type="file"
@@ -712,31 +733,59 @@
                       size="sm"
                       class="bg-background h-7 w-full justify-start text-xs"
                       onclick={() => generatePortrait(character)}
-                      disabled={generatingPortraitId !== null ||
-                        uploadingPortraitId !== null ||
-                        !editVisualDescriptors.trim()}
-                      title={!editVisualDescriptors.trim()
-                        ? 'Add appearance first'
-                        : 'Generate from appearance'}
+                      disabled={generatingPortraitId !== null || uploadingPortraitId !== null}
+                      title="根据人物设定、世界书及已接受正文生成全身肖像"
                     >
                       {#if generatingPortraitId === character.id}
                         <Loader2 class="h-3.5 w-3.5 animate-spin" />
-                        <span>Generating...</span>
+                        <span
+                          >{portraitPhase === 'preparing' ? '正在整理资料…' : '正在生成图片…'}</span
+                        >
                       {:else}
                         <Wand2 class="h-3.5 w-3.5" />
-                        <span>Generate</span>
+                        <span
+                          >{portraitError && preparedPortrait ? '重试图片生成' : '生成肖像'}</span
+                        >
                       {/if}
                     </Button>
                   </div>
                 </div>
-                {#if portraitError}
-                  <p class="text-destructive mt-2 text-xs">{portraitError}</p>
+                <p class="text-muted-foreground mt-2 text-xs">
+                  自动读取人物设定与世界书。生成结果在点击“保存修改”后才替换原图。
+                </p>
+                {#if portraitError}<p class="text-destructive mt-2 text-xs">{portraitError}</p>{/if}
+                {#if portraitConfigurationIssue}
+                  <p class="text-xs text-amber-500">{portraitConfigurationIssue}</p>
+                  <button
+                    class="text-xs underline"
+                    onclick={() => {
+                      ui.setSettingsTab(
+                        getImageConfigurationIssue('portrait') ? 'images' : 'generation',
+                      )
+                      ui.openSettings()
+                    }}>前往对应设置</button
+                  >
                 {/if}
+                <ImageIdentityChoice
+                  conflict={portraitConflict}
+                  onselect={(name, id) => {
+                    selectedLoreIds = { ...selectedLoreIds, [name]: id }
+                    portraitConflict = null
+                    generatePortrait(character)
+                  }}
+                />
+                <ImagePromptDetails
+                  diagnostic={portraitDiagnostic}
+                  beforeOpen={() =>
+                    window.confirm(
+                      '进入提示词编辑器会离开人物面板，未保存的人物修改和新肖像将被丢弃。确认继续？',
+                    )}
+                />
               </div>
 
               <div class="border-border flex justify-end gap-2 border-t pt-2">
                 <Button variant="text" size="sm" class="h-7 text-xs" onclick={cancelEdit}>
-                  Cancel
+                  取消
                 </Button>
                 <Button
                   size="sm"
@@ -745,7 +794,7 @@
                   disabled={!editName.trim()}
                 >
                   <Save class="mr-1.5 h-3.5 w-3.5" />
-                  Save Changes
+                  保存修改
                 </Button>
               </div>
             </div>
@@ -758,7 +807,7 @@
               {#if character.portrait}
                 <button
                   class="relative shrink-0 focus:outline-none"
-                  title="View full portrait"
+                  title="查看完整肖像"
                   onclick={() =>
                     (expandedPortrait = {
                       src: normalizeImageDataUrl(character.portrait) ?? '',
@@ -823,7 +872,7 @@
                     class="h-4 w-fit px-1.5 py-0 text-[10px] tracking-wide uppercase"
                   >
                     <Star class="mr-0.5 h-2.5 w-2.5" />
-                    You
+                    你
                   </Badge>
                 {:else if character.relationship || character.translatedRelationship}
                   <Badge
@@ -832,7 +881,7 @@
                     title={character.translatedRelationship ?? character.relationship}
                     tabindex={0}
                     role="region"
-                    aria-label="Character relationship"
+                    aria-label="角色关系"
                   >
                     {character.translatedRelationship ?? character.relationship}
                   </Badge>
@@ -844,7 +893,7 @@
             {#if pendingProtagonistId === character.id}
               <div class="border-border bg-muted/40 mt-2 rounded-md border p-2.5">
                 <p class="text-muted-foreground mb-1.5 text-xs">
-                  New role for <span class="text-foreground font-medium"
+                  设置新角色定位： <span class="text-foreground font-medium"
                     >{currentProtagonistName}</span
                   >:
                 </p>
@@ -852,7 +901,7 @@
                   <Input
                     type="text"
                     bind:value={previousRelationshipLabel}
-                    placeholder="e.g., ally, companion"
+                    placeholder="例如：盟友、同伴"
                     class="h-7 flex-1 text-xs"
                   />
                   <Button
@@ -861,7 +910,7 @@
                     onclick={() => confirmSwap(character)}
                     disabled={!previousRelationshipLabel.trim()}
                   >
-                    Swap
+                    切换
                   </Button>
                   <Button variant="ghost" size="sm" class="h-7 px-2 text-xs" onclick={cancelSwap}>
                     <X class="h-3.5 w-3.5" />
@@ -909,7 +958,7 @@
                           descriptorsExpanded && 'rotate-180',
                         )}
                       />
-                      <span class="font-medium">Appearance</span>
+                      <span class="font-medium">外貌</span>
                     </button>
                     {#if descriptorsExpanded}
                       <div class="flex flex-col gap-1">
@@ -966,7 +1015,7 @@
                     size="icon"
                     class="text-muted-foreground hover:text-foreground h-6 w-6"
                     onclick={() => toggleCollapse(character.id)}
-                    title={isCollapsed ? 'Show details' : 'Hide details'}
+                    title={isCollapsed ? '展开详情' : '收起详情'}
                   >
                     <ChevronDown
                       class={cn(
@@ -989,7 +1038,7 @@
                     size="icon"
                     class="text-muted-foreground h-6 w-6 hover:text-amber-500"
                     onclick={() => beginSwap(character)}
-                    title="Make protagonist (Impersonate)"
+                    title="设为主角（扮演此角色）"
                   >
                     <Star class="h-3.5 w-3.5" />
                   </Button>
@@ -999,7 +1048,7 @@
                   size="icon"
                   class="text-muted-foreground hover:text-foreground h-6 w-6"
                   onclick={() => startEdit(character)}
-                  title="Edit character"
+                  title="编辑角色"
                 >
                   <Pencil class="h-3.5 w-3.5" />
                 </Button>
@@ -1013,9 +1062,7 @@
                       : 'text-muted-foreground hover:text-primary',
                   )}
                   onclick={() => saveCharacterToVault(character)}
-                  title={savedToVaultId === character.id
-                    ? 'Saved to vault'
-                    : 'Save character to vault'}
+                  title={savedToVaultId === character.id ? '已保存到素材库' : '将角色保存到素材库'}
                 >
                   <Archive class="h-3.5 w-3.5" />
                 </Button>
@@ -1035,13 +1082,13 @@
     class="bg-background/80 animate-in fade-in fixed inset-0 z-50 flex cursor-pointer items-center justify-center p-4 backdrop-blur-sm duration-200"
     onclick={() => (expandedPortrait = null)}
     role="dialog"
-    aria-label="Expanded portrait"
+    aria-label="放大的肖像"
     tabindex="0"
   >
     <div class="relative w-full max-w-sm">
       <img
         src={expandedPortrait.src}
-        alt="{expandedPortrait.name} portrait"
+        alt="{expandedPortrait.name} 肖像"
         class="border-border h-auto w-full rounded-lg border shadow-2xl"
       />
       <Button

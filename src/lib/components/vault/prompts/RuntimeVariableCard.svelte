@@ -436,7 +436,7 @@
     <div class="space-y-4 px-4 py-4">
       <!-- Variable Name -->
       <div class="space-y-1.5">
-        <Label>Variable Name</Label>
+        <Label>变量名称</Label>
         <Input
           value={editName}
           oninput={handleNameInput}
@@ -451,7 +451,7 @@
 
       <!-- Entity Type -->
       <div class="space-y-1.5">
-        <Label>Entity Type</Label>
+        <Label>实体类型</Label>
         <Select.Root type="single" value={editEntityType} onValueChange={handleEntityTypeChange}>
           <Select.Trigger class="h-9 w-full">
             {ENTITY_TYPE_LABELS[editEntityType]}
@@ -468,7 +468,7 @@
 
       <!-- Variable Type -->
       <div class="space-y-1.5">
-        <Label>Variable Type</Label>
+        <Label>变量类型</Label>
         <Select.Root type="single" value={editType} onValueChange={handleTypeChange}>
           <Select.Trigger class="h-9 w-full">
             {TYPE_LABELS[editType]}
@@ -488,9 +488,7 @@
           >
             <AlertTriangle class="text-destructive mt-0.5 h-3.5 w-3.5 shrink-0" />
             <div class="flex-1 space-y-1.5">
-              <p class="text-destructive text-xs">
-                Changing type will clear all existing values for this variable. Continue?
-              </p>
+              <p class="text-destructive text-xs">修改类型将清除该变量已有的全部值，是否继续？</p>
               <div class="flex gap-2">
                 <Button
                   variant="destructive"
@@ -498,7 +496,7 @@
                   class="h-6 px-2 text-xs"
                   onclick={confirmTypeChange}
                 >
-                  Confirm
+                  确认
                 </Button>
                 <Button
                   variant="ghost"
@@ -506,7 +504,7 @@
                   class="h-6 px-2 text-xs"
                   onclick={cancelTypeChange}
                 >
-                  Cancel
+                  取消
                 </Button>
               </div>
             </div>
@@ -516,19 +514,19 @@
 
       <!-- Description -->
       <div class="space-y-1.5">
-        <Label>Description</Label>
+        <Label>说明</Label>
         <Textarea
           bind:value={editDescription}
           onblur={handleFieldBlur}
-          placeholder="Guidance for the LLM about what this variable represents"
+          placeholder="向模型说明这个变量的含义"
           rows={2}
         />
       </div>
 
       <!-- Panel Label & Color -->
       <div class="space-y-1.5">
-        <Label>Panel Label</Label>
-        <p class="text-muted-foreground text-xs">What to show as the label on entity panels</p>
+        <Label>面板标签</Label>
+        <p class="text-muted-foreground text-xs">实体面板上显示的标签</p>
         <div class="flex gap-2">
           <Button
             variant={editIcon ? 'outline' : 'default'}
@@ -539,7 +537,7 @@
               emitUpdate()
             }}
           >
-            Display Name
+            显示名称
           </Button>
           <Button
             variant={editIcon ? 'default' : 'outline'}
@@ -552,7 +550,7 @@
               }
             }}
           >
-            Icon
+            图标
           </Button>
         </div>
         {#if editIcon}
@@ -561,16 +559,12 @@
           </div>
         {:else}
           <div class="mt-1.5">
-            <Input
-              bind:value={editDisplayName}
-              onblur={handleFieldBlur}
-              placeholder="My Variable"
-            />
+            <Input bind:value={editDisplayName} onblur={handleFieldBlur} placeholder="我的变量" />
           </div>
         {/if}
 
         <div class="mt-2">
-          <Label>Color</Label>
+          <Label>颜色</Label>
           <div class="mt-1">
             <ColorPicker value={editColor} onChange={handleColorChange} />
           </div>
@@ -579,22 +573,16 @@
 
       <!-- Default Value -->
       <div class="space-y-1.5">
-        <Label>Default Value</Label>
-        <p class="text-muted-foreground text-xs">
-          If set, the variable is optional for the LLM to fill
-        </p>
+        <Label>默认值</Label>
+        <p class="text-muted-foreground text-xs">设置默认值后，模型可以不填写此变量</p>
         {#if editType === 'text'}
-          <Input
-            bind:value={editDefault}
-            onblur={handleFieldBlur}
-            placeholder="Default text value"
-          />
+          <Input bind:value={editDefault} onblur={handleFieldBlur} placeholder="默认文本" />
         {:else if editType === 'number'}
           <Input
             type="number"
             bind:value={editDefault}
             onblur={handleFieldBlur}
-            placeholder="Default number"
+            placeholder="默认数值"
           />
         {:else if editType === 'enum'}
           {#if editEnumOptions.length > 0}
@@ -607,7 +595,7 @@
               }}
             >
               <Select.Trigger class="h-9 w-full">
-                {editEnumOptions.find((o) => o.value === editDefault)?.label || 'Select default'}
+                {editEnumOptions.find((o) => o.value === editDefault)?.label || '选择默认值'}
               </Select.Trigger>
               <Select.Content>
                 {#each editEnumOptions as opt (opt.value)}
@@ -620,7 +608,7 @@
               </Select.Content>
             </Select.Root>
           {:else}
-            <p class="text-muted-foreground text-xs">Add enum options first</p>
+            <p class="text-muted-foreground text-xs">请先添加枚举选项</p>
           {/if}
         {/if}
       </div>
@@ -629,21 +617,21 @@
       {#if editType === 'number'}
         <div class="flex gap-4">
           <div class="flex-1 space-y-1.5">
-            <Label>Min Value</Label>
+            <Label>最小值</Label>
             <Input
               type="number"
               bind:value={editMinValue}
               onblur={handleFieldBlur}
-              placeholder="No minimum"
+              placeholder="不设下限"
             />
           </div>
           <div class="flex-1 space-y-1.5">
-            <Label>Max Value</Label>
+            <Label>最大值</Label>
             <Input
               type="number"
               bind:value={editMaxValue}
               onblur={handleFieldBlur}
-              placeholder="No maximum"
+              placeholder="不设上限"
             />
           </div>
         </div>
@@ -652,7 +640,7 @@
       <!-- Enum Options Editor -->
       {#if editType === 'enum'}
         <div class="space-y-2">
-          <Label>Enum Options</Label>
+          <Label>枚举选项</Label>
           <div class="space-y-2">
             {#each editEnumOptions as opt, i (i)}
               <div class="flex items-center gap-2">
@@ -660,14 +648,14 @@
                   value={opt.label}
                   oninput={(e) => updateEnumOption(i, 'label', e.currentTarget.value)}
                   onblur={handleEnumBlur}
-                  placeholder="Label"
+                  placeholder="标签"
                   class="h-8 flex-1 text-xs"
                 />
                 <Input
                   value={opt.value}
                   oninput={(e) => updateEnumOption(i, 'value', e.currentTarget.value)}
                   onblur={handleEnumBlur}
-                  placeholder="Value"
+                  placeholder="值"
                   class="h-8 flex-1 font-mono text-xs"
                 />
                 <div class="flex shrink-0 gap-0.5">
@@ -703,7 +691,7 @@
           </div>
           <Button variant="outline" size="sm" class="h-7 gap-1 text-xs" onclick={addEnumOption}>
             <Plus class="h-3 w-3" />
-            Add Option
+            添加选项
           </Button>
         </div>
       {/if}
@@ -711,10 +699,8 @@
       <!-- Pinned -->
       <div class="flex items-center justify-between">
         <div class="space-y-0.5">
-          <Label>Pinned</Label>
-          <p class="text-muted-foreground text-xs">
-            Always visible on entity panels, even when collapsed
-          </p>
+          <Label>已固定</Label>
+          <p class="text-muted-foreground text-xs">即使面板折叠，也始终显示</p>
         </div>
         <Button
           variant={editPinned ? 'default' : 'outline'}
@@ -726,7 +712,7 @@
           }}
         >
           <Pin class="h-3 w-3" />
-          {editPinned ? 'Pinned' : 'Unpinned'}
+          {editPinned ? '已固定' : '未固定'}
         </Button>
       </div>
 
@@ -738,14 +724,14 @@
           {#if showDeleteConfirm}
             <div class="flex items-center gap-2">
               <span class="text-destructive text-xs">
-                Delete this variable?
+                删除此变量？
                 {#if entityTypeWarningCount > 0}
                   ({entityTypeWarningCount}
-                  {entityTypeWarningCount === 1 ? 'entity has' : 'entities have'} values)
+                  {entityTypeWarningCount === 1 ? '个实体已有' : '个实体已有'} 个值）
                 {/if}
               </span>
               <Button variant="destructive" size="sm" class="h-7 text-xs" onclick={onDelete}>
-                Confirm
+                确认
               </Button>
               <Button
                 variant="ghost"
@@ -753,7 +739,7 @@
                 class="h-7 text-xs"
                 onclick={() => (showDeleteConfirm = false)}
               >
-                Cancel
+                取消
               </Button>
             </div>
           {:else}
@@ -764,7 +750,7 @@
               onclick={() => (showDeleteConfirm = true)}
             >
               <Trash2 class="h-3 w-3" />
-              Delete
+              删除
             </Button>
           {/if}
         </div>
@@ -772,7 +758,7 @@
         {#if saveFlash}
           <span class="text-muted-foreground flex items-center gap-1 text-xs">
             <Check class="h-3 w-3" />
-            Saved
+            已保存
           </span>
         {:else}
           <Button
@@ -782,7 +768,7 @@
             onclick={handleSave}
           >
             <Save class="h-3 w-3" />
-            Save
+            保存
           </Button>
         {/if}
       </div>

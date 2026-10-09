@@ -2,11 +2,11 @@ import type { PromptTemplate } from '../types'
 
 const actionChoicesPromptTemplate: PromptTemplate = {
   id: 'action-choices',
-  name: 'Action Choices',
+  name: '行动选项',
   category: 'service',
-  description: 'Generates RPG-style action choices for the player based on current narrative',
-  content: `You are an RPG game master generating action choices for a player. The player has a character/persona that represents THEM in the story - when you generate choices, these are suggestions for what the PLAYER (the real person) might want their character to do next. Generate action options that fit the current narrative moment and MATCH THE PLAYER'S WRITING STYLE - if they write verbose actions, generate verbose choices; if they write terse commands, generate terse choices. Mimic their vocabulary, phrasing, and tone.`,
-  userContent: `Based on the current story moment, generate 3-4 RPG-style action choices.
+  description: '根据当前正文生成中文行动选项',
+  content: `你是中文写作的行动选项编辑。为玩家提出下一步可执行的行动建议。所有自然语言内容必须使用简体中文，英文角色名和专有名词可以保留。选项必须尊重主角决定权，不替玩家执行行动。`,
+  userContent: `根据当前故事状态，生成3至4条简体中文行动选项。所有选项文字、说明和标题必须使用简体中文；除非是角色名或专有名词，不得输出英文。
 
 ## CRITICAL: Who is the Player?
 The USER is playing as {{ protagonistName }}{{ protagonistDescription }}. This is the USER'S persona/character - it IS the user, not a separate NPC.

@@ -125,18 +125,18 @@
 
 <aside
   class="border-border bg-card/95 flex h-full w-full flex-col border-r backdrop-blur-[2px]"
-  aria-label="Story navigation"
+  aria-label="故事导航"
   use:swipe={{ onSwipeLeft: () => ui.closeNavPanel(), threshold: 50 }}
 >
   <div class="border-border flex items-center justify-between border-b px-3 py-2">
-    <h3 class="text-surface-200 font-medium">Go to</h3>
+    <h3 class="text-surface-200 font-medium">跳转到</h3>
     <Button
       variant="text"
       size="icon"
       class="text-muted-foreground hover:text-foreground h-10 w-10 sm:h-7 sm:w-7"
       onclick={() => ui.closeNavPanel()}
-      title="Close"
-      aria-label="Close story navigation"
+      title="关闭"
+      aria-label="关闭故事导航"
     >
       <X class="h-4 w-4" />
     </Button>
@@ -147,7 +147,7 @@
       <Input
         type="text"
         inputmode="numeric"
-        label="Entry number"
+        label="段落编号"
         placeholder={lastNumber > 0 ? `1 – ${lastNumber}` : ''}
         bind:value={numberInput}
         onkeydown={(e: KeyboardEvent) => e.key === 'Enter' && goToNumber()}
@@ -157,22 +157,22 @@
         class="shrink-0"
         onclick={goToNumber}
         disabled={numberInput.trim() === ''}
-        title="Go to this entry"
+        title="跳转到这一段"
       >
         <CornerDownLeft class="h-4 w-4" />
       </Button>
     </div>
 
     <h4 class="text-muted-foreground mt-5 mb-2 text-xs font-medium tracking-wider uppercase">
-      Landmarks
+      故事定位点
     </h4>
 
     {#if landmarks.length === 0}
       <EmptyState
         icon={Milestone}
         size="sm"
-        title="No landmarks"
-        description="This branch has no starting point or checkpoints to jump to. Checkpoints are saved at chapter boundaries."
+        title="暂无定位点"
+        description="此分支没有可跳转的起点或检查点。章节边界会自动保存检查点。"
         class="py-6"
       />
     {:else}
@@ -194,7 +194,7 @@
                 <input
                   type="text"
                   class="input min-w-0 flex-1 px-1 py-0.5 text-sm"
-                  aria-label="Checkpoint name"
+                  aria-label="检查点名称"
                   bind:value={renameValue}
                   onkeydown={(e) => {
                     if (e.key === 'Enter') confirmRename()
@@ -204,16 +204,16 @@
                 <button
                   class="flex min-h-[32px] min-w-[32px] items-center justify-center p-1 text-green-400 hover:text-green-300 sm:min-h-0 sm:min-w-0 sm:p-0.5"
                   onclick={confirmRename}
-                  title="Save checkpoint name"
-                  aria-label="Save checkpoint name"
+                  title="保存检查点名称"
+                  aria-label="保存检查点名称"
                 >
                   <Check class="h-4 w-4 sm:h-3.5 sm:w-3.5" />
                 </button>
                 <button
                   class="text-surface-400 hover:text-surface-200 flex min-h-[32px] min-w-[32px] items-center justify-center p-1 sm:min-h-0 sm:min-w-0 sm:p-0.5"
                   onclick={cancelRename}
-                  title="Cancel rename"
-                  aria-label="Cancel checkpoint rename"
+                  title="取消重命名"
+                  aria-label="取消重命名检查点"
                 >
                   <X class="h-4 w-4 sm:h-3.5 sm:w-3.5" />
                 </button>
@@ -223,7 +223,7 @@
                 type="button"
                 class="flex min-h-[40px] w-full items-start gap-2 rounded-lg p-2 pr-10 text-left sm:min-h-0"
                 onclick={() => void goToLandmark(landmark)}
-                title="Go to entry {landmark.number}:&#10;{landmark.label}"
+                title="跳转到段落 {landmark.number}:&#10;{landmark.label}"
               >
                 {#if landmark.kind === 'origin'}
                   <GitBranch class="text-muted-foreground mt-0.5 h-4 w-4 shrink-0" />
@@ -245,8 +245,8 @@
                 <button
                   class="text-surface-500 hover:text-surface-200 absolute top-1 right-1 flex min-h-[32px] min-w-[32px] items-center justify-center p-1 transition-opacity sm:min-h-0 sm:min-w-0 sm:p-0.5 sm:opacity-0 sm:group-hover:opacity-100 sm:focus-visible:opacity-100"
                   onclick={() => startRename(landmark.checkpointId!, landmark.label)}
-                  title="Rename"
-                  aria-label="Rename checkpoint"
+                  title="重命名"
+                  aria-label="重命名检查点"
                 >
                   <Edit2 class="h-4 w-4 sm:h-3 sm:w-3" />
                 </button>
@@ -260,24 +260,24 @@
 
   <div class="border-border border-t p-3">
     <p class="text-muted-foreground mb-2 text-xs font-medium tracking-wider uppercase">
-      Landmark navigation
+      定位点导航
     </p>
     <RadioGroup
       value={landmarkNavigationMode}
       onValueChange={setLandmarkNavigationMode}
       class="gap-2"
-      aria-label="Landmark navigation behavior"
+      aria-label="定位点跳转方式"
     >
       <div class="flex items-center gap-2">
         <RadioGroupItem value="current-branch" id="landmark-current-branch" />
         <Label for="landmark-current-branch" class="cursor-pointer text-xs font-normal">
-          Stay on current branch
+          保持当前分支
         </Label>
       </div>
       <div class="flex items-center gap-2">
         <RadioGroupItem value="checkpoint-branch" id="landmark-checkpoint-branch" />
         <Label for="landmark-checkpoint-branch" class="cursor-pointer text-xs font-normal">
-          Switch to checkpoint branch
+          切换到检查点所属分支
         </Label>
       </div>
     </RadioGroup>

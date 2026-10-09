@@ -15,6 +15,7 @@ import type {
   Checkpoint,
   Branch,
   EmbeddedImageMeta,
+  WorldStateSnapshot,
 } from '$lib/types'
 import type { PackBindingExport } from '$lib/services/import'
 
@@ -38,6 +39,7 @@ export interface StoryExportData {
    * the file then records no pack and imports as a legacy file does.
    */
   packBinding: PackBindingExport | null
+  worldStateSnapshots: WorldStateSnapshot[]
 }
 
 /**
@@ -114,6 +116,7 @@ export async function gatherStoryData(storyId: string): Promise<StoryExportData>
     branches,
     chapters,
     packBinding,
+    worldStateSnapshots,
   ] = await Promise.all([
     database.getStoryEntries(storyId),
     database.getCharacters(storyId),
@@ -126,6 +129,13 @@ export async function gatherStoryData(storyId: string): Promise<StoryExportData>
     database.getBranches(storyId),
     database.getChapters(storyId),
     gatherPackBinding(storyId),
+    database.getWorldStateSnapshots(storyId, null).then(async (main) => {
+      const branches = await database.getBranches(storyId)
+      const branchSnapshots = await Promise.all(
+        branches.map((branch) => database.getWorldStateSnapshots(storyId, branch.id)),
+      )
+      return [...main, ...branchSnapshots.flat()]
+    }),
   ])
 
   return {
@@ -140,6 +150,7 @@ export async function gatherStoryData(storyId: string): Promise<StoryExportData>
     branches,
     chapters,
     packBinding,
+    worldStateSnapshots,
   }
 }
 

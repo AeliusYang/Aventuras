@@ -11,7 +11,16 @@
  * Uses ContextBuilder for prompt generation through the unified Liquid template pipeline.
  */
 
-import { streamNarrative, generateNarrative } from '../sdk/generate'
+import type { NovelTurn } from '$lib/types/collaborative'
+import { novelWriterContext } from '$lib/services/generation/collaborative'
+import {
+  streamNarrative,
+  generateNarrative,
+  generateCollaborativeWriterStream,
+} from '../sdk/generate'
+import { CollaborativePromptService } from '../core/CollaborativePromptService'
+import { collaborativeServiceIds } from '../core/collaborativeAgentDefaults'
+import { settings } from '$lib/stores/settings.svelte'
 import { ContextBuilder } from '$lib/services/context'
 import { formatLengthInstruction } from '$lib/services/prompts/templates'
 import { StyleReviewerService } from './StyleReviewerService'
@@ -32,6 +41,9 @@ import type {
 } from '$lib/types'
 import type { StyleReviewResult } from './StyleReviewerService'
 import type { TimelineFillResult } from '../retrieval/TimelineFillService'
+import { buildTimelineFillBlock } from '../retrieval/timelineFillContext'
+
+export { buildTimelineFillBlock } from '../retrieval/timelineFillContext'
 
 const log = createLogger('Narrative')
 
@@ -214,35 +226,10 @@ export function buildChapterSummariesBlock(
 }
 
 /**
- * The Q&A half of the chapter block: what memory retrieval found for this scene.
- *
- * Shared with the Active Context panel, which shows the same text as the injected memory.
- */
-export function buildTimelineFillBlock(timelineFillResult?: TimelineFillResult | null): string {
-  if (!timelineFillResult || timelineFillResult.responses.length === 0) return ''
-
-  let block = '## Relevant Story Data\n'
-  block +=
-    'The following information was retrieved from past chapters and is relevant to the current scene:\n\n'
-
-  for (const response of timelineFillResult.responses) {
-    const chapterLabel =
-      response.chapterNumbers.length === 1
-        ? `Chapter ${response.chapterNumbers[0]}`
-        : `Chapters ${response.chapterNumbers.join(', ')}`
-
-    block += `**${chapterLabel}**\n`
-    block += `Q: ${response.query}\n`
-    block += `A: ${response.answer}\n\n`
-  }
-
-  return block
-}
-
-/**
  * Options for narrative generation.
  */
 export interface NarrativeOptions {
+  novelTurn?: NovelTurn
   /** Pre-built tiered context block for injection */
   tieredContextBlock?: string
   /** Style review results for avoiding repetition */
@@ -297,43 +284,82 @@ export class NarrativeService {
     })
 
     // Build system prompt via ContextBuilder pipeline
-    const { systemPrompt, primingMessage } = await this.buildPrompts(
+    const collaborative = story?.mode === 'creative-writing'
+    if (collaborative && !options.novelTurn)
+      throw new Error('中文写作缺少本轮场景安排，已停止生成。')
+    const { systemPrompt, primingMessage, userTemplate } = await this.buildPrompts(
       story,
       worldState,
       tieredContextBlock,
       styleReview,
       retrievedChapterContext,
       timelineFillResult,
+      options.novelTurn,
+      entries,
     )
 
     // Build the user prompt from entries
     const mode = story?.mode ?? 'adventure'
-    const inlineImageMode = story?.settings?.imageGenerationMode === 'inline'
-    const userPrompt = this.buildUserPrompt(entries, mode, inlineImageMode)
+    const inlineImageMode = !collaborative && story?.settings?.imageGenerationMode === 'inline'
+    const userPrompt = options.novelTurn
+      ? userTemplate ||
+        this.buildUserPrompt(entries, 'creative-writing', inlineImageMode) +
+          '\n\n' +
+          novelWriterContext(options.novelTurn)
+      : this.buildUserPrompt(entries, mode, inlineImageMode)
 
     try {
       // Stream using the main narrative profile
-      const stream = streamNarrative({
-        system: systemPrompt,
-        prompt: `${primingMessage}\n\n${userPrompt}`,
-        signal,
-      })
+      const stream = collaborative
+        ? generateCollaborativeWriterStream({
+            system: systemPrompt,
+            prompt: userPrompt,
+            signal,
+            presetOverride: settings.getPresetConfig(
+              settings.getServicePresetId(collaborativeServiceIds.writer),
+              collaborativeServiceIds.writer,
+            ),
+          })
+        : streamNarrative({
+            system: systemPrompt,
+            prompt: collaborative ? userPrompt : `${primingMessage}\n\n${userPrompt}`,
+            signal,
+            presetOverride:
+              collaborative && story
+                ? settings.getPresetConfig(
+                    settings.getServicePresetId(collaborativeServiceIds.writer),
+                    collaborativeServiceIds.writer,
+                  )
+                : undefined,
+          })
 
       // Use fullStream to capture both text and reasoning
       // - Native reasoning providers (Anthropic, OpenAI) emit reasoning-delta parts
       // - Models using <think> tags have reasoning extracted by extractReasoningMiddleware
+      let finishReason: string | undefined
       for await (const part of stream.fullStream) {
-        if (part.type === 'reasoning-delta') {
+        if (part.type === 'reasoning-delta' && !collaborative) {
           // Reasoning delta from native providers or extracted from <think> tags
           yield { content: '', reasoning: (part as { text?: string }).text, done: false }
         } else if (part.type === 'text-delta') {
           // Regular text content
           yield { content: (part as { text?: string }).text || '', done: false }
+        } else if (part.type === 'finish') {
+          finishReason = part.finishReason
+        } else if (part.type === 'error') {
+          throw part.error
+        } else if (collaborative && part.type === 'abort') {
+          throw new DOMException(part.reason ?? 'Writer 已取消。', 'AbortError')
         }
         // Ignore other part types (reasoning-start, reasoning-end, tool calls, finish, etc.)
       }
 
-      yield { content: '', done: true }
+      if (collaborative) {
+        signal?.throwIfAborted()
+        if (finishReason !== 'stop' && finishReason !== 'length')
+          throw new Error(`Writer 未正常完成（${finishReason ?? 'unknown'}）。`)
+      }
+      yield { content: '', done: true, finishReason }
     } catch (error) {
       log('stream error', error)
       // Re-throw to let caller handle the error
@@ -357,22 +383,40 @@ export class NarrativeService {
     log('generate', { entriesCount: entries.length })
 
     // Build system prompt via ContextBuilder pipeline
-    const { systemPrompt, primingMessage } = await this.buildPrompts(
+    const collaborative = story?.mode === 'creative-writing'
+    if (collaborative && !options.novelTurn)
+      throw new Error('中文写作缺少本轮场景安排，已停止生成。')
+    const { systemPrompt, primingMessage, userTemplate } = await this.buildPrompts(
       story,
       worldState,
       tieredContextBlock,
       styleReview,
       retrievedChapterContext,
+      undefined,
+      options.novelTurn,
+      entries,
     )
 
     const mode = story?.mode ?? 'adventure'
-    const inlineImageMode = story?.settings?.imageGenerationMode === 'inline'
-    const userPrompt = this.buildUserPrompt(entries, mode, inlineImageMode)
+    const inlineImageMode = !collaborative && story?.settings?.imageGenerationMode === 'inline'
+    const userPrompt = options.novelTurn
+      ? userTemplate ||
+        this.buildUserPrompt(entries, 'creative-writing', inlineImageMode) +
+          '\n\n' +
+          novelWriterContext(options.novelTurn)
+      : this.buildUserPrompt(entries, mode, inlineImageMode)
 
     return generateNarrative({
       system: systemPrompt,
-      prompt: `${primingMessage}\n\n${userPrompt}`,
+      prompt: collaborative ? userPrompt : `${primingMessage}\n\n${userPrompt}`,
       signal,
+      presetOverride:
+        collaborative && story
+          ? settings.getPresetConfig(
+              settings.getServicePresetId(collaborativeServiceIds.writer),
+              collaborativeServiceIds.writer,
+            )
+          : undefined,
     })
   }
 
@@ -390,21 +434,26 @@ export class NarrativeService {
     styleReview?: StyleReviewResult | null,
     retrievedChapterContext?: string | null,
     timelineFillResult?: TimelineFillResult | null,
-  ): Promise<{ systemPrompt: string; primingMessage: string }> {
+    novelTurn?: NovelTurn,
+    entries: StoryEntry[] = [],
+  ): Promise<{ systemPrompt: string; primingMessage: string; userTemplate: string }> {
     const mode = story?.mode ?? 'adventure'
+    const collaborative = mode === 'creative-writing'
 
     // Create ContextBuilder -- forStory auto-populates mode, pov, tense, genre,
     // protagonistName, protagonistDescription, currentLocation, storyTime, etc.
     let ctx: ContextBuilder
 
     if (story?.id) {
-      ctx = await ContextBuilder.forStory(story.id)
+      ctx = collaborative
+        ? await ContextBuilder.forStory(story.id, undefined, false)
+        : await ContextBuilder.forStory(story.id)
     } else {
       // Fallback for edge cases where story doesn't exist yet
       ctx = new ContextBuilder()
       ctx.add({
         mode,
-        pov: story?.settings?.pov ?? 'second',
+        pov: story?.settings?.pov ?? (collaborative ? 'third' : 'second'),
         tense: story?.settings?.tense ?? 'present',
         protagonistName: 'the protagonist',
       })
@@ -423,6 +472,13 @@ export class NarrativeService {
       retrievedChapterContext: '',
       chapterSummaries: '',
       storyTime: (ctx.getContext().storyTime as string) ?? '',
+      novelDirectorOutput: novelTurn?.sceneDirectorOutput ?? '',
+      novelAgentContext: novelTurn ? novelWriterContext(novelTurn) : '',
+      recentNovelProse: entries
+        .filter((entry) => entry.type === 'narration')
+        .slice(-8)
+        .map((entry) => entry.content)
+        .join('\n\n'),
     })
 
     // `ContextBuilder.forStory` sets these; this covers contexts built another way, since
@@ -456,14 +512,20 @@ export class NarrativeService {
 
     // Build chapter summaries block
     if (worldState.chapters && worldState.chapters.length > 0) {
-      const chapterSummaries = buildChapterSummariesBlock(worldState.chapters, timelineFillResult)
+      const timelineBlock = buildTimelineFillBlock(timelineFillResult)
+      const chapterSummaries = buildChapterSummariesBlock(
+        collaborative ? worldState.chapters.slice(-12) : worldState.chapters,
+        collaborative && timelineBlock && tieredContextBlock?.includes(timelineBlock)
+          ? undefined
+          : timelineFillResult,
+      )
       if (chapterSummaries) {
         ctx.add({ chapterSummaries })
       }
     }
 
     // Build style guidance block
-    if (styleReview && styleReview.phrases.length > 0) {
+    if (!collaborative && styleReview && styleReview.phrases.length > 0) {
       const styleGuidance = StyleReviewerService.formatForPromptInjection(styleReview)
       if (styleGuidance) {
         ctx.add({ styleGuidance })
@@ -474,17 +536,18 @@ export class NarrativeService {
     // These provide the actual instructions (not just boolean flags) that templates reference
     // via {{ inlineImageInstructions }} and {{ visualProseInstructions }}
     const preRenderContext = ctx.getContext()
-    if (preRenderContext.inlineImageMode) {
+    if (!collaborative && preRenderContext.inlineImageMode) {
       ctx.add({ inlineImageInstructions: INLINE_IMAGE_INSTRUCTIONS })
     }
-    if (preRenderContext.visualProseMode) {
+    if (!collaborative && preRenderContext.visualProseMode) {
       ctx.add({ visualProseInstructions: VISUAL_PROSE_INSTRUCTIONS })
     }
 
     // Render system prompt — use per-story override when set, otherwise fall back to pack template
     let systemPrompt: string
+    let userTemplate = ''
     const customPrompt = story?.settings?.customSystemPrompt
-    if (customPrompt) {
+    if (customPrompt && !collaborative) {
       const rendered = templateEngine.render(customPrompt, ctx.getContext())
       if (rendered === null) {
         throw new Error(
@@ -492,10 +555,46 @@ export class NarrativeService {
         )
       }
       systemPrompt = rendered
+    } else if (collaborative && story) {
+      const rendered = await CollaborativePromptService.render(
+        story.id,
+        'writer',
+        {
+          recentNovelProse: ctx.getContext().recentNovelProse,
+          novelDirectorOutput: novelTurn?.sceneDirectorOutput ?? '',
+          novelAgentContext: novelTurn ? novelWriterContext(novelTurn) : '',
+          rawInput: novelTurn?.rawInput ?? '',
+          requestedLength: novelTurn?.requestedLength ?? '',
+        },
+        ctx.getContext(),
+      )
+      systemPrompt = rendered.system
+      userTemplate = rendered.user
+      if (novelTurn) {
+        novelTurn.writerPrompt = {
+          templateId: rendered.templateId,
+          systemSource: rendered.systemSource ?? rendered.source,
+          userSource: rendered.userSource ?? rendered.source,
+          systemTemplateId: rendered.systemTemplateId,
+          userTemplateId: rendered.userTemplateId,
+          packId: rendered.packId,
+        }
+      }
     } else {
-      const templateId = mode === 'creative-writing' ? 'creative-writing' : 'adventure'
-      const { system } = await ctx.render(templateId)
-      systemPrompt = system
+      const templateId = collaborative ? 'collaborative-chinese-writer' : 'adventure'
+      const rendered = await ctx.render(templateId)
+      systemPrompt = rendered.system
+      userTemplate = rendered.user
+      if (collaborative && novelTurn && rendered.systemSource) {
+        novelTurn.writerPrompt = {
+          templateId,
+          systemSource: rendered.systemSource,
+          userSource: rendered.userSource ?? 'legacy-runtime-fallback',
+          systemTemplateId: rendered.systemTemplateId ?? undefined,
+          userTemplateId: rendered.userTemplateId ?? undefined,
+          packId: rendered.packId,
+        }
+      }
     }
 
     // Build priming message based on mode/pov/tense
@@ -514,7 +613,13 @@ export class NarrativeService {
       primingMessageLength: primingMessage.length,
     })
 
-    return { systemPrompt, primingMessage }
+    return {
+      systemPrompt,
+      userTemplate,
+      primingMessage: collaborative
+        ? '依据本轮语义约束生成中文小说正文，保留主角决定权。'
+        : primingMessage,
+    }
   }
 
   /**

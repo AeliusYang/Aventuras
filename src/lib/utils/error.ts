@@ -1,20 +1,31 @@
-/**
- * Extract a human-readable message from an unknown thrown value.
- *
- * Tauri command rejections arrive as plain strings, not `Error` objects, so the common
- * `e instanceof Error ? e.message : 'Unknown error'` throws away the real (often precise)
- * message from Rust. This helper preserves it: strings pass through, Errors yield `.message`,
- * objects with a `message` field use it, and anything else is stringified.
- */
-export function errMessage(e: unknown): string {
-  if (typeof e === 'string') return e
-  if (e instanceof Error) return e.message
-  if (e && typeof e === 'object' && 'message' in e) {
-    return String((e as { message: unknown }).message)
+export function errorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message || error.name
+  if (typeof error === 'string') return error
+  if (error && typeof error === 'object') {
+    const value = error as Record<string, unknown>
+    if (value.error && value.error !== error) {
+      const nested = errorMessage(value.error)
+      if (nested !== '[object Object]') return nested
+    }
+    for (const key of ['message', 'statusText', 'body', 'responseBody', 'code', 'status']) {
+      const candidate = value[key]
+      if (candidate !== undefined && candidate !== null) {
+        if (typeof candidate === 'string' && candidate.trim()) return candidate
+        if (typeof candidate !== 'string') {
+          try { return JSON.stringify(candidate) } catch { /* fall through */ }
+        }
+      }
+    }
+    try { return JSON.stringify(error) } catch { return Object.prototype.toString.call(error) }
   }
-  try {
-    return JSON.stringify(e)
-  } catch {
-    return String(e)
-  }
+  return String(error)
 }
+
+export function asError(error: unknown, fallback = '未知错误'): Error {
+  if (error instanceof Error) return error
+  const message = errorMessage(error)
+  return new Error(message === '[object Object]' ? fallback : message)
+}
+
+// Keep the short name used by existing import/export UI code.
+export const errMessage = errorMessage

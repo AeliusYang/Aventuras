@@ -167,7 +167,7 @@
 
 <ResponsiveModal.Root bind:open={isOpen} onOpenChange={handleModalOpenChange}>
   <ResponsiveModal.Content class="flex flex-col md:h-auto md:max-h-[90vh] md:max-w-150">
-    <ResponsiveModal.Header title={isEditing ? 'Edit Character' : 'New Character'} />
+    <ResponsiveModal.Header title={isEditing ? '编辑角色' : '新角色'} />
 
     <div class="flex-1 overflow-y-auto px-4 sm:pr-4">
       <form
@@ -199,14 +199,14 @@
             }}
           >
             <Bot class="h-4 w-4" />
-            Ask Assistant
+            询问助手
           </Button>
         {/if}
       </div>
       <div class="flex items-center gap-2">
         <Button variant="outline" onclick={handleCloseAttempt} disabled={saving}>
           <X class="h-4 w-4" />
-          <span class="hidden sm:inline">Close</span>
+          <span class="hidden sm:inline">关闭</span>
         </Button>
         <Button
           type="submit"
@@ -217,7 +217,7 @@
           {#if saving}
             <Loader2 class="h-4 w-4 animate-spin" />
           {/if}
-          {isEditing ? 'Save Changes' : 'Create Character'}
+          {isEditing ? '保存修改' : '创建角色'}
         </Button>
       </div>
     </ResponsiveModal.Footer>

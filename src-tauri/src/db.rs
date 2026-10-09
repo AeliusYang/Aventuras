@@ -37,6 +37,7 @@ pub async fn open_rw_pool(app: &AppHandle, busy_timeout: Duration) -> Result<Sql
     let options = SqliteConnectOptions::new()
         .filename(db_path(app)?)
         .create_if_missing(false)
+        .foreign_keys(true)
         .busy_timeout(busy_timeout);
 
     SqlitePoolOptions::new()

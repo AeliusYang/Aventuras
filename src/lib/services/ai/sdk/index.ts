@@ -17,7 +17,7 @@
  */
 
 // Generate functions
-export { generateStructured, generatePlainText } from './generate'
+export { generateStructured, generateCollaborativeJsonText, generateCollaborativeText, generatePlainText } from './generate'
 export { buildProviderOptions } from './presetResolution'
 
 // Provider registry

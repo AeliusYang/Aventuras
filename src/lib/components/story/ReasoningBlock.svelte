@@ -63,9 +63,9 @@
     disabled={!isToggleEnabled}
     title={isToggleEnabled
       ? isOpen
-        ? 'Hide thinking'
-        : 'Show thinking'
-      : 'Reasoning display is disabled in settings'}
+        ? '收起推理过程'
+        : '显示推理过程'
+      : '设置中已关闭推理过程显示'}
   >
     <Brain class={cn('h-3.5 w-3.5', isReasoningPhase && 'animate-pulse')} />
     {#if isStreaming}

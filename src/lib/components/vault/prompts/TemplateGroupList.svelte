@@ -14,6 +14,8 @@
     onToggleVariables: () => void
     onToggleRuntimeVars: () => void
     onShowSettings: () => void
+    allowedTemplateIds?: readonly string[]
+    hidePackTools?: boolean
   }
 
   let {
@@ -25,29 +27,33 @@
     onToggleVariables,
     onToggleRuntimeVars,
     onShowSettings,
+    allowedTemplateIds,
+    hidePackTools = false,
   }: Props = $props()
 
-  const groups = getTemplateGroups()
+  const groups = $derived(getTemplateGroups(allowedTemplateIds))
 </script>
 
 <ScrollArea class="h-full">
   <div class="flex flex-col py-2">
     <!-- Pack Settings -->
-    <div class="mx-2 mb-1 border-b pb-2">
-      <button
-        type="button"
-        class={cn(
-          'flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors',
-          showSettings
-            ? 'bg-accent text-accent-foreground'
-            : 'text-muted-foreground hover:bg-muted hover:text-foreground',
-        )}
-        onclick={onShowSettings}
-      >
-        <Settings class="h-4 w-4" />
-        Pack Settings
-      </button>
-    </div>
+    {#if !hidePackTools}
+      <div class="mx-2 mb-1 border-b pb-2">
+        <button
+          type="button"
+          class={cn(
+            'flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors',
+            showSettings
+              ? 'bg-accent text-accent-foreground'
+              : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+          )}
+          onclick={onShowSettings}
+        >
+          <Settings class="h-4 w-4" />
+          提示词包设置
+        </button>
+      </div>
+    {/if}
 
     <!-- Template Groups -->
     {#each groups as group (group.name)}
@@ -85,33 +91,35 @@
     {/each}
 
     <!-- Variables buttons after groups -->
-    <div class="mx-2 mt-1 space-y-1.5 border-t pt-2">
-      <button
-        type="button"
-        class={cn(
-          'flex w-full items-center gap-2 rounded-md border px-3 py-2.5 text-sm font-medium transition-colors',
-          showVariables
-            ? 'border-primary/50 bg-primary/10 text-primary'
-            : 'border-border bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground',
-        )}
-        onclick={onToggleVariables}
-      >
-        <Variable class="h-4 w-4" />
-        Variables
-      </button>
-      <button
-        type="button"
-        class={cn(
-          'flex w-full items-center gap-2 rounded-md border px-3 py-2.5 text-sm font-medium transition-colors',
-          showRuntimeVars
-            ? 'border-primary/50 bg-primary/10 text-primary'
-            : 'border-border bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground',
-        )}
-        onclick={onToggleRuntimeVars}
-      >
-        <Activity class="h-4 w-4" />
-        Runtime Vars
-      </button>
-    </div>
+    {#if !hidePackTools}
+      <div class="mx-2 mt-1 space-y-1.5 border-t pt-2">
+        <button
+          type="button"
+          class={cn(
+            'flex w-full items-center gap-2 rounded-md border px-3 py-2.5 text-sm font-medium transition-colors',
+            showVariables
+              ? 'border-primary/50 bg-primary/10 text-primary'
+              : 'border-border bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground',
+          )}
+          onclick={onToggleVariables}
+        >
+          <Variable class="h-4 w-4" />
+          变量
+        </button>
+        <button
+          type="button"
+          class={cn(
+            'flex w-full items-center gap-2 rounded-md border px-3 py-2.5 text-sm font-medium transition-colors',
+            showRuntimeVars
+              ? 'border-primary/50 bg-primary/10 text-primary'
+              : 'border-border bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground',
+          )}
+          onclick={onToggleRuntimeVars}
+        >
+          <Activity class="h-4 w-4" />
+          运行时变量
+        </button>
+      </div>
+    {/if}
   </div>
 </ScrollArea>

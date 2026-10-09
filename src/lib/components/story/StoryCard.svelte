@@ -128,7 +128,7 @@
               size="icon"
               onmousedown={(e: MouseEvent) => e.preventDefault()}
               onclick={commitEdit}
-              title="Save title"
+              title="保存标题"
             />
             <Button
               icon={X}
@@ -137,7 +137,7 @@
               size="icon"
               onmousedown={(e: MouseEvent) => e.preventDefault()}
               onclick={cancelEdit}
-              title="Cancel"
+              title="取消"
             />
           </div>
         {:else}
@@ -151,7 +151,7 @@
               class="text-muted-foreground hover:text-foreground h-8 w-8 hover:bg-transparent"
               size="icon"
               onclick={startEdit}
-              title="Rename story"
+              title="重命名故事"
             />
             <Button
               icon={Trash2}
@@ -159,7 +159,7 @@
               class="text-muted-foreground hover:text-foreground h-8 w-8 hover:bg-transparent"
               size="icon"
               onclick={(e) => onDelete(s.id, e)}
-              title="Delete story"
+              title="删除故事"
             />
           </div>
         {/if}
@@ -176,13 +176,13 @@
           {s.description}
         </p>
       {:else}
-        <p class="text-muted-foreground text-sm italic">No description</p>
+        <p class="text-muted-foreground text-sm italic">暂无简介</p>
       {/if}
     </Card.Content>
     <Card.Footer class="text-muted-foreground mt-auto pt-0 text-xs">
       <div class="flex items-center gap-1">
         <Clock class="h-3 w-3" />
-        <span>Updated {formatDate(s.updatedAt)}</span>
+        <span>更新于 {formatDate(s.updatedAt)}</span>
       </div>
     </Card.Footer>
   </Card.Root>

@@ -1,3 +1,5 @@
+import { replaceUser, replaceLoreUser, type CardImportDraft } from '$lib/services/storySetup/draft'
+import { mergeVisualDescriptors } from '$lib/utils/visualDescriptors'
 import type {
   Story,
   StoryEntry,
@@ -21,8 +23,12 @@ import type {
   ItemBeforeState,
   StoryBeatBeforeState,
   ImageGenerationMode,
+  TargetLength,
+  StoryEntryVariant,
+  StoryEntryVariantSet,
 } from '$lib/types'
-import { database } from '$lib/services/database'
+import { database, type DatabaseService } from '$lib/services/database'
+import { storyBasicsUpdate, type StoryBasicsDraft } from '$lib/services/storyBasics'
 import { rollbackService } from '$lib/services/rollbackService'
 import { ui } from './ui.svelte'
 import { settings } from './settings.svelte'
@@ -34,6 +40,7 @@ import { chapterReadBudget } from '$lib/services/ai/core/defaults'
 import { LorebookImportExport } from '$lib/services/lorebookImportExport'
 import { countTokens } from '$lib/services/tokenizer'
 import type { STChatMessage } from '$lib/services/stChatImporter'
+import { packService } from '$lib/services/packs/pack-service'
 import {
   eventBus,
   emitStoryLoaded,
@@ -58,6 +65,24 @@ import { sameEntityName } from '$lib/utils/text'
 import { grammarService } from '$lib/services/grammar'
 import { clearTier3SelectionCache } from '$lib/services/ai'
 import { clearImageMarkerCache } from '$lib/services/image'
+import { assertWriteScopeCurrent, type ScopedWriteOptions } from '$lib/utils/branchScope'
+import { createStateMaintenanceRecord } from '$lib/services/collaborativeStateMaintenance'
+import { planStateRollback } from '$lib/services/collaborativeStateMaintenance'
+import {
+  collaborativeStateRollbackStatements,
+  collaborativeTruncationPlanStatements,
+} from '$lib/services/collaborativeTransactions'
+import {
+  createDefaultCollaborativeWorkflow,
+  isCollaborativeStory,
+  normalizeCollaborativeStory,
+} from '$lib/services/generation/collaborativeWorkflow'
+import {
+  CollaborativeStateRebuildService,
+  checkCollaborativeStateRebuildConfirmation,
+  createCollaborativeStateRebuildRequest,
+  type CollaborativeStateRebuildDraft,
+} from '$lib/services/CollaborativeStateRebuildService'
 
 const log = createLogger('StoryStore')
 
@@ -95,6 +120,42 @@ function mergeRuntimeVars(
 
 // Story Store using Svelte 5 runes
 class StoryStore {
+  private classificationWrite: {
+    done: Promise<void>
+    storyId: string
+    branchId: string | null
+  } | null = null
+
+  /** Finish an already-started classification before undoing its recorded changes. */
+  async drainClassificationWrites(options?: ScopedWriteOptions): Promise<void> {
+    const { storyId, branchId, check } = this.captureWriteScope(options)
+    const active = this.classificationWrite
+    if (!active) return
+    assertWriteScopeCurrent(active.storyId === storyId && active.branchId === branchId)
+    await active.done
+    check()
+  }
+
+  private captureWriteScope(options?: ScopedWriteOptions) {
+    const storyId = options?.scope?.storyId ?? this.currentStory?.id
+    const branchId = options?.scope
+      ? options.scope.branchId
+      : (this.currentStory?.currentBranchId ?? null)
+    const loadSeq = this.storyLoadSeq
+    const switchSeq = this.branchSwitchSeq
+    const check = () =>
+      assertWriteScopeCurrent(
+        !!storyId &&
+          this.currentStory?.id === storyId &&
+          (this.currentStory.currentBranchId ?? null) === branchId &&
+          this.storyLoadSeq === loadSeq &&
+          this.branchSwitchSeq === switchSeq &&
+          options?.isScopeCurrent?.() !== false,
+      )
+    check()
+    return { storyId: storyId!, branchId, check }
+  }
+
   /** Tail of the story-load queue — see loadStory. */
   private storyLoadChain: Promise<unknown> = Promise.resolve()
   /** Sequence of the most recently requested story load. */
@@ -213,14 +274,23 @@ class StoryStore {
   }
 
   get wordCount(): number {
-    // Use cached value if available, recalculate only when dirty
+    // This is the story's visible prose character count. Whitespace-word counting is
+    // unusable for Chinese text because an entire paragraph can contain no spaces.
     if (this._wordCountDirty) {
       this._cachedWordCount = this.entries.reduce((count, entry) => {
-        return count + entry.content.split(/\s+/).filter(Boolean).length
+        const plainText = entry.content.replace(/<[^>]*>/g, ' ')
+        return count + Array.from(plainText.replace(/\s/gu, '')).length
       }, 0)
       this._wordCountDirty = false
     }
     return this._cachedWordCount
+  }
+
+  get proseCharacterCount(): number {
+    return this.entries.reduce((count, entry) => {
+      const plainText = entry.content.replace(/<[^>]*>/g, ' ')
+      return count + Array.from(plainText.replace(/\s/gu, '')).length
+    }, 0)
   }
 
   /**
@@ -533,6 +603,9 @@ class StoryStore {
   closeStory(): void {
     this.storyLoadSeq++
     this.resetStoryState()
+    // Lorebook selection belongs to the story that was just closed. Clear it together
+    // with the story data so reopening a story cannot resolve a stale entry id.
+    ui.resetLorebookManager()
     this.currentBgImage = null
     this.branches = []
     // The image indicators are not gated on there being a story, so anything still in
@@ -597,10 +670,17 @@ class StoryStore {
     // earlier selection from publishing after the story the reader selected last.
     if (seq !== this.storyLoadSeq) return
 
-    const story = await database.getStory(storyId)
+    const loadedStory = await database.getStory(storyId)
     if (seq !== this.storyLoadSeq) return
-    if (!story) {
+    if (!loadedStory) {
       throw new Error(`Story not found: ${storyId}`)
+    }
+    const story = normalizeCollaborativeStory(loadedStory)
+    if (
+      story.mode !== loadedStory.mode ||
+      JSON.stringify(story.settings) !== JSON.stringify(loadedStory.settings)
+    ) {
+      await database.updateStory(story.id, { mode: story.mode, settings: story.settings })
     }
 
     // Clean up any orphaned embedded_images before loading
@@ -615,6 +695,9 @@ class StoryStore {
     // A remembered desktop panel must not briefly cover a story as it starts loading on a
     // narrow display. Do this before publishing `currentStory`, which mounts those panels.
     ui.setMobileDefaults()
+    // Entries are story-scoped but lorebook selection is global UI state. Reset it before
+    // publishing the new story so a stale selection cannot race the asynchronous load.
+    ui.resetLorebookManager()
     this.currentStory = story
     const backgroundImage = await database.getBackgroundForBranch(storyId, story.currentBranchId)
     if (this.supersededAfterPublish(seq)) return
@@ -692,16 +775,22 @@ class StoryStore {
     await this.validateChapterIntegrity()
     if (this.supersededAfterPublish(seq)) return
 
-    // Load persisted action choices for adventure mode
-    if (story.mode === 'adventure') {
+    const collaborative = isCollaborativeStory(story)
+    const collaborativeSuggestionsEnabled =
+      story.settings?.collaborativeNovelWorkflow?.plotSuggestions?.enabled !== false
+
+    // Load persisted action choices only for ordinary adventure mode.
+    if (story.mode === 'adventure' && !collaborative) {
       await ui.loadActionChoices(storyId)
       if (this.supersededAfterPublish(seq)) return
     }
 
-    // Load persisted suggestions for creative-writing mode
-    if (story.mode === 'creative-writing') {
+    // Collaborative suggestions have a story cache but are never restored when disabled.
+    if ((story.mode === 'creative-writing' || collaborative) && collaborativeSuggestionsEnabled) {
       await ui.loadSuggestions(storyId)
       if (this.supersededAfterPublish(seq)) return
+    } else if (collaborative) {
+      ui.clearSuggestions(storyId)
     }
 
     // The settings-keyed cache above is empty for a story that never generated choices in this
@@ -717,9 +806,16 @@ class StoryStore {
     // Requiring the last entry to be a narration is what keeps the restore honest: with a
     // trailing user_action (an app closed mid-turn) the last narration's choices are the ones the
     // player already spent, and showing them again would also write them back to the cache.
-    const hasPersistedChoices =
-      story.mode === 'adventure' ? ui.actionChoices.length > 0 : ui.suggestions.length > 0
-    if (!hasPersistedChoices && this.entries[this.entries.length - 1]?.type === 'narration') {
+    const hasPersistedChoices = collaborative
+      ? ui.suggestions.length > 0
+      : story.mode === 'adventure'
+        ? ui.actionChoices.length > 0
+        : ui.suggestions.length > 0
+    if (
+      !collaborative &&
+      !hasPersistedChoices &&
+      this.entries[this.entries.length - 1]?.type === 'narration'
+    ) {
       this.restoreSuggestedActionsFromLastNarration()
     }
 
@@ -844,10 +940,13 @@ class StoryStore {
     metadata?: StoryEntry['metadata'],
     reasoning?: string,
     id?: string,
+    options?: ScopedWriteOptions,
   ): Promise<StoryEntry> {
     if (!this.currentStory) {
       throw new Error('No story loaded')
     }
+
+    const { storyId, branchId, check } = this.captureWriteScope(options)
 
     // Count tokens for accurate auto-summarize threshold detection
     const tokenCount = countTokens(content)
@@ -859,22 +958,21 @@ class StoryStore {
       : { years: 0, days: 0, hours: 0, minutes: 0 }
     const timeEnd = { ...timeStart }
 
-    const position = await database.getNextEntryPosition(
-      this.currentStory.id,
-      this.currentStory.currentBranchId,
-    )
+    const position = await database.getNextEntryPosition(storyId, branchId)
+    check()
     const entry = await database.addStoryEntry({
       id: id ?? crypto.randomUUID(),
-      storyId: this.currentStory.id,
+      storyId,
       type,
       content,
       parentId: null,
       position,
       metadata: { ...metadata, tokenCount, timeStart, timeEnd },
-      branchId: this.currentStory.currentBranchId,
+      branchId,
       reasoning,
     })
 
+    check()
     this.entries = [...this.entries, entry]
 
     // Invalidate caches
@@ -882,9 +980,528 @@ class StoryStore {
     this.invalidateChapterCache()
 
     // Update story's updatedAt
-    await database.updateStory(this.currentStory.id, {})
+    await database.updateStory(storyId, {})
+    check()
 
     return entry
+  }
+
+  private flatVariantSet(set: StoryEntryVariantSet): StoryEntryVariantSet {
+    return {
+      ...set,
+      variants: set.variants.map((variant) => {
+        if (!variant.metadata) return { ...variant }
+        const metadata = { ...variant.metadata } as Record<string, unknown>
+        delete metadata.variantSet
+        return { ...variant, metadata }
+      }),
+    }
+  }
+
+  /** Return a normalized variant set, treating legacy entries as a single version. */
+  private variantSetForEntry(entry: StoryEntry): StoryEntryVariantSet {
+    const existing = entry.metadata?.variantSet
+    if (existing && existing.version === 1 && Array.isArray(existing.variants)) {
+      // Entries are wrapped by Svelte's reactive proxies in the UI. `structuredClone`
+      // rejects those proxies in Chromium, so clone the persisted JSON shape instead.
+      return JSON.parse(JSON.stringify(this.flatVariantSet(existing))) as StoryEntryVariantSet
+    }
+
+    const legacyMetadata = { ...(entry.metadata ?? {}) }
+    delete legacyMetadata.variantSet
+    return {
+      version: 1,
+      activeVariantId: `legacy-${entry.id}`,
+      variants: [
+        {
+          id: `legacy-${entry.id}`,
+          content: entry.content,
+          reasoning: entry.reasoning,
+          translatedContent: entry.translatedContent,
+          translationLanguage: entry.translationLanguage,
+          metadata: legacyMetadata,
+          classificationResult: null,
+          worldStateDelta: entry.worldStateDelta,
+          suggestedActions: entry.suggestedActions,
+          createdAt: entry.createdAt,
+        },
+      ],
+    }
+  }
+
+  private mirrorVariant(entry: StoryEntry, set: StoryEntryVariantSet): StoryEntry {
+    set = this.flatVariantSet(set)
+    const active =
+      set.variants.find((variant) => variant.id === set.activeVariantId) ?? set.variants[0]
+    if (!active) return entry
+    const variantMetadata = { ...(active.metadata ?? {}) } as Record<string, unknown>
+    delete variantMetadata.variantSet
+    const metadata = { ...variantMetadata, variantSet: set }
+    return {
+      ...entry,
+      content: active.content,
+      reasoning: active.reasoning,
+      translatedContent: active.translatedContent ?? null,
+      translationLanguage: active.translationLanguage ?? null,
+      metadata,
+      worldStateDelta: active.worldStateDelta ?? null,
+      suggestedActions: active.suggestedActions ?? null,
+    }
+  }
+
+  /** Append a generated alternate to an existing narration entry. */
+  async appendNarrationVariant(
+    entryId: string,
+    variant: StoryEntryVariant,
+    options?: { activate?: boolean },
+  ): Promise<StoryEntry> {
+    if (!this.currentStory) throw new Error('没有打开故事。')
+    const { branchId, check } = this.captureWriteScope()
+    const entry = this.entries.find((candidate) => candidate.id === entryId)
+    if (!entry || entry.type !== 'narration') throw new Error('找不到可追加版本的正文。')
+    if ((entry.branchId ?? null) !== branchId) throw new Error('不能修改继承正文的版本。')
+
+    const set = this.variantSetForEntry(entry)
+    const activate = options?.activate !== false
+    const next = set.variants.filter((candidate) => candidate.id !== variant.id)
+    next.push({
+      ...variant,
+      state: variant.state ?? (activate ? 'stored' : 'pending'),
+      metadata: variant.metadata ? { ...variant.metadata } : null,
+    })
+    const nextSet: StoryEntryVariantSet = {
+      version: 1,
+      activeVariantId: activate ? variant.id : set.activeVariantId,
+      variants: next,
+    }
+    const mirrored = this.mirrorVariant(entry, nextSet)
+    check()
+    await database.updateStoryEntry(entryId, {
+      content: mirrored.content,
+      reasoning: mirrored.reasoning,
+      translatedContent: mirrored.translatedContent,
+      translationLanguage: mirrored.translationLanguage,
+      metadata: mirrored.metadata,
+      worldStateDelta: mirrored.worldStateDelta,
+      suggestedActions: mirrored.suggestedActions,
+    })
+    check()
+    this.entries = this.entries.map((candidate) =>
+      candidate.id === entryId ? mirrored : candidate,
+    )
+    return mirrored
+  }
+
+  /** Update fields belonging to the active variant without creating another entry. */
+  async updateNarrationVariant(
+    entryId: string,
+    patch: Partial<StoryEntryVariant>,
+    options?: { variantId?: string },
+  ): Promise<StoryEntry> {
+    if (!this.currentStory) throw new Error('没有打开故事。')
+    const { check } = this.captureWriteScope()
+    const entry = this.entries.find((candidate) => candidate.id === entryId)
+    if (!entry || entry.type !== 'narration') throw new Error('找不到正文版本。')
+    const set = this.variantSetForEntry(entry)
+    const activeId = options?.variantId ?? set.activeVariantId
+    const nextSet: StoryEntryVariantSet = {
+      ...set,
+      variants: set.variants.map((variant) =>
+        variant.id === activeId
+          ? {
+              ...variant,
+              ...patch,
+              metadata: patch.metadata
+                ? (() => {
+                    const merged = { ...(variant.metadata ?? {}), ...patch.metadata } as Record<
+                      string,
+                      unknown
+                    >
+                    delete merged.variantSet
+                    return merged as StoryEntryVariant['metadata']
+                  })()
+                : variant.metadata,
+            }
+          : variant,
+      ),
+    }
+    const mirrored = this.mirrorVariant(entry, nextSet)
+    check()
+    await database.updateStoryEntry(entryId, {
+      content: mirrored.content,
+      reasoning: mirrored.reasoning,
+      translatedContent: mirrored.translatedContent,
+      translationLanguage: mirrored.translationLanguage,
+      metadata: mirrored.metadata,
+      worldStateDelta: mirrored.worldStateDelta,
+      suggestedActions: mirrored.suggestedActions,
+    })
+    check()
+    this.entries = this.entries.map((candidate) =>
+      candidate.id === entryId ? mirrored : candidate,
+    )
+    return mirrored
+  }
+
+  /** Activate a variant without touching world state. Used while a newly generated
+   * variant is waiting for its classification result. */
+  async activateNarrationVariant(entryId: string, variantId: string): Promise<StoryEntry> {
+    if (!this.currentStory) throw new Error('没有打开故事。')
+    const { check } = this.captureWriteScope()
+    const entry = this.entries.find((candidate) => candidate.id === entryId)
+    if (!entry || entry.type !== 'narration') throw new Error('找不到可激活的正文。')
+    const set = this.variantSetForEntry(entry)
+    if (!set.variants.some((variant) => variant.id === variantId))
+      throw new Error('正文版本不存在。')
+    const nextSet: StoryEntryVariantSet = { ...set, activeVariantId: variantId }
+    const activated = this.mirrorVariant(entry, nextSet)
+    check()
+    await database.updateStoryEntry(entryId, {
+      content: activated.content,
+      reasoning: activated.reasoning,
+      translatedContent: activated.translatedContent,
+      translationLanguage: activated.translationLanguage,
+      metadata: activated.metadata,
+      worldStateDelta: activated.worldStateDelta,
+      suggestedActions: activated.suggestedActions,
+    })
+    check()
+    this.entries = this.entries.map((candidate) =>
+      candidate.id === entryId ? activated : candidate,
+    )
+    return activated
+  }
+
+  /** Remove an uncommitted reroll variant and restore the requested active variant. */
+  async discardNarrationVariant(
+    entryId: string,
+    variantId: string,
+    restoreVariantId?: string,
+  ): Promise<StoryEntry> {
+    if (!this.currentStory) throw new Error('没有打开故事。')
+    const { check } = this.captureWriteScope()
+    const entry = this.entries.find((candidate) => candidate.id === entryId)
+    if (!entry || entry.type !== 'narration') throw new Error('找不到要清理的正文。')
+    const set = this.variantSetForEntry(entry)
+    const remaining = set.variants.filter((variant) => variant.id !== variantId)
+    if (remaining.length === 0) throw new Error('不能删除正文的最后一个版本。')
+    const activeVariantId =
+      restoreVariantId && remaining.some((variant) => variant.id === restoreVariantId)
+        ? restoreVariantId
+        : remaining[0].id
+    const restored = this.mirrorVariant(entry, { version: 1, activeVariantId, variants: remaining })
+    await database.updateStoryEntry(entryId, {
+      content: restored.content,
+      reasoning: restored.reasoning,
+      translatedContent: restored.translatedContent,
+      translationLanguage: restored.translationLanguage,
+      metadata: restored.metadata,
+      worldStateDelta: restored.worldStateDelta,
+      suggestedActions: restored.suggestedActions,
+    })
+    check()
+    this.entries = this.entries.map((candidate) =>
+      candidate.id === entryId ? restored : candidate,
+    )
+    return restored
+  }
+
+  /**
+   * Switch the active version of the current tail narration. For generated variants,
+   * roll back the current delta and re-apply the saved classification result; opening
+   * variants intentionally carry no classification and only change visible prose.
+   */
+  async switchNarrationVariant(entryId: string, variantId: string): Promise<StoryEntry> {
+    if (!this.currentStory) throw new Error('没有打开故事。')
+    this.assertNotBusy('切换正文版本')
+    const entry = this.entries.find((candidate) => candidate.id === entryId)
+    if (!entry || entry.type !== 'narration') throw new Error('找不到可切换的正文。')
+    if (this.entries[this.entries.length - 1]?.id !== entryId) {
+      throw new Error('历史正文请先创建分支后再切换版本。')
+    }
+    const set = this.variantSetForEntry(entry)
+    const target = set.variants.find((variant) => variant.id === variantId)
+    const active = set.variants.find((variant) => variant.id === set.activeVariantId)
+    if (!target || !active) throw new Error('正文版本不存在。')
+    if (target.id === active.id) return entry
+
+    const nextSet: StoryEntryVariantSet = { ...set, activeVariantId: target.id }
+    const beforeEntries = this.entries
+    const beforeCharacters = this.characters
+    const beforeLocations = this.locations
+    const beforeItems = this.items
+    const beforeStoryBeats = this.storyBeats
+    const beforeStory = this.currentStory
+    try {
+      const { storyId, branchId, check } = this.captureWriteScope()
+      const activeEntry = this.mirrorVariant(entry, set)
+      const rollbackPlan = activeEntry.worldStateDelta
+        ? planStateRollback([activeEntry], activeEntry.position)
+        : {
+            valid: true as const,
+            plan: {
+              entries: [],
+              operations: [],
+              targetTimeTracker: undefined,
+              targetCurrentLocationId: undefined,
+            },
+            issues: [] as never[],
+          }
+      if (!rollbackPlan.valid) throw new Error('当前正文缺少可安全回退的事实状态记录。')
+
+      // Align the in-memory world with the pre-entry state before classification computes
+      // its before-state. The same inverse operations are staged in the DB transaction.
+      this.applyRollbackPlanInMemory(rollbackPlan.plan)
+      const finalSetPreview: StoryEntryVariantSet = {
+        ...nextSet,
+        variants: nextSet.variants.map((variant) =>
+          variant.id === target.id ? { ...target } : variant,
+        ),
+      }
+      this.entries = this.entries.map((candidate) =>
+        candidate.id === entryId ? this.mirrorVariant(entry, finalSetPreview) : candidate,
+      )
+
+      await database.collectAtomicWrites(async (writer) => {
+        if (
+          rollbackPlan.plan.operations.length > 0 ||
+          rollbackPlan.plan.targetTimeTracker !== undefined
+        ) {
+          writer.stageAtomicStatements(
+            collaborativeStateRollbackStatements({
+              scope: { storyId, branchId },
+              plan: rollbackPlan.plan,
+            }),
+          )
+        }
+        const targetClassification =
+          target.classificationResult && !target.classificationResult._error
+            ? target.classificationResult
+            : null
+        if (targetClassification) {
+          await this.applyClassificationResultMutating(
+            targetClassification,
+            entryId,
+            {
+              scope: { storyId, branchId },
+              isScopeCurrent: () => {
+                check()
+                return true
+              },
+            },
+            writer,
+          )
+        }
+        const applied = this.entries.find((candidate) => candidate.id === entryId)
+        const appliedTarget: StoryEntryVariant = {
+          ...target,
+          ...(applied?.worldStateDelta !== undefined
+            ? { worldStateDelta: applied.worldStateDelta }
+            : {}),
+          metadata: {
+            ...(target.metadata ?? {}),
+            ...(applied?.metadata ?? {}),
+          },
+        }
+        const finalSet: StoryEntryVariantSet = {
+          ...nextSet,
+          variants: nextSet.variants.map((variant) =>
+            variant.id === target.id
+              ? {
+                  ...appliedTarget,
+                  state: targetClassification ? 'stored' : 'pending',
+                }
+              : variant,
+          ),
+        }
+        const finalEntry = this.mirrorVariant(
+          this.entries.find((candidate) => candidate.id === entryId) ?? entry,
+          finalSet,
+        )
+        writer.stageAtomicStatements([
+          {
+            sql: 'UPDATE story_entries SET content = ?, reasoning = ?, translated_content = ?, translation_language = ?, metadata = ?, world_state_delta = ?, suggested_actions = ? WHERE id = ? AND story_id = ? AND branch_id IS ?',
+            params: [
+              finalEntry.content,
+              finalEntry.reasoning ?? null,
+              finalEntry.translatedContent ?? null,
+              finalEntry.translationLanguage ?? null,
+              finalEntry.metadata ? JSON.stringify(finalEntry.metadata) : null,
+              finalEntry.worldStateDelta ? JSON.stringify(finalEntry.worldStateDelta) : null,
+              finalEntry.suggestedActions ?? null,
+              entryId,
+              storyId,
+              branchId,
+            ],
+            expectedRows: 1,
+          },
+        ])
+        this.entries = this.entries.map((candidate) =>
+          candidate.id === entryId ? finalEntry : candidate,
+        )
+      })
+      check()
+      await this.refreshWorldState()
+      const finalEntry = this.entries.find((candidate) => candidate.id === entryId)
+      if (!finalEntry) throw new Error('切换后的正文未找到。')
+      return finalEntry
+    } catch (error) {
+      this.characters = beforeCharacters
+      this.locations = beforeLocations
+      this.items = beforeItems
+      this.storyBeats = beforeStoryBeats
+      this.entries = beforeEntries
+      this.currentStory = beforeStory
+      throw error
+    }
+  }
+
+  /** Re-apply an already active variant after a reroll preparation was rolled back but
+   * Director/Writer failed before a replacement could be committed. */
+  async restoreNarrationVariantState(entryId: string, variantId: string): Promise<StoryEntry> {
+    if (!this.currentStory) throw new Error('没有打开故事。')
+    const { check } = this.captureWriteScope()
+    const entry = this.entries.find((candidate) => candidate.id === entryId)
+    if (!entry || entry.type !== 'narration') throw new Error('找不到要恢复的正文版本。')
+    const set = this.variantSetForEntry(entry)
+    const target = set.variants.find((variant) => variant.id === variantId)
+    if (!target) throw new Error('要恢复的正文版本不存在。')
+    if (target.classificationResult && !target.classificationResult._error) {
+      if (set.activeVariantId !== variantId) await this.activateNarrationVariant(entryId, variantId)
+      check()
+      await this.applyClassificationResult(target.classificationResult, entryId)
+      check()
+      const applied = this.entries.find((candidate) => candidate.id === entryId)
+      await this.updateNarrationVariant(entryId, {
+        state: 'stored',
+        classificationResult: target.classificationResult,
+        worldStateDelta: applied?.worldStateDelta ?? null,
+        metadata: applied?.metadata ?? target.metadata,
+      })
+    } else {
+      const restoredSet: StoryEntryVariantSet = { ...set, activeVariantId: target.id }
+      const restored = this.mirrorVariant(entry, restoredSet)
+      await database.updateStoryEntry(entryId, {
+        content: restored.content,
+        reasoning: restored.reasoning,
+        translatedContent: restored.translatedContent,
+        translationLanguage: restored.translationLanguage,
+        metadata: restored.metadata,
+        worldStateDelta: restored.worldStateDelta,
+        suggestedActions: restored.suggestedActions,
+      })
+      check()
+      this.entries = this.entries.map((candidate) =>
+        candidate.id === entryId ? restored : candidate,
+      )
+    }
+    const restored = this.entries.find((candidate) => candidate.id === entryId)
+    if (!restored) throw new Error('恢复后的正文未找到。')
+    return restored
+  }
+
+  async settleNarrationReroll(entryId: string, previousVariantId: string): Promise<void> {
+    const { check } = this.captureWriteScope()
+    await this.drainClassificationWrites()
+    check()
+    let entry = this.entries.find((candidate) => candidate.id === entryId)
+    if (!entry) return
+    const set = this.variantSetForEntry(entry)
+    const active = set.variants.find((variant) => variant.id === set.activeVariantId)
+    if (!active) return
+    if (
+      active.id === previousVariantId &&
+      entry.metadata?.collaborativeStateMaintenance?.status === 'failed' &&
+      !entry.worldStateDelta &&
+      active.classificationResult &&
+      !active.classificationResult._error
+    ) {
+      await this.restoreNarrationVariantState(entryId, previousVariantId)
+      check()
+      entry = this.entries.find((candidate) => candidate.id === entryId)
+      if (!entry) return
+    }
+    const maintenance =
+      entry.metadata?.collaborativeStateMaintenance ??
+      createStateMaintenanceRecord('failed', {
+        error: '重写已终止，正文已保留，事实与状态提取未完成；可单独重试提取。',
+      })
+    await this.updateNarrationVariant(entryId, {
+      state: maintenance.status === 'failed' ? 'pending' : 'stored',
+      metadata: { ...entry.metadata, collaborativeStateMaintenance: maintenance },
+      worldStateDelta: maintenance.status === 'applied' ? entry.worldStateDelta : null,
+      classificationResult:
+        maintenance.status === 'applied'
+          ? ((entry.worldStateDelta?.classificationResult as ClassificationResult | undefined) ??
+            active.classificationResult)
+          : active.classificationResult,
+    })
+    check()
+    if (maintenance.status === 'failed') {
+      ui.showToast(
+        '正文已保留，但事实状态尚未恢复；可以重新生成、删除，或单独重试事实与状态提取。',
+        'warning',
+      )
+    }
+  }
+
+  /** Apply a pure rollback plan to the in-memory world before a transactional re-apply. */
+  private applyRollbackPlanInMemory(
+    plan: import('$lib/services/collaborativeStateMaintenance').StateRollbackPlan,
+  ) {
+    for (const operation of plan.operations) {
+      if (operation.action === 'delete') {
+        if (operation.entity === 'character')
+          this.characters = this.characters.filter((item) => item.id !== operation.id)
+        if (operation.entity === 'location')
+          this.locations = this.locations.filter((item) => item.id !== operation.id)
+        if (operation.entity === 'item')
+          this.items = this.items.filter((item) => item.id !== operation.id)
+        if (operation.entity === 'storyBeat')
+          this.storyBeats = this.storyBeats.filter((item) => item.id !== operation.id)
+        continue
+      }
+      if (operation.entity === 'character')
+        this.characters = this.characters.map((item) =>
+          item.id === operation.id
+            ? {
+                ...item,
+                ...operation.before,
+                status: operation.before.status as Character['status'],
+              }
+            : item,
+        )
+      if (operation.entity === 'location')
+        this.locations = this.locations.map((item) =>
+          item.id === operation.id ? { ...item, ...operation.before } : item,
+        )
+      if (operation.entity === 'item')
+        this.items = this.items.map((item) =>
+          item.id === operation.id ? { ...item, ...operation.before } : item,
+        )
+      if (operation.entity === 'storyBeat')
+        this.storyBeats = this.storyBeats.map((item) =>
+          item.id === operation.id
+            ? {
+                ...item,
+                ...operation.before,
+                status: operation.before.status as StoryBeat['status'],
+              }
+            : item,
+        )
+    }
+    if (plan.targetCurrentLocationId !== undefined) {
+      this.locations = this.locations.map((location) => ({
+        ...location,
+        current: location.id === plan.targetCurrentLocationId,
+      }))
+    }
+    if (plan.targetTimeTracker !== undefined && this.currentStory) {
+      this.currentStory = {
+        ...this.currentStory,
+        timeTracker: plan.targetTimeTracker ? { ...plan.targetTimeTracker } : null,
+      }
+    }
   }
 
   // Update a story entry
@@ -910,6 +1527,31 @@ class StoryStore {
     // Recalculate token count when content changes
     const tokenCount = countTokens(content)
     const updatedMetadata = { ...existingEntry.metadata, tokenCount }
+
+    const existingVariants = existingEntry.metadata?.variantSet
+    if (existingVariants?.variants?.length) {
+      const nextSet: StoryEntryVariantSet = {
+        ...this.variantSetForEntry(existingEntry),
+        variants: existingVariants.variants.map((variant) =>
+          variant.id === existingVariants.activeVariantId
+            ? {
+                ...variant,
+                content,
+                metadata: { ...(variant.metadata ?? {}), tokenCount },
+              }
+            : variant,
+        ),
+      }
+      const mirrored = this.mirrorVariant({ ...existingEntry, metadata: updatedMetadata }, nextSet)
+      await database.updateStoryEntry(entryId, {
+        content: mirrored.content,
+        metadata: mirrored.metadata,
+      })
+      this.entries = this.entries.map((e) => (e.id === entryId ? mirrored : e))
+      this.invalidateWordCountCache()
+      await database.updateStory(this.currentStory.id, {})
+      return
+    }
 
     await database.updateStoryEntry(entryId, { content, metadata: updatedMetadata })
     this.entries = this.entries.map((e) =>
@@ -1016,15 +1658,6 @@ class StoryStore {
     log('Deleted checkpoints whose entry was removed:', removed.length)
   }
 
-  /** For the one caller whose entry delete cannot be joined into a single transaction. */
-  private async pruneCheckpointsForEntries(entryIds: Set<string>): Promise<void> {
-    const orphaned = this.checkpointsAnchoredTo(entryIds)
-    if (orphaned.length === 0) return
-
-    await database.deleteCheckpoints(orphaned.map((cp) => cp.id))
-    this.forgetCheckpoints(orphaned)
-  }
-
   /**
    * Common cleanup logic after an entry is deleted.
    * Restores suggested actions from the new last narration entry and invalidates the retry backup.
@@ -1075,43 +1708,18 @@ class StoryStore {
   // Delete a story entry
   async deleteEntry(entryId: string): Promise<void> {
     if (!this.currentStory) throw new Error('No story loaded')
+    await this.drainClassificationWrites()
 
-    const existingEntry = this.assertEntryDeletable(entryId)
-    const currentBranchId = this.currentStory.currentBranchId
+    this.assertEntryDeletable(entryId)
 
     // Phase 2: Rollback on delete — cascade delete from this position with world state undo
     const rollbackEnabled =
-      settings.experimentalFeatures.stateTracking && settings.experimentalFeatures.rollbackOnDelete
+      (settings.experimentalFeatures.stateTracking &&
+        settings.experimentalFeatures.rollbackOnDelete) ||
+      isCollaborativeStory(this.currentStory)
 
     if (rollbackEnabled) {
-      log('Rollback-on-delete: cascading from position', existingEntry.position)
-
-      this.assertNoBranchForkAtOrAfter(existingEntry.position)
-
-      // Run rollback to undo world state changes for this entry and all after it
-      const rollbackSummary = await rollbackService.rollbackFromPosition(
-        this.currentStory.id,
-        currentBranchId ?? null,
-        existingEntry.position,
-        this.entries,
-      )
-
-      log('Rollback summary:', rollbackSummary)
-
-      // Now cascade-delete entries from this position onward (skip rollback — already done)
-      await this.deleteEntriesFromPosition(existingEntry.position, { skipRollback: true })
-
-      // Reload all entities from DB to ensure in-memory state is consistent
-      await this.reloadEntriesForCurrentBranch()
-
-      // Also reload time tracker from the story record
-      const freshStory = await database.getStory(this.currentStory.id)
-      if (freshStory) {
-        this.currentStory = { ...this.currentStory, timeTracker: freshStory.timeTracker }
-      }
-
-      this.postDeleteCleanup()
-
+      await this.truncateCollaborativeBranchFrom(entryId)
       return
     }
 
@@ -1154,6 +1762,165 @@ class StoryStore {
     this.postDeleteCleanup()
   }
 
+  /** Atomically remove one collaborative branch suffix and reverse all recorded state changes. */
+  async truncateCollaborativeBranchFrom(entryId: string, preserved?: StoryEntry): Promise<void> {
+    if (!this.currentStory) throw new Error('没有打开故事。')
+    await this.drainClassificationWrites()
+    const entry = this.entries.find((candidate) => candidate.id === entryId)
+    if (!entry) throw new Error('Entry not found')
+    this.assertNoBranchForkAtOrAfter(entry.position)
+    const { storyId, branchId, check } = this.captureWriteScope()
+    const settingsValue: StorySettings = { ...(this.currentStory.settings ?? {}) }
+    if (settingsValue.collaborativeNovelPlan) {
+      settingsValue.collaborativeNovelPlan = {
+        ...settingsValue.collaborativeNovelPlan,
+        needsReview: true,
+      }
+    }
+    if (settingsValue.collaborativeNovelPattern) {
+      settingsValue.collaborativeNovelPattern = {
+        ...settingsValue.collaborativeNovelPattern,
+        needsReview: true,
+      }
+    }
+    const rollback = planStateRollback(this.entries, entry.position)
+    if (!rollback.valid) {
+      const snapshot = await database.getLatestSnapshotBefore(storyId, branchId, entry.position - 1)
+      const snapshotEntry = snapshot
+        ? this.entries.find((candidate) => candidate.id === snapshot.entryId)
+        : undefined
+      const rebuild = snapshotEntry?.metadata?.collaborativeStateRebuild
+      const currentHash = rebuild
+        ? createCollaborativeStateRebuildRequest({
+            storyId,
+            branchId,
+            targetEntryId: snapshotEntry!.id,
+            targetPosition: snapshotEntry!.position,
+            entries: this.entries,
+            storyInitial: {
+              title: this.currentStory.title,
+              description: this.currentStory.description,
+              genre: this.currentStory.genre,
+              settings: this.currentStory.settings,
+            },
+            manualLorebook: this.lorebookEntries.filter((value) => value.createdBy !== 'ai'),
+          }).historyHash
+        : null
+      const narrationsBetween = snapshot
+        ? this.entries.some(
+            (candidate) =>
+              candidate.type === 'narration' &&
+              candidate.position > snapshot.entryPosition &&
+              candidate.position < entry.position,
+          )
+        : true
+      if (
+        snapshot &&
+        rebuild?.historyHash === currentHash &&
+        snapshot.entryPosition < entry.position &&
+        !narrationsBetween
+      ) {
+        await this.truncateFromConfirmedRebuild(entry, snapshot, settingsValue, preserved)
+        return
+      }
+      const positions = Array.from(
+        new Set(
+          rollback.issues.map((issue) => issue.position).filter((value) => value !== undefined),
+        ),
+      ).sort((a, b) => a! - b!)
+      throw new Error(
+        `无法安全删除：第 ${positions.join('、') || entry.position} 条正文缺少完整状态记录。请先重建到目标位置的状态。`,
+      )
+    }
+
+    const statements = collaborativeTruncationPlanStatements({
+      scope: { storyId, branchId },
+      fromPosition: entry.position,
+      plan: rollback.plan,
+      updatedAt: Date.now(),
+      settings: settingsValue,
+      preservedEntryId: preserved?.id,
+    })
+    if (preserved) {
+      await database.collectAtomicWrites(async (writer) => {
+        writer.stageAtomicStatements(statements)
+        await writer.updateStoryEntry(preserved.id, preserved)
+      })
+    } else {
+      await database.transaction(statements)
+    }
+    check()
+    this.currentStory = { ...this.currentStory, settings: settingsValue }
+    await this.reloadEntriesForCurrentBranch()
+    const freshStory = await database.getStory(storyId)
+    check()
+    if (freshStory) this.currentStory = freshStory
+    ui.clearGenerationCaches()
+    ui.clearSuggestions(storyId)
+    clearTier3SelectionCache()
+    clearImageMarkerCache()
+    this.postDeleteCleanup()
+  }
+
+  private async truncateFromConfirmedRebuild(
+    entry: StoryEntry,
+    snapshot: WorldStateSnapshot,
+    settingsValue: StorySettings,
+    preserved?: StoryEntry,
+  ): Promise<void> {
+    if (!this.currentStory) throw new Error('没有打开故事。')
+    const { storyId, branchId, check } = this.captureWriteScope()
+    const scopeParams = [storyId, branchId]
+    await database.collectAtomicWrites(async (writer) => {
+      writer.stageAtomicStatements([
+        {
+          sql: 'DELETE FROM characters WHERE story_id = ? AND branch_id IS ?',
+          params: scopeParams,
+        },
+        { sql: 'DELETE FROM locations WHERE story_id = ? AND branch_id IS ?', params: scopeParams },
+        { sql: 'DELETE FROM items WHERE story_id = ? AND branch_id IS ?', params: scopeParams },
+        {
+          sql: 'DELETE FROM story_beats WHERE story_id = ? AND branch_id IS ?',
+          params: scopeParams,
+        },
+      ])
+      for (const value of snapshot.charactersSnapshot) await writer.addCharacter(value)
+      for (const value of snapshot.locationsSnapshot) await writer.addLocation(value)
+      for (const value of snapshot.itemsSnapshot) await writer.addItem(value)
+      for (const value of snapshot.storyBeatsSnapshot) await writer.addStoryBeat(value)
+      if (snapshot.timeTrackerSnapshot) {
+        await writer.saveTimeTracker(storyId, snapshot.timeTrackerSnapshot)
+      } else {
+        await writer.clearTimeTracker(storyId)
+      }
+      writer.stageAtomicStatements(
+        collaborativeTruncationPlanStatements({
+          scope: { storyId, branchId },
+          fromPosition: entry.position,
+          plan: {
+            entries: [],
+            operations: [],
+            targetCurrentLocationId: undefined,
+            targetTimeTracker: undefined,
+          },
+          updatedAt: Date.now(),
+          settings: settingsValue,
+          preservedEntryId: preserved?.id,
+        }),
+      )
+      if (preserved) await writer.updateStoryEntry(preserved.id, preserved)
+    })
+    check()
+    await this.reloadEntriesForCurrentBranch()
+    const freshStory = await database.getStory(storyId)
+    if (freshStory) this.currentStory = freshStory
+    ui.clearGenerationCaches()
+    ui.clearSuggestions(storyId)
+    clearTier3SelectionCache()
+    clearImageMarkerCache()
+    this.postDeleteCleanup()
+  }
+
   /**
    * Undo a narration and the world state its classification applied, so it can be
    * regenerated from the same user action.
@@ -1177,13 +1944,63 @@ class StoryStore {
    */
   async undoNarrationForRegenerate(
     entryId: string,
+    options?: { preserveEntry?: boolean },
   ): Promise<{ entitiesUndone: boolean; timeUndone: boolean }> {
     if (!this.currentStory) throw new Error('No story loaded')
+    await this.drainClassificationWrites()
     this.assertNotBusy('regenerate')
 
     const entry = this.entries.find((e) => e.id === entryId)
     if (!entry) throw new Error('Entry not found')
     if (entry.type !== 'narration') throw new Error('Only a narration entry can be regenerated')
+
+    const collaborative = isCollaborativeStory(this.currentStory)
+    if (collaborative) {
+      let preserved: StoryEntry | undefined
+      if (options?.preserveEntry) {
+        const set = this.variantSetForEntry(entry)
+        const active = set.variants.find((variant) => variant.id === set.activeVariantId)
+        if (!active) throw new Error('找不到当前正文版本。')
+        const metadata = { ...entry.metadata }
+        delete metadata.variantSet
+        const status = metadata.collaborativeStateMaintenance?.status
+        metadata.timeEnd = entry.worldStateDelta?.previousState.timeTracker ??
+          metadata.timeStart ?? {
+            years: 0,
+            days: 0,
+            hours: 0,
+            minutes: 0,
+          }
+        active.classificationResult =
+          status === 'applied'
+            ? ((entry.worldStateDelta?.classificationResult as ClassificationResult | undefined) ??
+              active.classificationResult)
+            : (active.classificationResult ?? null)
+        if (status !== 'disabled' && status !== 'no_changes') {
+          metadata.collaborativeStateMaintenance = createStateMaintenanceRecord('failed', {
+            error: '重写准备已撤销此版本的事实状态；若重写中断，可恢复原版本或单独重试提取。',
+          })
+        }
+        Object.assign(active, {
+          content: entry.content,
+          reasoning: entry.reasoning,
+          translatedContent: entry.translatedContent,
+          translationLanguage: entry.translationLanguage,
+          suggestedActions: entry.suggestedActions,
+          state: metadata.collaborativeStateMaintenance?.status === 'failed' ? 'pending' : 'stored',
+          metadata,
+          worldStateDelta: null,
+        })
+        preserved = this.mirrorVariant(entry, set)
+      }
+      this._isRetryInProgress = true
+      try {
+        await this.truncateCollaborativeBranchFrom(entryId, preserved)
+      } finally {
+        this._isRetryInProgress = false
+      }
+      return { entitiesUndone: true, timeUndone: true }
+    }
 
     // Must be the very last entry, not merely the last *narration*: regenerating one with
     // a trailing user_action after it would append the new narration below that action,
@@ -1220,7 +2037,8 @@ class StoryStore {
       entitiesUndone = summary.entriesWithDelta > 0
       timeUndone = summary.restoredTimeTracker
     } catch (error) {
-      console.error('[StoryStore] Rollback failed before regenerate:', error)
+      // Never delete the narration after an incomplete rollback.
+      throw error
     }
 
     // Fallback for the no-delta case, and for a delta that recorded no time tracker.
@@ -1248,8 +2066,9 @@ class StoryStore {
    * Update an entry's timeEnd metadata after classification applies time progression.
    * Called after applyClassificationResult to record the story time after the entry's events.
    */
-  async updateEntryTimeEnd(entryId: string): Promise<void> {
+  async updateEntryTimeEnd(entryId: string, options?: ScopedWriteOptions): Promise<void> {
     if (!this.currentStory) throw new Error('No story loaded')
+    const { check } = this.captureWriteScope(options)
 
     const entry = this.entries.find((e) => e.id === entryId)
     if (!entry) {
@@ -1265,6 +2084,7 @@ class StoryStore {
     const updatedMetadata = { ...entry.metadata, timeEnd }
 
     await database.updateStoryEntry(entryId, { metadata: updatedMetadata })
+    check()
     this.entries = this.entries.map((e) =>
       e.id === entryId ? { ...e, metadata: updatedMetadata } : e,
     )
@@ -1278,6 +2098,23 @@ class StoryStore {
   async updateEntryReasoning(entryId: string, reasoning: string): Promise<void> {
     const entry = this.entries.find((e) => e.id === entryId)
     if (!entry) return
+
+    const existingVariants = entry.metadata?.variantSet
+    if (existingVariants?.variants?.length) {
+      const nextSet: StoryEntryVariantSet = {
+        ...this.variantSetForEntry(entry),
+        variants: existingVariants.variants.map((variant) =>
+          variant.id === existingVariants.activeVariantId ? { ...variant, reasoning } : variant,
+        ),
+      }
+      const mirrored = this.mirrorVariant(entry, nextSet)
+      this.entries = this.entries.map((e) => (e.id === entryId ? mirrored : e))
+      await database.updateStoryEntry(entryId, {
+        reasoning: mirrored.reasoning,
+        metadata: mirrored.metadata,
+      })
+      return
+    }
 
     // Update in-memory state
     this.entries = this.entries.map((e) => (e.id === entryId ? { ...e, reasoning } : e))
@@ -1405,47 +2242,60 @@ class StoryStore {
     options?: { skipRollback?: boolean },
   ): Promise<void> {
     if (!this.currentStory) throw new Error('No story loaded')
+    const { storyId, branchId, check } = this.captureWriteScope()
+    const currentStory = this.currentStory
+    await this.drainClassificationWrites()
+    check()
 
     this.assertNoBranchForkAtOrAfter(position)
+    // Capture after draining so rollback includes the classification's persisted delta.
+    const entries = [...this.entries]
+    const chapters = [...this.chapters]
+    const entriesToDelete = entries.filter((e) => e.position >= position)
+    const entryIdsToDelete = new Set(entriesToDelete.map((e) => e.id))
+    const chaptersToDelete = chapters.filter(
+      (ch) => entryIdsToDelete.has(ch.startEntryId) || entryIdsToDelete.has(ch.endEntryId),
+    )
+    const droppedCheckpoints = this.checkpointsAnchoredTo(entryIdsToDelete)
+
+    const collaborative = isCollaborativeStory(currentStory)
+    if (collaborative && !options?.skipRollback) {
+      const firstEntry = entries.find((entry) => entry.position >= position)
+      if (firstEntry) {
+        await this.truncateCollaborativeBranchFrom(firstEntry.id)
+        return
+      }
+    }
 
     // Phase 2: Rollback world state before deleting entries
     // Skip if caller already performed rollback (e.g. deleteEntry)
     const rollbackEnabled =
       !options?.skipRollback &&
-      settings.experimentalFeatures.stateTracking &&
-      settings.experimentalFeatures.rollbackOnDelete
+      ((settings.experimentalFeatures.stateTracking &&
+        settings.experimentalFeatures.rollbackOnDelete) ||
+        isCollaborativeStory(currentStory))
 
     if (rollbackEnabled) {
       try {
         const rollbackSummary = await rollbackService.rollbackFromPosition(
-          this.currentStory.id,
-          this.currentStory.currentBranchId ?? null,
+          storyId,
+          branchId,
           position,
-          this.entries,
+          entries,
         )
+        check()
         log('Rollback before deleteEntriesFromPosition:', rollbackSummary)
       } catch (error) {
-        console.error('[StoryStore] Rollback failed, proceeding with entry deletion:', error)
+        console.error('[StoryStore] Rollback failed; refusing to delete entries:', error)
+        throw error
       }
     }
-
-    // Find entries to delete (position >= the given position)
-    const entriesToDelete = this.entries.filter((e) => e.position >= position)
-    const entryIdsToDelete = new Set(entriesToDelete.map((e) => e.id))
 
     log('Deleting entries from position', {
       position,
       entriesToDelete: entriesToDelete.length,
-      totalEntries: this.entries.length,
+      totalEntries: entries.length,
     })
-
-    // Find chapters that reference any of the entries being deleted
-    // (chapters have foreign keys to start_entry_id and end_entry_id)
-    const chaptersToDelete = this.chapters.filter(
-      (ch) => entryIdsToDelete.has(ch.startEntryId) || entryIdsToDelete.has(ch.endEntryId),
-    )
-
-    const droppedCheckpoints = this.checkpointsAnchoredTo(entryIdsToDelete)
 
     log('Deleting entries and the rows that reference them', {
       chaptersToDelete: chaptersToDelete.length,
@@ -1458,19 +2308,21 @@ class StoryStore {
       chapterIds: chaptersToDelete.map((ch) => ch.id),
       checkpointIds: droppedCheckpoints.map((cp) => cp.id),
     })
+    check()
 
-    this.chapters = this.chapters.filter((ch) => !chaptersToDelete.some((d) => d.id === ch.id))
+    this.chapters = chapters.filter((ch) => !chaptersToDelete.some((d) => d.id === ch.id))
     this.forgetCheckpoints(droppedCheckpoints)
 
     // Update in-memory state
-    this.entries = this.entries.filter((e) => e.position < position)
+    this.entries = entries.filter((e) => e.position < position)
 
     // Invalidate caches
     this.invalidateWordCountCache()
     this.invalidateChapterCache()
 
     // Update story's updatedAt
-    await database.updateStory(this.currentStory.id, {})
+    await database.updateStory(storyId, {})
+    check()
 
     // Restore suggested actions from the new last narration entry
     this.restoreSuggestedActionsAfterDelete()
@@ -1551,8 +2403,12 @@ class StoryStore {
    * If the character is inherited from a parent branch, creates an override.
    * Returns the owned character (either the original or the new override).
    */
-  private async cowCharacter(entity: Character): Promise<{ entity: Character; wasCowed: boolean }> {
-    const branchId = this.currentStory?.currentBranchId
+  private async cowCharacter(
+    entity: Character,
+    options?: ScopedWriteOptions,
+    writeDatabase: DatabaseService = database,
+  ): Promise<{ entity: Character; wasCowed: boolean }> {
+    const { branchId, check } = this.captureWriteScope(options)
     if (
       !branchId ||
       entity.branchId === branchId ||
@@ -1567,7 +2423,8 @@ class StoryStore {
       branchId,
       overridesId: entity.overridesId ?? entity.id,
     }
-    await database.addCharacter(override)
+    await writeDatabase.addCharacter(override)
+    check()
     this.characters = this.characters.map((c) => (c.id === entity.id ? override : c))
     log(
       'COW: Created character override',
@@ -1582,8 +2439,12 @@ class StoryStore {
   /**
    * Ensure a location is owned by the current branch (COW).
    */
-  private async cowLocation(entity: Location): Promise<{ entity: Location; wasCowed: boolean }> {
-    const branchId = this.currentStory?.currentBranchId
+  private async cowLocation(
+    entity: Location,
+    options?: ScopedWriteOptions,
+    writeDatabase: DatabaseService = database,
+  ): Promise<{ entity: Location; wasCowed: boolean }> {
+    const { branchId, check } = this.captureWriteScope(options)
     if (
       !branchId ||
       entity.branchId === branchId ||
@@ -1598,7 +2459,8 @@ class StoryStore {
       branchId,
       overridesId: entity.overridesId ?? entity.id,
     }
-    await database.addLocation(override)
+    await writeDatabase.addLocation(override)
+    check()
     this.locations = this.locations.map((l) => (l.id === entity.id ? override : l))
     log(
       'COW: Created location override',
@@ -1613,8 +2475,12 @@ class StoryStore {
   /**
    * Ensure an item is owned by the current branch (COW).
    */
-  private async cowItem(entity: Item): Promise<{ entity: Item; wasCowed: boolean }> {
-    const branchId = this.currentStory?.currentBranchId
+  private async cowItem(
+    entity: Item,
+    options?: ScopedWriteOptions,
+    writeDatabase: DatabaseService = database,
+  ): Promise<{ entity: Item; wasCowed: boolean }> {
+    const { branchId, check } = this.captureWriteScope(options)
     if (
       !branchId ||
       entity.branchId === branchId ||
@@ -1629,7 +2495,8 @@ class StoryStore {
       branchId,
       overridesId: entity.overridesId ?? entity.id,
     }
-    await database.addItem(override)
+    await writeDatabase.addItem(override)
+    check()
     this.items = this.items.map((i) => (i.id === entity.id ? override : i))
     log(
       'COW: Created item override',
@@ -1644,8 +2511,12 @@ class StoryStore {
   /**
    * Ensure a story beat is owned by the current branch (COW).
    */
-  private async cowStoryBeat(entity: StoryBeat): Promise<{ entity: StoryBeat; wasCowed: boolean }> {
-    const branchId = this.currentStory?.currentBranchId
+  private async cowStoryBeat(
+    entity: StoryBeat,
+    options?: ScopedWriteOptions,
+    writeDatabase: DatabaseService = database,
+  ): Promise<{ entity: StoryBeat; wasCowed: boolean }> {
+    const { branchId, check } = this.captureWriteScope(options)
     if (
       !branchId ||
       entity.branchId === branchId ||
@@ -1660,7 +2531,8 @@ class StoryStore {
       branchId,
       overridesId: entity.overridesId ?? entity.id,
     }
-    await database.addStoryBeat(override)
+    await writeDatabase.addStoryBeat(override)
+    check()
     this.storyBeats = this.storyBeats.map((b) => (b.id === entity.id ? override : b))
     log(
       'COW: Created story beat override',
@@ -2243,6 +3115,7 @@ class StoryStore {
       await fn()
       this.classificationErrors = 0
     } catch (err) {
+      if (err instanceof Error && err.name === 'AbortError') throw err
       this.classificationErrors++
       console.error(`[StoryStore] ${label} failed for ${entityName}:`, err)
       ui.showToast(`${label} failed: ${entityName}`, 'warning')
@@ -2258,7 +3131,340 @@ class StoryStore {
    * Apply classification results to update world state.
    * This is Phase 4 of the processing pipeline per design doc.
    */
-  async applyClassificationResult(result: ClassificationResult, entryId?: string): Promise<void> {
+  async applyClassificationResult(
+    result: ClassificationResult,
+    entryId?: string,
+    options?: ScopedWriteOptions,
+  ): Promise<void> {
+    if (!this.currentStory && !options) return
+    const { storyId, branchId, check } = this.captureWriteScope(options)
+    const identity = this.captureWriteScope({ scope: { storyId, branchId } })
+    assertWriteScopeCurrent(!this.classificationWrite && !this._isRetryInProgress)
+    const active = { storyId, branchId, done: Promise.resolve() }
+    this.classificationWrite = active
+    active.done = Promise.resolve().then(() => {
+      check()
+      // Once mutation begins, a same-scope stop drains through delta persistence.
+      // Navigation still cancels: never refill or continue against another story.
+      return this.applyClassificationResultScoped(result, entryId, {
+        scope: { storyId, branchId },
+        isScopeCurrent: () => {
+          identity.check()
+          return true
+        },
+      })
+    })
+    try {
+      await active.done
+    } finally {
+      if (this.classificationWrite === active) this.classificationWrite = null
+    }
+  }
+
+  /** Retry fact/state extraction for a saved collaborative narration without regenerating prose. */
+  async retryCollaborativeStateExtraction(entryId: string): Promise<void> {
+    if (!this.currentStory) throw new Error('没有打开故事。')
+    if (!isCollaborativeStory(this.currentStory)) throw new Error('仅中文写作支持单独重试提取。')
+    this.assertNotBusy('重试事实与状态提取')
+    const { storyId, branchId, check } = this.captureWriteScope()
+    const extractionEnabled = () =>
+      this.currentStory?.settings?.collaborativeNovelWorkflow?.factStateExtractor?.enabled !== false
+    if (!extractionEnabled()) {
+      throw new Error('正文事实与状态提取已关闭。')
+    }
+    const entry = this.entries.find((candidate) => candidate.id === entryId)
+    if (!entry || entry.type !== 'narration') throw new Error('找不到可重试的正文。')
+    if ((entry.branchId ?? null) !== branchId) {
+      throw new Error('继承正文需要使用当前分支的状态重建，不能回写父分支提取记录。')
+    }
+    if (
+      entry.metadata?.collaborativeStateMaintenance?.status !== 'failed' ||
+      entry.worldStateDelta
+    ) {
+      throw new Error('只能重试未应用状态的失败提取；已应用状态需要使用状态重建。')
+    }
+    const lastNarration = [...this.entries]
+      .reverse()
+      .find((candidate) => candidate.type === 'narration')
+    if (lastNarration?.id !== entry.id) {
+      throw new Error('只能直接重试当前末尾正文；更早正文需要使用状态重建。')
+    }
+    const result = await aiService.classifyResponse(
+      entry.content,
+      '只从已生成正文提取实际发生的事实。作者意图、未来规划和被否决版本不是事实。',
+      this.worldStateSnapshot,
+      this.currentStory,
+      this.entries.filter(
+        (candidate) => candidate.type === 'narration' && candidate.position < entry.position,
+      ),
+      entry.metadata?.timeStart ?? this.currentStory.timeTracker,
+    )
+    check()
+    this.assertNotBusy('重试事实与状态提取')
+    const currentEntry = this.entries.find((candidate) => candidate.id === entry.id)
+    assertWriteScopeCurrent(
+      isCollaborativeStory(this.currentStory) &&
+        extractionEnabled() &&
+        currentEntry?.content === entry.content &&
+        currentEntry?.metadata?.variantSet?.activeVariantId ===
+          entry.metadata?.variantSet?.activeVariantId &&
+        currentEntry?.metadata?.collaborativeStateMaintenance?.status === 'failed' &&
+        !currentEntry?.worldStateDelta &&
+        this.entries.filter((candidate) => candidate.type === 'narration').at(-1)?.id === entry.id,
+    )
+    await this.applyClassificationResult(result, entry.id, {
+      scope: { storyId, branchId },
+      isScopeCurrent: () => {
+        check()
+        return true
+      },
+    })
+    check()
+    const refreshed = this.entries.find((candidate) => candidate.id === entry.id)
+    if (refreshed?.metadata?.variantSet) {
+      await this.updateNarrationVariant(entry.id, {
+        classificationResult: result,
+        worldStateDelta: refreshed.worldStateDelta,
+        metadata: refreshed.metadata,
+      })
+    }
+  }
+
+  async createCollaborativeStateRebuildDraft(
+    entryId: string,
+  ): Promise<CollaborativeStateRebuildDraft> {
+    if (!this.currentStory) throw new Error('没有打开故事。')
+    if (
+      this.currentStory.settings?.collaborativeNovelWorkflow?.factStateExtractor?.enabled === false
+    ) {
+      throw new Error('正文事实与状态提取已关闭。')
+    }
+    const target = this.entries.find((entry) => entry.id === entryId)
+    if (!target || target.type !== 'narration') throw new Error('只能重建到已保存的正文。')
+    const service = new CollaborativeStateRebuildService((request) =>
+      aiService.generateCollaborativeStateRebuild(this.currentStory!.id, request),
+    )
+    return service.createDraft({
+      storyId: this.currentStory.id,
+      branchId: this.currentStory.currentBranchId,
+      targetEntryId: target.id,
+      targetPosition: target.position,
+      entries: this.entries,
+      storyInitial: {
+        title: this.currentStory.title,
+        description: this.currentStory.description,
+        genre: this.currentStory.genre,
+        settings: this.currentStory.settings,
+      },
+      manualLorebook: this.lorebookEntries.filter((entry) => entry.createdBy !== 'ai'),
+      currentState: {
+        characters: this.characters,
+        locations: this.locations,
+        items: this.items,
+        storyBeats: this.storyBeats,
+        currentLocationId: this.currentLocation?.id ?? null,
+        storyTime: this.currentStory.timeTracker,
+      },
+    })
+  }
+
+  /** Confirm an AI-inferred historical snapshot. Preview generation never calls this method. */
+  async confirmCollaborativeStateRebuild(draft: CollaborativeStateRebuildDraft): Promise<void> {
+    if (!this.currentStory) throw new Error('没有打开故事。')
+    await this.drainClassificationWrites()
+    this.assertNotBusy('confirm state rebuild')
+    const { storyId, branchId, check } = this.captureWriteScope()
+    const confirmation = checkCollaborativeStateRebuildConfirmation(draft, {
+      storyId,
+      branchId,
+      targetEntryId: draft.targetEntryId,
+      targetPosition: draft.targetPosition,
+      entries: this.entries,
+      storyInitial: {
+        title: this.currentStory.title,
+        description: this.currentStory.description,
+        genre: this.currentStory.genre,
+        settings: this.currentStory.settings,
+      },
+      manualLorebook: this.lorebookEntries.filter((entry) => entry.createdBy !== 'ai'),
+    })
+    if (!confirmation.valid) throw new Error('故事或正文历史已变化，重建草稿已失效。')
+    if (draft.diff.uncertain.length > 0) throw new Error('候选状态仍有不确定实体，不能确认写入。')
+    const target = this.entries.find((entry) => entry.id === draft.targetEntryId)!
+    const mapId = new SvelteMap<string, string>()
+    const allocate = (id: string | null, name: string) => {
+      const key = id ?? `name:${name.normalize('NFKC').trim().toLowerCase()}`
+      if (!mapId.has(key)) mapId.set(key, id ?? crypto.randomUUID())
+      return mapId.get(key)!
+    }
+    const characters = draft.candidate.characters.map((value) => ({
+      ...value,
+      id: allocate(value.id, value.name),
+      storyId,
+      branchId,
+      portrait: null,
+    })) as Character[]
+    const locations = draft.candidate.locations.map((value) => ({
+      ...value,
+      id: allocate(value.id, value.name),
+      storyId,
+      branchId,
+      connections: value.connections.map((id) => mapId.get(id) ?? id),
+    })) as Location[]
+    const items = draft.candidate.items.map((value) => ({
+      ...value,
+      id: allocate(value.id, value.name),
+      storyId,
+      branchId,
+      location:
+        value.location === 'inventory'
+          ? 'inventory'
+          : (mapId.get(value.location) ?? value.location),
+    })) as Item[]
+    const storyBeats = draft.candidate.storyBeats.map((value) => ({
+      ...value,
+      id: allocate(value.id, value.title),
+      storyId,
+      branchId,
+      triggeredAt: value.triggeredAt ?? draft.createdAt,
+    })) as StoryBeat[]
+    const metadata = {
+      ...target.metadata,
+      collaborativeStateRebuild: {
+        version: 1 as const,
+        historyHash: draft.historyHash,
+        targetEntryId: target.id,
+        rebuiltAt: Date.now(),
+        source: 'ai_confirmed' as const,
+      },
+    }
+    const snapshot: WorldStateSnapshot = {
+      id: crypto.randomUUID(),
+      storyId,
+      branchId,
+      entryId: target.id,
+      entryPosition: target.position,
+      charactersSnapshot: characters,
+      locationsSnapshot: locations,
+      itemsSnapshot: items,
+      storyBeatsSnapshot: storyBeats,
+      lorebookEntriesSnapshot: this.lorebookEntries.map((entry) => ({ ...entry })),
+      timeTrackerSnapshot: draft.candidate.storyTime,
+      createdAt: Date.now(),
+    }
+    check()
+    await database.collectAtomicWrites(async (writer) => {
+      await writer.createWorldStateSnapshot(snapshot)
+      writer.stageAtomicStatements([
+        {
+          sql: 'UPDATE story_entries SET metadata = ? WHERE id = ? AND story_id = ? AND branch_id IS ?',
+          params: [JSON.stringify(metadata), target.id, storyId, branchId],
+          expectedRows: 1,
+        },
+      ])
+    })
+    check()
+    this.entries = this.entries.map((entry) =>
+      entry.id === target.id ? { ...entry, metadata } : entry,
+    )
+  }
+
+  private async applyClassificationResultScoped(
+    result: ClassificationResult,
+    entryId?: string,
+    options?: ScopedWriteOptions,
+  ): Promise<void> {
+    const collaborative = isCollaborativeStory(this.currentStory)
+    if (!collaborative || !entryId) {
+      if (collaborative && result._error) throw new Error(result._error)
+      return this.applyClassificationResultMutating(result, entryId, options)
+    }
+    const { check } = this.captureWriteScope(options)
+
+    const before = {
+      characters: this.characters,
+      locations: this.locations,
+      items: this.items,
+      storyBeats: this.storyBeats,
+      entries: this.entries,
+      currentStory: this.currentStory,
+    }
+    try {
+      if (result._error) throw new Error(result._error)
+      await database.collectAtomicWrites((writer) =>
+        this.applyClassificationResultMutating(result, entryId, options, writer),
+      )
+    } catch (error) {
+      check()
+
+      this.characters = before.characters
+      this.locations = before.locations
+      this.items = before.items
+      this.storyBeats = before.storyBeats
+      this.entries = before.entries
+      this.currentStory = before.currentStory
+
+      const entry = this.entries.find((candidate) => candidate.id === entryId)
+      if (entry) {
+        const message = error instanceof Error ? error.message : String(error)
+        const maintenance = entry.metadata?.collaborativeStateMaintenance
+        const hasCommittedState =
+          !!entry.worldStateDelta ||
+          maintenance?.status === 'applied' ||
+          maintenance?.status === 'no_changes'
+        const metadata = {
+          ...entry.metadata,
+          ...(hasCommittedState
+            ? maintenance
+              ? { collaborativeStateMaintenance: { ...maintenance, warning: message } }
+              : {}
+            : {
+                collaborativeStateMaintenance: createStateMaintenanceRecord('failed', {
+                  error: message,
+                }),
+              }),
+        }
+        const worldStateDelta = entry.worldStateDelta ?? null
+        await database.updateStoryEntry(entryId, { metadata, worldStateDelta })
+        check()
+        this.entries = this.entries.map((candidate) =>
+          candidate.id === entryId ? { ...candidate, metadata, worldStateDelta } : candidate,
+        )
+      }
+      throw error
+    }
+  }
+
+  private async applyClassificationResultMutating(
+    result: ClassificationResult,
+    entryId?: string,
+    options?: ScopedWriteOptions,
+    writeDatabase: DatabaseService = database,
+  ): Promise<void> {
+    const database = writeDatabase
+    if (!this.currentStory && !options) {
+      log('applyClassificationResult: No story loaded, skipping')
+      return
+    }
+    const { storyId, branchId, check } = this.captureWriteScope(options)
+    const scoped: ScopedWriteOptions = {
+      scope: { storyId, branchId },
+      isScopeCurrent: () => {
+        check()
+        return true
+      },
+    }
+    // Check in finally too: a failed old request must not resume on the new story.
+    const write = async <T>(operation: () => Promise<T>): Promise<T> => {
+      check()
+      try {
+        return await operation()
+      } finally {
+        check()
+      }
+    }
+    const guardedUpdate = (label: string, name: string, operation: () => Promise<void>) =>
+      this.wrapUpdate(label, name, () => write(operation))
     if (!this.currentStory) {
       log('applyClassificationResult: No story loaded, skipping')
       return
@@ -2276,8 +3482,9 @@ class StoryStore {
       scene: result.scene,
     })
 
-    const storyId = this.currentStory.id
-    const trackingEnabled = settings.experimentalFeatures.stateTracking && !!entryId
+    const trackingEnabled =
+      (settings.experimentalFeatures.stateTracking || isCollaborativeStory(this.currentStory)) &&
+      !!entryId
 
     // Extract runtime variable definitions attached by ClassifierService (if any)
     const runtimeVarDefs: RuntimeVariable[] | undefined = result._runtimeVarDefs
@@ -2387,7 +3594,8 @@ class StoryStore {
 
     // Apply character updates
     for (const update of result.entryUpdates.characterUpdates) {
-      await this.wrapUpdate('Update character', update.name, async () => {
+      check()
+      await guardedUpdate('Update character', update.name, async () => {
         let existing = this.characters.find((c) => sameEntityName(c.name, update.name))
 
         // If character doesn't exist yet, create it first
@@ -2414,12 +3622,15 @@ class StoryStore {
             relationship: newCharData?.relationship ?? null,
             traits: newCharData?.traits ?? [],
             visualDescriptors: newCharData?.visualDescriptors ?? {},
-            status: (newCharData?.status as Character['status']) ?? 'active',
+            status:
+              (newCharData?.status as Character['status']) ??
+              (isCollaborativeStory(this.currentStory) ? 'inactive' : 'active'),
             metadata: charMetadata,
             portrait: null,
-            branchId: this.currentStory?.currentBranchId ?? null,
+            branchId,
           }
-          await database.addCharacter(character)
+          await write(() => database.addCharacter(character))
+          check()
           this.characters = [...this.characters, character]
           if (trackingEnabled) createdCharacterIds.push(character.id)
           existing = character
@@ -2449,12 +3660,14 @@ class StoryStore {
             changes.traits = Array.from(traitMap.values())
           }
           // Handle visual descriptor updates for image generation
-          // New format: visualDescriptors is a structured object that replaces entirely
+          // Collaborative extraction patches evidenced categories; adventure replaces the object.
           if (
             update.changes.visualDescriptors &&
             Object.keys(update.changes.visualDescriptors).length > 0
           ) {
-            changes.visualDescriptors = update.changes.visualDescriptors
+            changes.visualDescriptors = isCollaborativeStory(this.currentStory)
+              ? mergeVisualDescriptors(existing.visualDescriptors, update.changes.visualDescriptors)
+              : update.changes.visualDescriptors
           }
           // Merge inline runtime variable values into metadata if present
           const charInlineVars = extractInlineCustomVars(
@@ -2465,8 +3678,13 @@ class StoryStore {
             changes.metadata = mergeRuntimeVars(existing.metadata, charInlineVars, defsByName)
           }
           // COW: ensure entity is owned by current branch before updating
-          const { entity: ownedChar, wasCowed: charWasCowed } = await this.cowCharacter(existing)
-          await database.updateCharacter(ownedChar.id, changes)
+          const { entity: ownedChar, wasCowed: charWasCowed } = await this.cowCharacter(
+            existing,
+            scoped,
+            writeDatabase,
+          )
+          await write(() => database.updateCharacter(ownedChar.id, changes))
+          check()
           this.characters = this.characters.map((c) =>
             c.id === ownedChar.id ? { ...c, ...changes } : c,
           )
@@ -2482,7 +3700,8 @@ class StoryStore {
 
     // Apply location updates
     for (const update of result.entryUpdates.locationUpdates) {
-      await this.wrapUpdate('Update location', update.name, async () => {
+      check()
+      await guardedUpdate('Update location', update.name, async () => {
         let existing = this.locations.find((l) => sameEntityName(l.name, update.name))
 
         // If location doesn't exist yet, create it first
@@ -2512,9 +3731,10 @@ class StoryStore {
             current: false,
             connections: [],
             metadata: locMetadata,
-            branchId: this.currentStory?.currentBranchId ?? null,
+            branchId,
           }
-          await database.addLocation(location)
+          await write(() => database.addLocation(location))
+          check()
           this.locations = [...this.locations, location]
           if (trackingEnabled) createdLocationIds.push(location.id)
           existing = location
@@ -2546,7 +3766,12 @@ class StoryStore {
           }
 
           // COW: ensure entity is owned by current branch before updating
-          const { entity: ownedLoc, wasCowed: locWasCowed } = await this.cowLocation(existing)
+          const { entity: ownedLoc, wasCowed: locWasCowed } = await this.cowLocation(
+            existing,
+            scoped,
+            writeDatabase,
+          )
+          check()
 
           if (Object.keys(changes).length === 0) {
             // Even if no changes, track COW if it happened
@@ -2557,7 +3782,8 @@ class StoryStore {
             }
             return
           }
-          await database.updateLocation(ownedLoc.id, changes)
+          await write(() => database.updateLocation(ownedLoc.id, changes))
+          check()
           this.locations = this.locations.map((l) =>
             l.id === ownedLoc.id ? { ...l, ...changes } : l,
           )
@@ -2572,7 +3798,8 @@ class StoryStore {
 
     // Apply item updates
     for (const update of result.entryUpdates.itemUpdates) {
-      await this.wrapUpdate('Update item', update.name, async () => {
+      check()
+      await guardedUpdate('Update item', update.name, async () => {
         let existing = this.items.find((i) => sameEntityName(i.name, update.name))
 
         // If item doesn't exist yet, create it first
@@ -2600,9 +3827,10 @@ class StoryStore {
             equipped: false,
             location: newItemData?.location ?? 'inventory',
             metadata: itemMetadata,
-            branchId: this.currentStory?.currentBranchId ?? null,
+            branchId,
           }
-          await database.addItem(item)
+          await write(() => database.addItem(item))
+          check()
           this.items = [...this.items, item]
           if (trackingEnabled) createdItemIds.push(item.id)
           existing = item
@@ -2623,8 +3851,13 @@ class StoryStore {
             changes.metadata = mergeRuntimeVars(existing.metadata, itemInlineVars, defsByName)
           }
           // COW: ensure entity is owned by current branch before updating
-          const { entity: ownedItem, wasCowed: itemWasCowed } = await this.cowItem(existing)
-          await database.updateItem(ownedItem.id, changes)
+          const { entity: ownedItem, wasCowed: itemWasCowed } = await this.cowItem(
+            existing,
+            scoped,
+            writeDatabase,
+          )
+          await write(() => database.updateItem(ownedItem.id, changes))
+          check()
           this.items = this.items.map((i) => (i.id === ownedItem.id ? { ...i, ...changes } : i))
           if (itemWasCowed && trackingEnabled) {
             createdItemIds.push(ownedItem.id)
@@ -2637,7 +3870,8 @@ class StoryStore {
 
     // Apply story beat updates (mark as completed/failed)
     for (const update of result.entryUpdates.storyBeatUpdates) {
-      await this.wrapUpdate('Update story beat', update.title, async () => {
+      check()
+      await guardedUpdate('Update story beat', update.title, async () => {
         let existing = this.storyBeats.find((b) => sameEntityName(b.title, update.title))
 
         // If story beat doesn't exist yet, create it first
@@ -2665,9 +3899,10 @@ class StoryStore {
             status: newBeatData?.status ?? 'active',
             triggeredAt: Date.now(),
             metadata: beatMetadata,
-            branchId: this.currentStory?.currentBranchId ?? null,
+            branchId,
           }
-          await database.addStoryBeat(beat)
+          await write(() => database.addStoryBeat(beat))
+          check()
           this.storyBeats = [...this.storyBeats, beat]
           if (trackingEnabled) createdStoryBeatIds.push(beat.id)
           existing = beat
@@ -2693,8 +3928,13 @@ class StoryStore {
             changes.metadata = mergeRuntimeVars(existing.metadata, beatInlineVars, defsByName)
           }
           // COW: ensure entity is owned by current branch before updating
-          const { entity: ownedBeat, wasCowed: beatWasCowed } = await this.cowStoryBeat(existing)
-          await database.updateStoryBeat(ownedBeat.id, changes)
+          const { entity: ownedBeat, wasCowed: beatWasCowed } = await this.cowStoryBeat(
+            existing,
+            scoped,
+            writeDatabase,
+          )
+          await write(() => database.updateStoryBeat(ownedBeat.id, changes))
+          check()
           this.storyBeats = this.storyBeats.map((b) =>
             b.id === ownedBeat.id ? { ...b, ...changes } : b,
           )
@@ -2709,7 +3949,8 @@ class StoryStore {
 
     // Add new characters (check for duplicates)
     for (const newChar of result.entryUpdates.newCharacters) {
-      await this.wrapUpdate('Add character', newChar.name, async () => {
+      check()
+      await guardedUpdate('Add character', newChar.name, async () => {
         const exists = this.characters.some((c) => sameEntityName(c.name, newChar.name))
         if (!exists) {
           log('Adding new character:', newChar.name)
@@ -2729,12 +3970,15 @@ class StoryStore {
             relationship: newChar.relationship ?? null,
             traits: newChar.traits ?? [],
             visualDescriptors: newChar.visualDescriptors ?? {},
-            status: 'active',
+            status: isCollaborativeStory(this.currentStory)
+              ? (newChar.status ?? 'inactive')
+              : 'active',
             metadata: charMetadata,
             portrait: null,
-            branchId: this.currentStory?.currentBranchId ?? null,
+            branchId,
           }
-          await database.addCharacter(character)
+          await write(() => database.addCharacter(character))
+          check()
           this.characters = [...this.characters, character]
           if (trackingEnabled) createdCharacterIds.push(character.id)
         }
@@ -2744,7 +3988,8 @@ class StoryStore {
     // Handle scene.currentLocationName - update current location if specified
     // Runs before newLocations so stubs are available for merging
     if (result.scene.currentLocationName) {
-      await this.wrapUpdate('Set scene location', result.scene.currentLocationName, async () => {
+      check()
+      await guardedUpdate('Set scene location', result.scene.currentLocationName, async () => {
         const locationName = result.scene.currentLocationName!
         let currentLoc = this.locations.find((l) => sameEntityName(l.name, locationName))
 
@@ -2763,9 +4008,10 @@ class StoryStore {
             current: false,
             connections: [],
             metadata: { source: 'classifier' },
-            branchId: this.currentStory?.currentBranchId ?? null,
+            branchId,
           }
-          await database.addLocation(stubLocation)
+          await write(() => database.addLocation(stubLocation))
+          check()
           this.locations = [...this.locations, stubLocation]
           if (trackingEnabled) createdLocationIds.push(stubLocation.id)
           currentLoc = stubLocation
@@ -2775,13 +4021,21 @@ class StoryStore {
           log('Setting current location from scene:', currentLoc.name)
           if (this.isCowBranch()) {
             // COW-aware: targeted updates
-            const { entity: ownedTarget, wasCowed: targetWasCowed } =
-              await this.cowLocation(currentLoc)
+            const { entity: ownedTarget, wasCowed: targetWasCowed } = await this.cowLocation(
+              currentLoc,
+              scoped,
+              writeDatabase,
+            )
+            check()
             const prevCurrent = this.locations.find((l) => l.current && l.id !== ownedTarget.id)
             if (prevCurrent) {
-              const { entity: ownedPrev, wasCowed: prevWasCowed } =
-                await this.cowLocation(prevCurrent)
-              await database.updateLocation(ownedPrev.id, { current: false })
+              const { entity: ownedPrev, wasCowed: prevWasCowed } = await this.cowLocation(
+                prevCurrent,
+                scoped,
+                writeDatabase,
+              )
+              await write(() => database.updateLocation(ownedPrev.id, { current: false }))
+              check()
               this.locations = this.locations.map((l) =>
                 l.id === ownedPrev.id ? { ...l, current: false } : l,
               )
@@ -2791,7 +4045,10 @@ class StoryStore {
                 if (idx !== -1) locationsBefore.splice(idx, 1)
               }
             }
-            await database.updateLocation(ownedTarget.id, { current: true, visited: true })
+            await write(() =>
+              database.updateLocation(ownedTarget.id, { current: true, visited: true }),
+            )
+            check()
             this.locations = this.locations.map((l) =>
               l.id === ownedTarget.id ? { ...l, current: true, visited: true } : l,
             )
@@ -2801,7 +4058,20 @@ class StoryStore {
               if (idx !== -1) locationsBefore.splice(idx, 1)
             }
           } else {
-            await database.setCurrentLocation(storyId, currentLoc.id)
+            // The database's story-wide setter also clears sibling branches.
+            for (const previous of this.locations.filter(
+              (location) => location.current && location.id !== currentLoc!.id,
+            )) {
+              await write(() => database.updateLocation(previous.id, { current: false }))
+              check()
+              this.locations = this.locations.map((location) =>
+                location.id === previous.id ? { ...location, current: false } : location,
+              )
+            }
+            await write(() =>
+              database.updateLocation(currentLoc!.id, { current: true, visited: true }),
+            )
+            check()
             this.locations = this.locations.map((l) => ({
               ...l,
               current: l.id === currentLoc!.id,
@@ -2814,7 +4084,8 @@ class StoryStore {
 
     // Add new locations (check for duplicates, merge into recently created)
     for (const newLoc of result.entryUpdates.newLocations) {
-      await this.wrapUpdate('Add location', newLoc.name, async () => {
+      check()
+      await guardedUpdate('Add location', newLoc.name, async () => {
         const existing = this.locations.find((l) => sameEntityName(l.name, newLoc.name))
         if (existing && createdLocationIds.includes(existing.id)) {
           // Merge into location created earlier in this classification run
@@ -2836,7 +4107,8 @@ class StoryStore {
             changes.metadata = mergeRuntimeVars(existing.metadata, newLocInlineVars, defsByName)
           }
           if (Object.keys(changes).length > 0) {
-            await database.updateLocation(existing.id, changes)
+            await write(() => database.updateLocation(existing.id, changes))
+            check()
             this.locations = this.locations.map((l) =>
               l.id === existing.id ? { ...l, ...changes } : l,
             )
@@ -2861,9 +4133,10 @@ class StoryStore {
             current: false,
             connections: [],
             metadata: locMetadata,
-            branchId: this.currentStory?.currentBranchId ?? null,
+            branchId,
           }
-          await database.addLocation(location)
+          await write(() => database.addLocation(location))
+          check()
           this.locations = [...this.locations, location]
           if (trackingEnabled) createdLocationIds.push(location.id)
         }
@@ -2872,7 +4145,8 @@ class StoryStore {
 
     // Add new items (check for duplicates)
     for (const newItem of result.entryUpdates.newItems) {
-      await this.wrapUpdate('Add item', newItem.name, async () => {
+      check()
+      await guardedUpdate('Add item', newItem.name, async () => {
         const exists = this.items.some((i) => sameEntityName(i.name, newItem.name))
         if (!exists) {
           log('Adding new item:', newItem.name)
@@ -2893,9 +4167,10 @@ class StoryStore {
             equipped: false,
             location: newItem.location ?? 'inventory',
             metadata: itemMetadata,
-            branchId: this.currentStory?.currentBranchId ?? null,
+            branchId,
           }
-          await database.addItem(item)
+          await write(() => database.addItem(item))
+          check()
           this.items = [...this.items, item]
           if (trackingEnabled) createdItemIds.push(item.id)
         }
@@ -2904,7 +4179,8 @@ class StoryStore {
 
     // Add new story beats (check for duplicates)
     for (const newBeat of result.entryUpdates.newStoryBeats) {
-      await this.wrapUpdate('Add story beat', newBeat.title, async () => {
+      check()
+      await guardedUpdate('Add story beat', newBeat.title, async () => {
         const exists = this.storyBeats.some((b) => sameEntityName(b.title, newBeat.title))
         if (!exists) {
           log('Adding new story beat:', newBeat.title)
@@ -2925,9 +4201,10 @@ class StoryStore {
             status: newBeat.status ?? 'active',
             triggeredAt: Date.now(),
             metadata: beatMetadata,
-            branchId: this.currentStory?.currentBranchId ?? null,
+            branchId,
           }
-          await database.addStoryBeat(beat)
+          await write(() => database.addStoryBeat(beat))
+          check()
           this.storyBeats = [...this.storyBeats, beat]
           if (trackingEnabled) createdStoryBeatIds.push(beat.id)
         }
@@ -2936,21 +4213,32 @@ class StoryStore {
 
     // Reconcile who is in the scene. Last, so the characters this classification created
     // are already in `this.characters` and the explicit updates above have had their say.
+    check()
     const presenceChanges = resolveCharacterPresence({
       characters: this.characters,
       presentNames: result.scene.presentCharacterNames ?? [],
-      newNames: result.entryUpdates.newCharacters.map((c) => c.name),
-      explicitStatusNames: result.entryUpdates.characterUpdates
-        .filter((u) => u.changes.status !== undefined)
-        .map((u) => u.name),
+      newNames: isCollaborativeStory(this.currentStory)
+        ? []
+        : result.entryUpdates.newCharacters.map((character) => character.name),
+      explicitStatusNames: [
+        ...result.entryUpdates.characterUpdates
+          .filter((update) => update.changes.status !== undefined)
+          .map((update) => update.name),
+        ...(isCollaborativeStory(this.currentStory)
+          ? result.entryUpdates.newCharacters
+              .filter((character) => character.status !== undefined)
+              .map((character) => character.name)
+          : []),
+      ],
       hadError: !!result._error,
     })
 
     for (const change of presenceChanges) {
+      check()
       const char = this.characters.find((c) => c.id === change.id)
       if (!char) continue
 
-      await this.wrapUpdate(
+      await guardedUpdate(
         change.to === 'active' ? 'Character enters scene' : 'Character leaves scene',
         char.name,
         async () => {
@@ -2966,8 +4254,13 @@ class StoryStore {
             })
           }
 
-          const { entity: ownedChar, wasCowed } = await this.cowCharacter(char)
-          await database.updateCharacter(ownedChar.id, { status: change.to })
+          const { entity: ownedChar, wasCowed } = await this.cowCharacter(
+            char,
+            scoped,
+            writeDatabase,
+          )
+          await write(() => database.updateCharacter(ownedChar.id, { status: change.to }))
+          check()
           this.characters = this.characters.map((c) =>
             c.id === ownedChar.id ? { ...c, status: change.to } : c,
           )
@@ -2983,13 +4276,15 @@ class StoryStore {
 
     // Apply time progression from scene data
     if (result.scene.timeProgression && result.scene.timeProgression !== 'none') {
-      await this.applyTimeProgression(result.scene.timeProgression)
+      await this.applyTimeProgression(result.scene.timeProgression, scoped, writeDatabase)
     }
+    check()
 
     // Phase 1: Save world state delta on the entry
     if (trackingEnabled && entryId) {
       try {
         const delta: WorldStateDelta = {
+          version: 2,
           classificationResult: result as unknown as Record<string, unknown>,
           previousState: {
             characters: charactersBefore,
@@ -3007,10 +4302,43 @@ class StoryStore {
           },
         }
 
-        await database.updateStoryEntry(entryId, { worldStateDelta: delta })
+        const hasRecordedChanges =
+          charactersBefore.length > 0 ||
+          locationsBefore.length > 0 ||
+          itemsBefore.length > 0 ||
+          storyBeatsBefore.length > 0 ||
+          createdCharacterIds.length > 0 ||
+          createdLocationIds.length > 0 ||
+          createdItemIds.length > 0 ||
+          createdStoryBeatIds.length > 0 ||
+          currentLocationIdBefore !==
+            (this.locations.find((location) => location.current)?.id ?? null) ||
+          JSON.stringify(timeTrackerBefore) !==
+            JSON.stringify(this.currentStory.timeTracker ?? null)
+        const maintenance = createStateMaintenanceRecord(
+          hasRecordedChanges ? 'applied' : 'no_changes',
+          result._error ? { warning: result._error } : undefined,
+        )
+        const existingEntry = this.entries.find((entry) => entry.id === entryId)
+        const metadata = {
+          ...existingEntry?.metadata,
+          timeEnd: this.currentStory.timeTracker
+            ? { ...this.currentStory.timeTracker }
+            : { years: 0, days: 0, hours: 0, minutes: 0 },
+          collaborativeStateMaintenance: maintenance,
+        }
+        await write(() =>
+          database.updateStoryEntry(entryId, {
+            worldStateDelta: hasRecordedChanges ? delta : null,
+            metadata,
+          }),
+        )
+        check()
         // Update in-memory entry
         this.entries = this.entries.map((e) =>
-          e.id === entryId ? { ...e, worldStateDelta: delta } : e,
+          e.id === entryId
+            ? { ...e, worldStateDelta: hasRecordedChanges ? delta : null, metadata }
+            : e,
         )
 
         log('World state delta saved for entry', {
@@ -3026,13 +4354,16 @@ class StoryStore {
         })
 
         // Auto-snapshot if interval reached
-        await this.maybeCreateAutoSnapshot(entryId)
+        await this.maybeCreateAutoSnapshot(entryId, scoped, writeDatabase)
       } catch (error) {
+        check()
         console.error('[StoryStore] Failed to save world state delta:', error)
-        // Non-fatal - don't break the main flow
+        // A restore must not delete the entry when its undo record could not be saved.
+        throw error
       }
     }
 
+    check()
     log('applyClassificationResult complete', {
       characters: this.characters.length,
       locations: this.locations.length,
@@ -3085,8 +4416,14 @@ class StoryStore {
   async setStoryMode(mode: StoryMode): Promise<void> {
     if (!this.currentStory) throw new Error('No story loaded')
 
-    await database.updateStory(this.currentStory.id, { mode })
-    this.currentStory = { ...this.currentStory, mode }
+    const nextSettings = { ...(this.currentStory.settings ?? {}) }
+    if (mode === 'creative-writing')
+      nextSettings.collaborativeNovelWorkflow = createDefaultCollaborativeWorkflow(
+        nextSettings.collaborativeNovelWorkflow,
+      )
+    else delete nextSettings.collaborativeNovelWorkflow
+    await database.updateStory(this.currentStory.id, { mode, settings: nextSettings })
+    this.currentStory = { ...this.currentStory, mode, settings: nextSettings }
     log('Story mode updated:', mode)
 
     // Emit event
@@ -3103,10 +4440,16 @@ class StoryStore {
   }
 
   // Add a chapter
-  async addChapter(chapter: Chapter): Promise<void> {
+  async addChapter(chapter: Chapter, options?: ScopedWriteOptions): Promise<void> {
     if (!this.currentStory) throw new Error('No story loaded')
+    if (options?.scope) this.captureWriteScope(options)
+    const { check } = this.captureWriteScope({
+      ...options,
+      scope: { storyId: chapter.storyId, branchId: chapter.branchId ?? null },
+    })
 
     await database.addChapter(chapter)
+    check()
     this.chapters = [...this.chapters, chapter]
 
     // Invalidate chapter cache
@@ -3119,8 +4462,9 @@ class StoryStore {
   }
 
   // Get the next chapter number from the database (handles deletions correctly)
-  async getNextChapterNumber(): Promise<number> {
+  async getNextChapterNumber(options?: ScopedWriteOptions): Promise<number> {
     if (!this.currentStory) throw new Error('No story loaded')
+    this.captureWriteScope(options)
 
     // Use branch-filtered chapters to determine next chapter number
     // this.chapters is already filtered to current branch view (inherited + branch-specific)
@@ -3218,13 +4562,194 @@ class StoryStore {
   }
 
   // Update story settings (partial updates)
+  async updateStoryBasics(draft: StoryBasicsDraft): Promise<void> {
+    this.assertNotBusy('保存故事基础设定')
+    if (ui.submissionScope) throw new Error('生成准备期间不能保存故事设定。')
+    const current = this.currentStory
+    if (!current) throw new Error('没有已加载的故事。')
+    const updates = storyBasicsUpdate(current, draft)
+    await database.updateStory(current.id, updates)
+    this.allStories = this.allStories.map((value) =>
+      value.id === current.id ? { ...value, ...updates } : value,
+    )
+    if (this.currentStory?.id === current.id)
+      this.currentStory = { ...this.currentStory, ...updates }
+  }
+
   async updateStorySettings(updates: Partial<StorySettings>): Promise<void> {
     if (!this.currentStory) throw new Error('No story loaded')
 
     const newSettings = { ...(this.currentStory.settings ?? {}), ...updates }
+    if (this.currentStory.mode === 'creative-writing')
+      newSettings.collaborativeNovelWorkflow = createDefaultCollaborativeWorkflow(
+        newSettings.collaborativeNovelWorkflow,
+      )
+    else delete newSettings.collaborativeNovelWorkflow
     await database.updateStory(this.currentStory.id, { settings: newSettings })
     this.currentStory = { ...this.currentStory, settings: newSettings }
     log('Story settings updated via updateStorySettings:', updates)
+  }
+
+  /** Apply reviewed source material atomically; manual/legacy name matches are never overwritten. */
+  async applyImportOrganization(
+    card: CardImportDraft,
+    scope: {
+      storyId: string
+      branchId: string | null
+      rawJson: string
+      packId?: string
+      variables?: Record<string, string>
+    },
+  ): Promise<{ charactersAdded: number; charactersUpdated: number; loreEntriesAdded: number }> {
+    this.assertNotBusy('采用导入整理')
+    if (ui.submissionScope) throw new Error('生成准备期间不能采用导入整理。')
+    const { storyId, branchId, check } = this.captureWriteScope({ scope })
+    const current = this.currentStory!
+    const source = current.settings?.importSource
+    if (!source || source.organizationEnabled === false)
+      throw new Error('此故事已关闭 AI 导入整理。')
+    if (source.rawCardJson !== scope.rawJson || card.rawJson !== source.rawCardJson)
+      throw new Error('导入来源已经变化，请重新整理。')
+    const before = JSON.stringify([current, this.characters, this.lorebookEntries])
+    if (scope.packId) {
+      const [pack, variables] = await Promise.all([
+        database.getStoryPackId(storyId),
+        database.getStoryCustomVariables(storyId),
+      ])
+      check()
+      if (
+        (pack || 'default-pack') !== scope.packId ||
+        JSON.stringify(variables ?? {}) !== JSON.stringify(scope.variables ?? {})
+      )
+        throw new Error('提示词包或变量已经变化，请重新整理。')
+    }
+    const replacement =
+      source.userReplacement !== undefined
+        ? source.userReplacement
+        : this.characters.find((c) => c.relationship === 'self')?.name
+    const allowed = source.selections ?? { characters: true, scenario: true, lorebook: true }
+    const excluded = new Set(source.excludedSourceKeys ?? [])
+    for (const item of [...card.characters, ...card.lore])
+      if (!item.selected) excluded.add(item.key)
+    const names = new Set(this.characters.map((c) => c.name.trim().toLowerCase()))
+    const chars: Character[] = []
+    const updates: { previous: Character; value: Character; copy: boolean }[] = []
+    if (allowed.characters && card.selections.characters)
+      for (const item of card.characters) {
+        const name = replaceUser(item.value.name ?? '', replacement).trim()
+        if (!item.selected || excluded.has(item.key) || !name) continue
+        const existing = this.characters.find(
+          (c) => c.metadata?.importSourceKey === item.key && c.relationship !== 'self',
+        )
+        if (!existing && names.has(name.toLowerCase())) continue
+        const value: Character = {
+          ...existing,
+          id: existing?.id ?? crypto.randomUUID(),
+          storyId,
+          branchId: existing?.branchId ?? branchId,
+          name,
+          description: replaceUser(item.value.description ?? '', replacement) || null,
+          relationship:
+            existing?.relationship ??
+            (item.value.relationship === 'self' ? null : (item.value.relationship ?? null)),
+          traits: (item.value.traits ?? []).map((v) => replaceUser(v, replacement)),
+          status: existing?.status ?? 'active',
+          visualDescriptors: item.value.visualDescriptors ?? existing?.visualDescriptors ?? {},
+          portrait: item.value.portrait ?? existing?.portrait ?? null,
+          metadata: { ...existing?.metadata, importSourceKey: item.key },
+        }
+        if (existing) {
+          const copy =
+            !!branchId &&
+            existing.branchId !== branchId &&
+            settings.experimentalFeatures.lightweightBranches
+          if (copy) {
+            value.id = crypto.randomUUID()
+            value.branchId = branchId
+            value.overridesId = existing.overridesId ?? existing.id
+          }
+          updates.push({ previous: existing, value, copy })
+        } else {
+          chars.push(value)
+          names.add(name.toLowerCase())
+        }
+      }
+    const map = { ...source.entryIdsBySourceKey }
+    const existingNames = new Map(
+      this.lorebookEntries.map((e) => [
+        replaceUser(e.name, replacement).trim().toLowerCase(),
+        e.id,
+      ]),
+    )
+    const newEntries: Entry[] = []
+    if (allowed.lorebook && card.selections.lorebook)
+      for (const item of card.lore) {
+        if (!item.selected || excluded.has(item.key)) continue
+        const value = replaceLoreUser(item.value, replacement)
+        const key = value.name.trim().toLowerCase()
+        const mapped = map[item.key]
+        const existing =
+          this.lorebookEntries.find((e) => e.id === mapped || e.overridesId === mapped)?.id ??
+          existingNames.get(key)
+        if (existing) {
+          map[item.key] = existing
+          continue
+        }
+        const data = LorebookImportExport.convertToEntries([value], 'import')[0]!
+        const entry: Entry = { ...data, id: crypto.randomUUID(), storyId, branchId }
+        newEntries.push(entry)
+        existingNames.set(key, entry.id)
+        map[item.key] = entry.id
+      }
+    const updatedSource = {
+      ...source,
+      excludedSourceKeys: [...excluded],
+      entryIdsBySourceKey: map,
+      status: 'organized' as const,
+      lastError: null,
+    }
+    const updatedSettings = { ...current.settings, importSource: updatedSource }
+    const background =
+      allowed.scenario && card.selections.scenario
+        ? replaceUser(card.background, replacement).trim()
+        : ''
+    const adoptingBackground = allowed.scenario && card.selections.scenario
+    const description =
+      adoptingBackground &&
+      source.backgroundText &&
+      current.description?.includes(source.backgroundText)
+        ? current.description.replace(source.backgroundText, () => background).trim() || null
+        : background && !current.description?.includes(background)
+          ? [current.description, background].filter(Boolean).join('\n\n')
+          : current.description
+    if (adoptingBackground) updatedSource.backgroundText = background
+    await database.collectAtomicWrites(async (writer) => {
+      for (const character of chars) await writer.addCharacter(character)
+      for (const { value, copy } of updates) {
+        if (copy) await writer.addCharacter(value)
+        else await writer.updateCharacter(value.id, value)
+      }
+      await writer.bulkInsertEntries(newEntries)
+      await writer.updateStory(storyId, { settings: updatedSettings, description })
+      check()
+      this.assertNotBusy('采用导入整理')
+      if (ui.submissionScope) throw new Error('生成准备期间不能采用导入整理。')
+      if (before !== JSON.stringify([this.currentStory, this.characters, this.lorebookEntries]))
+        throw new Error('故事资料已经变化，请重新整理。')
+    })
+    check()
+    this.currentStory = { ...current, description, settings: updatedSettings }
+    this.characters = [
+      ...this.characters.map((c) => updates.find((u) => u.previous.id === c.id)?.value ?? c),
+      ...chars,
+    ]
+    this.lorebookEntries = [...this.lorebookEntries, ...newEntries]
+    this.invalidateRetrievalCache()
+    return {
+      charactersAdded: chars.length,
+      charactersUpdated: updates.length,
+      loreEntriesAdded: newEntries.length,
+    }
   }
 
   /**
@@ -3291,8 +4816,9 @@ class StoryStore {
   }
 
   // Update time tracker with partial values (adds to current time)
-  async addTime(updates: Partial<TimeTracker>): Promise<void> {
+  async addTime(updates: Partial<TimeTracker>, options?: ScopedWriteOptions): Promise<void> {
     if (!this.currentStory) throw new Error('No story loaded')
+    const { storyId, check } = this.captureWriteScope(options)
 
     const current = this.timeTracker
     const newTime: TimeTracker = {
@@ -3303,7 +4829,8 @@ class StoryStore {
     }
 
     const normalized = this.normalizeTime(newTime)
-    await database.saveTimeTracker(this.currentStory.id, normalized)
+    await database.saveTimeTracker(storyId, normalized)
+    check()
     this.currentStory = { ...this.currentStory, timeTracker: normalized }
     log('Time added:', updates, '→', normalized)
   }
@@ -3312,7 +4839,11 @@ class StoryStore {
    * Apply time progression from classifier result.
    * Adds a default amount based on the progression type.
    */
-  async applyTimeProgression(progression: 'none' | 'minutes' | 'hours' | 'days'): Promise<void> {
+  async applyTimeProgression(
+    progression: 'none' | 'minutes' | 'hours' | 'days',
+    options?: ScopedWriteOptions,
+    writeDatabase: DatabaseService = database,
+  ): Promise<void> {
     if (progression === 'none') return
 
     // Default increments for each progression type
@@ -3324,27 +4855,52 @@ class StoryStore {
 
     const increment = increments[progression]
     if (increment) {
-      await this.addTime(increment)
+      await this.addTimeWithDatabase(increment, options, writeDatabase)
     }
+  }
+
+  private async addTimeWithDatabase(
+    updates: Partial<TimeTracker>,
+    options: ScopedWriteOptions | undefined,
+    writeDatabase: DatabaseService,
+  ): Promise<void> {
+    if (!this.currentStory) throw new Error('No story loaded')
+    const { storyId, check } = this.captureWriteScope(options)
+    const current = this.timeTracker
+    const normalized = this.normalizeTime({
+      years: current.years + (updates.years ?? 0),
+      days: current.days + (updates.days ?? 0),
+      hours: current.hours + (updates.hours ?? 0),
+      minutes: current.minutes + (updates.minutes ?? 0),
+    })
+    await writeDatabase.saveTimeTracker(storyId, normalized)
+    check()
+    this.currentStory = { ...this.currentStory, timeTracker: normalized }
   }
 
   /**
    * Restore or clear the story time tracker from a snapshot.
    * Undefined means "skip", null means "clear".
    */
-  async restoreTimeTrackerSnapshot(snapshot: TimeTracker | null | undefined): Promise<void> {
+  async restoreTimeTrackerSnapshot(
+    snapshot: TimeTracker | null | undefined,
+    options?: ScopedWriteOptions,
+  ): Promise<void> {
     if (!this.currentStory) throw new Error('No story loaded')
+    const { storyId, check } = this.captureWriteScope(options)
     if (snapshot === undefined) return
 
     if (snapshot === null) {
-      await database.clearTimeTracker(this.currentStory.id)
+      await database.clearTimeTracker(storyId)
+      check()
       this.currentStory = { ...this.currentStory, timeTracker: null }
       log('Time tracker cleared from snapshot')
       return
     }
 
     const normalized = this.normalizeTime(snapshot)
-    await database.saveTimeTracker(this.currentStory.id, normalized)
+    await database.saveTimeTracker(storyId, normalized)
+    check()
     this.currentStory = { ...this.currentStory, timeTracker: normalized }
     log('Time tracker restored from snapshot:', normalized)
   }
@@ -3353,8 +4909,13 @@ class StoryStore {
    * Phase 1: Maybe create an automatic world state snapshot.
    * Called after saving a delta. Creates a snapshot every N entries (configured interval).
    */
-  private async maybeCreateAutoSnapshot(entryId: string): Promise<void> {
+  private async maybeCreateAutoSnapshot(
+    entryId: string,
+    options?: ScopedWriteOptions,
+    writeDatabase: DatabaseService = database,
+  ): Promise<void> {
     if (!this.currentStory) return
+    const { storyId, branchId, check } = this.captureWriteScope(options)
     if (!settings.experimentalFeatures.stateTracking) return
 
     const entry = this.entries.find((e) => e.id === entryId)
@@ -3366,12 +4927,10 @@ class StoryStore {
     // Only snapshot at interval boundaries
     if (entry.position % interval !== 0) return
 
-    const branchId = this.currentStory.currentBranchId ?? null
-
     try {
       const snapshot: WorldStateSnapshot = {
         id: crypto.randomUUID(),
-        storyId: this.currentStory.id,
+        storyId,
         branchId,
         entryId,
         entryPosition: entry.position,
@@ -3386,9 +4945,11 @@ class StoryStore {
         createdAt: Date.now(),
       }
 
-      await database.createWorldStateSnapshot(snapshot)
+      await writeDatabase.createWorldStateSnapshot(snapshot)
+      check()
       log('Auto-snapshot created at position', entry.position)
     } catch (error) {
+      check()
       console.error('[StoryStore] Failed to create auto-snapshot:', error)
       // Non-fatal
     }
@@ -3600,6 +5161,7 @@ class StoryStore {
     const checkpoint: Checkpoint = {
       id: crypto.randomUUID(),
       storyId: this.currentStory.id,
+      branchId: this.currentStory.currentBranchId,
       name,
       lastEntryId: lastEntry.id,
       lastEntryPreview: lastEntry.content.substring(0, 100),
@@ -3951,6 +5513,192 @@ class StoryStore {
     return branch
   }
 
+  /** Create an isolated branch from the state immediately after any visible narration entry. */
+  async createCollaborativeBranchFromEntry(entryId: string, name: string): Promise<Branch> {
+    if (!this.currentStory) throw new Error('没有打开故事。')
+    await this.drainClassificationWrites()
+    this.assertNotBusy('create a branch')
+    const target = this.entries.find((entry) => entry.id === entryId)
+    if (!target || target.type !== 'narration') throw new Error('只能从已保存的正文创建分支。')
+    const later = this.entries.filter((entry) => entry.position > target.position)
+    const rollback = planStateRollback(later, target.position + 1)
+    const confirmedRebuild = target.metadata?.collaborativeStateRebuild
+    const rebuiltSnapshot = confirmedRebuild
+      ? await database.getLatestSnapshotBefore(
+          this.currentStory.id,
+          this.currentStory.currentBranchId,
+          target.position,
+        )
+      : null
+    const currentTargetHash = confirmedRebuild
+      ? createCollaborativeStateRebuildRequest({
+          storyId: this.currentStory.id,
+          branchId: this.currentStory.currentBranchId,
+          targetEntryId: target.id,
+          targetPosition: target.position,
+          entries: this.entries,
+        }).historyHash
+      : null
+    const canUseRebuild =
+      !!confirmedRebuild &&
+      confirmedRebuild.historyHash === currentTargetHash &&
+      rebuiltSnapshot?.entryId === target.id &&
+      rebuiltSnapshot.entryPosition === target.position
+    const inheritedTarget =
+      (target.branchId ?? null) !== (this.currentStory.currentBranchId ?? null)
+    if (inheritedTarget && !canUseRebuild) {
+      throw new Error('继承正文使用父分支实体 ID；请先重建到此处的状态，再创建分支。')
+    }
+    if (!rollback.valid && !canUseRebuild) {
+      const positions = Array.from(
+        new Set(
+          rollback.issues.map((issue) => issue.position).filter((value) => value !== undefined),
+        ),
+      ).sort((a, b) => a! - b!)
+      throw new Error(
+        `无法安全创建分支：第 ${positions.join('、') || target.position} 条正文缺少完整状态记录。请先重建到目标正文的状态。`,
+      )
+    }
+
+    const clone = <T>(value: T): T => structuredClone(value)
+    let characters = canUseRebuild
+      ? clone(rebuiltSnapshot!.charactersSnapshot)
+      : clone(this.characters)
+    let locations = canUseRebuild
+      ? clone(rebuiltSnapshot!.locationsSnapshot)
+      : clone(this.locations)
+    let items = canUseRebuild ? clone(rebuiltSnapshot!.itemsSnapshot) : clone(this.items)
+    let storyBeats = canUseRebuild
+      ? clone(rebuiltSnapshot!.storyBeatsSnapshot)
+      : clone(this.storyBeats)
+    for (const operation of rollback.valid && !canUseRebuild ? rollback.plan.operations : []) {
+      const remove = <T extends { id: string }>(values: T[]) =>
+        values.filter((value) => value.id !== operation.id)
+      const restore = <T extends { id: string }>(values: T[], before: T) =>
+        values.map((value) => (value.id === before.id ? { ...value, ...before } : value))
+      if (operation.action === 'delete') {
+        if (operation.entity === 'character') characters = remove(characters)
+        if (operation.entity === 'location') locations = remove(locations)
+        if (operation.entity === 'item') items = remove(items)
+        if (operation.entity === 'storyBeat') storyBeats = remove(storyBeats)
+      } else if (operation.entity === 'character') {
+        characters = restore(characters, operation.before as Character)
+      } else if (operation.entity === 'location') {
+        locations = restore(locations, operation.before as Location)
+      } else if (operation.entity === 'item') {
+        items = restore(items, operation.before as Item)
+      } else {
+        storyBeats = restore(storyBeats, operation.before as StoryBeat)
+      }
+    }
+    if (rollback.valid && !canUseRebuild && rollback.plan.targetCurrentLocationId !== undefined) {
+      locations = locations.map((location) => ({
+        ...location,
+        current: location.id === rollback.plan.targetCurrentLocationId,
+      }))
+    }
+
+    const sourceParentId = target.branchId ?? null
+    const branch: Branch = {
+      id: crypto.randomUUID(),
+      storyId: this.currentStory.id,
+      name: name.trim(),
+      parentBranchId: sourceParentId,
+      forkEntryId: target.id,
+      checkpointId: null,
+      createdAt: Date.now(),
+      snapshotComplete: true,
+    }
+    if (!branch.name) throw new Error('分支名称不能为空。')
+    const idMap = new SvelteMap<string, string>()
+    for (const entity of [
+      ...characters,
+      ...locations,
+      ...items,
+      ...storyBeats,
+      ...this.lorebookEntries,
+    ]) {
+      idMap.set(entity.id, crypto.randomUUID())
+    }
+    const remapId = (id: string) => idMap.get(id) ?? id
+    const branchCharacters = characters.map((character) => ({
+      ...character,
+      id: remapId(character.id),
+      branchId: branch.id,
+      overridesId: null,
+    }))
+    const branchLocations = locations.map((location) => ({
+      ...location,
+      id: remapId(location.id),
+      branchId: branch.id,
+      overridesId: null,
+      connections: location.connections.map(remapId),
+    }))
+    const branchItems = items.map((item) => ({
+      ...item,
+      id: remapId(item.id),
+      branchId: branch.id,
+      overridesId: null,
+      location: item.location === 'inventory' ? 'inventory' : remapId(item.location),
+    }))
+    const branchBeats = storyBeats.map((beat) => ({
+      ...beat,
+      id: remapId(beat.id),
+      branchId: branch.id,
+      overridesId: null,
+    }))
+    const branchLore = this.lorebookEntries.map((entry) => ({
+      ...entry,
+      id: remapId(entry.id),
+      branchId: branch.id,
+      overridesId: null,
+    }))
+    const timeTracker: TimeTracker | null = canUseRebuild
+      ? clone(rebuiltSnapshot!.timeTrackerSnapshot)
+      : rollback.valid && rollback.plan.targetTimeTracker === undefined
+        ? clone(this.currentStory.timeTracker)
+        : clone(rollback.valid ? (rollback.plan.targetTimeTracker ?? null) : null)
+    const snapshot: WorldStateSnapshot = {
+      id: crypto.randomUUID(),
+      storyId: branch.storyId,
+      branchId: branch.id,
+      entryId: target.id,
+      entryPosition: target.position,
+      charactersSnapshot: branchCharacters,
+      locationsSnapshot: branchLocations,
+      itemsSnapshot: branchItems,
+      storyBeatsSnapshot: branchBeats,
+      lorebookEntriesSnapshot: branchLore,
+      timeTrackerSnapshot: timeTracker,
+      createdAt: Date.now(),
+    }
+
+    await database.collectAtomicWrites(async (writer) => {
+      await writer.addBranch(branch)
+      for (const value of branchCharacters) await writer.addCharacter(value)
+      for (const value of branchLocations) await writer.addLocation(value)
+      for (const value of branchItems) await writer.addItem(value)
+      for (const value of branchBeats) await writer.addStoryBeat(value)
+      for (const value of branchLore) await writer.addEntry(value)
+      await writer.createWorldStateSnapshot(snapshot)
+    })
+    this.branches = [...this.branches, branch]
+    await this.switchBranch(branch.id)
+    await this.restoreTimeTrackerSnapshot(timeTracker)
+    const settingsValue = this.currentStory?.settings
+    if (settingsValue) {
+      await this.updateStorySettings({
+        collaborativeNovelPlan: settingsValue.collaborativeNovelPlan
+          ? { ...settingsValue.collaborativeNovelPlan, needsReview: true }
+          : undefined,
+        collaborativeNovelPattern: settingsValue.collaborativeNovelPattern
+          ? { ...settingsValue.collaborativeNovelPattern, needsReview: true }
+          : undefined,
+      })
+    }
+    return branch
+  }
+
   private buildBranchLineage(branchId: string): Branch[] {
     const lineage: Branch[] = []
     let current: Branch | null = this.branches.find((b) => b.id === branchId) ?? null
@@ -4037,6 +5785,8 @@ class StoryStore {
     if (this.currentStory?.id !== storyId) return
 
     if (!this.currentStory) throw new Error('No story loaded')
+    await this.drainClassificationWrites()
+    if (seq !== this.branchSwitchSeq || this.currentStory?.id !== storyId) return
 
     // Validate branch exists (if not null)
     if (branchId !== null) {
@@ -4082,23 +5832,26 @@ class StoryStore {
    * - For main branch: loads only items with null branch_id
    * - For other branches: loads inherited items (null branch_id) + branch-specific items
    */
-  private async reloadEntriesForCurrentBranch(): Promise<void> {
+  private async reloadEntriesForCurrentBranch(options?: ScopedWriteOptions): Promise<void> {
+    const check = options ? this.captureWriteScope(options).check : () => {}
     if (!this.currentStory) return
 
+    const storyId = this.currentStory.id
     const branchId = this.currentStory.currentBranchId
 
     if (branchId === null) {
       // Main branch: load all data with null branch_id
       const [entries, chapters, characters, locations, items, storyBeats, lorebookEntries] =
         await Promise.all([
-          database.getStoryEntriesForBranch(this.currentStory.id, null),
-          database.getChaptersForBranch(this.currentStory.id, null),
-          database.getCharactersForBranch(this.currentStory.id, null),
-          database.getLocationsForBranch(this.currentStory.id, null),
-          database.getItemsForBranch(this.currentStory.id, null),
-          database.getStoryBeatsForBranch(this.currentStory.id, null),
-          database.getEntriesForBranch(this.currentStory.id, null),
+          database.getStoryEntriesForBranch(storyId, null),
+          database.getChaptersForBranch(storyId, null),
+          database.getCharactersForBranch(storyId, null),
+          database.getLocationsForBranch(storyId, null),
+          database.getItemsForBranch(storyId, null),
+          database.getStoryBeatsForBranch(storyId, null),
+          database.getEntriesForBranch(storyId, null),
         ])
+      check()
 
       this.entries = entries
       this.chapters = chapters
@@ -4122,13 +5875,15 @@ class StoryStore {
       if (lineage.length === 0) return
 
       const forkPositions = await this.getForkEntryPositions(lineage)
+      check()
       const rootForkPosition = forkPositions.get(lineage[0].id)
 
       const inheritedEntries = await database.getStoryEntriesForBranch(
-        this.currentStory.id,
+        storyId,
         null,
         rootForkPosition ?? undefined,
       )
+      check()
 
       const branchEntries: StoryEntry[] = []
       for (let i = 0; i < lineage.length; i++) {
@@ -4136,10 +5891,11 @@ class StoryStore {
         const childForkPosition =
           i < lineage.length - 1 ? forkPositions.get(lineage[i + 1].id) : undefined
         const entries = await database.getStoryEntriesForBranch(
-          this.currentStory.id,
+          storyId,
           branch.id,
           childForkPosition ?? undefined,
         )
+        check()
         branchEntries.push(...entries)
       }
 
@@ -4151,7 +5907,8 @@ class StoryStore {
       }
 
       const chapters: Chapter[] = []
-      const mainChapters = await database.getChaptersForBranch(this.currentStory.id, null)
+      const mainChapters = await database.getChaptersForBranch(storyId, null)
+      check()
       if (rootForkPosition === null || rootForkPosition === undefined) {
         chapters.push(...mainChapters)
       } else {
@@ -4167,7 +5924,8 @@ class StoryStore {
         const branch = lineage[i]
         const childForkPosition =
           i < lineage.length - 1 ? forkPositions.get(lineage[i + 1].id) : undefined
-        const branchChapters = await database.getChaptersForBranch(this.currentStory.id, branch.id)
+        const branchChapters = await database.getChaptersForBranch(storyId, branch.id)
+        check()
         if (childForkPosition === null || childForkPosition === undefined) {
           chapters.push(...branchChapters)
         } else {
@@ -4195,12 +5953,13 @@ class StoryStore {
         if (currentBranchInfo?.snapshotComplete) {
           // Snapshot isolation: branch has its own complete entity set
           ;[characters, locations, items, storyBeats, lorebookEntries] = await Promise.all([
-            database.getCharactersForBranch(this.currentStory.id, branchId),
-            database.getLocationsForBranch(this.currentStory.id, branchId),
-            database.getItemsForBranch(this.currentStory.id, branchId),
-            database.getStoryBeatsForBranch(this.currentStory.id, branchId),
-            database.getEntriesForBranch(this.currentStory.id, branchId),
+            database.getCharactersForBranch(storyId, branchId),
+            database.getLocationsForBranch(storyId, branchId),
+            database.getItemsForBranch(storyId, branchId),
+            database.getStoryBeatsForBranch(storyId, branchId),
+            database.getEntriesForBranch(storyId, branchId),
           ])
+          check()
           // Filter out tombstoned entities
           characters = characters.filter((c) => !c.deleted)
           locations = locations.filter((l) => !l.deleted)
@@ -4217,12 +5976,13 @@ class StoryStore {
         } else {
           // Legacy COW: resolve through lineage (pre-snapshot branches)
           ;[characters, locations, items, storyBeats, lorebookEntries] = await Promise.all([
-            database.getCharactersResolved(this.currentStory.id, lineage),
-            database.getLocationsResolved(this.currentStory.id, lineage),
-            database.getItemsResolved(this.currentStory.id, lineage),
-            database.getStoryBeatsResolved(this.currentStory.id, lineage),
-            database.getLorebookEntriesResolved(this.currentStory.id, lineage),
+            database.getCharactersResolved(storyId, lineage),
+            database.getLocationsResolved(storyId, lineage),
+            database.getItemsResolved(storyId, lineage),
+            database.getStoryBeatsResolved(storyId, lineage),
+            database.getLorebookEntriesResolved(storyId, lineage),
           ])
+          check()
           log('COW: Resolved world state through lineage for branch:', branchId, {
             lineageDepth: lineage.length,
             characters: characters.length,
@@ -4235,12 +5995,13 @@ class StoryStore {
       } else {
         // Legacy path: direct branch loading (entities were fully copied at branch creation)
         ;[characters, locations, items, storyBeats, lorebookEntries] = await Promise.all([
-          database.getCharactersForBranch(this.currentStory.id, branchId),
-          database.getLocationsForBranch(this.currentStory.id, branchId),
-          database.getItemsForBranch(this.currentStory.id, branchId),
-          database.getStoryBeatsForBranch(this.currentStory.id, branchId),
-          database.getEntriesForBranch(this.currentStory.id, branchId),
+          database.getCharactersForBranch(storyId, branchId),
+          database.getLocationsForBranch(storyId, branchId),
+          database.getItemsForBranch(storyId, branchId),
+          database.getStoryBeatsForBranch(storyId, branchId),
+          database.getEntriesForBranch(storyId, branchId),
         ])
+        check()
       }
 
       this.characters = characters
@@ -4261,15 +6022,18 @@ class StoryStore {
     }
 
     // Restore time tracker from the last entry's metadata
-    await this.restoreTimeFromLastEntry()
+    await this.restoreTimeFromLastEntry(options)
+    check()
   }
 
   /**
    * Restore time tracker from the last entry's timeEnd metadata.
    * Called after loading entries for a branch to ensure time consistency.
    */
-  private async restoreTimeFromLastEntry(): Promise<void> {
+  private async restoreTimeFromLastEntry(options?: ScopedWriteOptions): Promise<void> {
+    const check = options ? this.captureWriteScope(options).check : () => {}
     if (!this.currentStory || this.entries.length === 0) return
+    const storyId = this.currentStory.id
 
     const lastEntry = this.entries[this.entries.length - 1]
     const timeEnd = lastEntry.metadata?.timeEnd
@@ -4286,7 +6050,8 @@ class StoryStore {
         current.minutes !== newTime.minutes
       ) {
         this.currentStory = { ...this.currentStory, timeTracker: newTime }
-        await database.updateStory(this.currentStory.id, { timeTracker: newTime })
+        await database.updateStory(storyId, { timeTracker: newTime })
+        check()
         log('Time tracker restored from last entry:', newTime)
       }
     }
@@ -4422,12 +6187,22 @@ class StoryStore {
     entryCountBeforeAction: number
   }): Promise<void> {
     if (!this.currentStory) throw new Error('No story loaded')
+    const { storyId, branchId, check } = this.captureWriteScope()
+    const scoped: ScopedWriteOptions = {
+      scope: { storyId, branchId },
+      isScopeCurrent: () => {
+        check()
+        return true
+      },
+    }
 
     // Lock editing during retry restore to prevent race conditions
     this._isRetryInProgress = true
     log('Retry restore started - editing locked')
 
     try {
+      await this.drainClassificationWrites(scoped)
+      check()
       // Debug: Log character visual descriptors before restore
       const currentCharDescriptors = this.characters.map((c) => ({
         name: c.name,
@@ -4447,6 +6222,7 @@ class StoryStore {
         (e) => e.position >= backup.entryCountBeforeAction,
       )
       const entryIdsToDelete = entriesToDelete.map((e) => e.id)
+      const droppedCheckpoints = this.checkpointsAnchoredTo(new Set(entryIdsToDelete))
 
       log('Restoring from retry backup...', {
         entriesCount: backup.entries.length,
@@ -4459,18 +6235,24 @@ class StoryStore {
       // Restore to database (branch-aware: only delete/restore world state for current branch)
       await database.restoreRetryBackup(
         entryIdsToDelete,
-        this.currentStory.id,
-        this.currentStory.currentBranchId,
+        storyId,
+        branchId,
         backup.characters,
         backup.locations,
         backup.items,
         backup.storyBeats,
       )
+      check()
 
-      await this.pruneCheckpointsForEntries(new Set(entryIdsToDelete))
+      if (droppedCheckpoints.length > 0) {
+        await database.deleteCheckpoints(droppedCheckpoints.map((cp) => cp.id))
+        check()
+        this.forgetCheckpoints(droppedCheckpoints)
+      }
 
       // Reload from database using branch-aware method for clean state
-      await this.reloadEntriesForCurrentBranch()
+      await this.reloadEntriesForCurrentBranch(scoped)
+      check()
 
       // Debug: Log what we got back from database
       const dbCharDescriptors = this.characters.map((c) => ({
@@ -4495,7 +6277,8 @@ class StoryStore {
       })
 
       // Restore time tracker if provided (null clears)
-      await this.restoreTimeTrackerSnapshot(backup.timeTracker)
+      await this.restoreTimeTrackerSnapshot(backup.timeTracker, scoped)
+      check()
 
       log('Retry backup restored', {
         entries: this.entries.length,
@@ -4653,13 +6436,22 @@ class StoryStore {
       imageGenerationMode?: ImageGenerationMode
       backgroundImagesEnabled?: boolean
       referenceMode?: boolean
+      targetLength?: TargetLength
     }
     protagonist: Partial<Character>
     startingLocation: Partial<Location>
     initialItems: Partial<Item>[]
-    openingScene: string
+    openingScene?: string
+    initialUserInput?: string
+    openingVariants?: string[]
+    selectedOpeningVariantId?: string
     characters: Partial<Character>[]
     importedEntries?: LorebookImportExport.ImportedEntry[]
+    packId?: string | null
+    customVariableValues?: Record<string, string> | null
+    chatMessages?: STChatMessage[]
+    importEntrySourceKeys?: string[]
+    importSource?: import('$lib/types').StoryImportSource
     // Translation data (optional)
     translations?: {
       language: string
@@ -4693,192 +6485,275 @@ class StoryStore {
       referenceMode: data.settings.referenceMode,
     })
 
-    // Create the base story with custom system prompt stored in settings
-    const storyData = await database.createStory({
-      id: crypto.randomUUID(),
-      title: data.title,
-      description: data.description ?? null,
-      genre: data.genre,
-      templateId: 'wizard-generated',
-      mode: data.mode,
-      settings: {
-        pov: data.settings.pov,
-        tense: data.settings.tense,
-        tone: data.settings.tone,
-        themes: data.settings.themes,
-        visualProseMode: data.settings.visualProseMode,
-        imageGenerationMode: data.settings.imageGenerationMode,
-        backgroundImagesEnabled: data.settings.backgroundImagesEnabled,
-        referenceMode: data.settings.referenceMode,
-      },
-      memoryConfig: DEFAULT_MEMORY_CONFIG,
-      retryState: null,
-      styleReviewState: null,
-      timeTracker: null,
-      currentBranchId: null,
-      currentBgImage: null,
-    })
+    // Creative stories always use the managed AIRP pack, even when callers omit packId.
+    // This keeps direct integrations and the advanced wizard consistent with Quick Start.
+    const resolvedPackId =
+      data.mode === 'creative-writing'
+        ? (data.packId ?? (await packService.ensureCollaborativePack()).id)
+        : (data.packId ?? null)
 
-    this.allStories = [storyData, ...this.allStories]
-    const storyId = storyData.id
-
-    this.currentStory = storyData
-
-    // Add protagonist
-    if (data.protagonist.name) {
-      const protagonistTranslation = data.translations?.protagonist
-      const protagonist: Character = {
+    const { storyData, openingEntry } = await database.collectAtomicWrites(async (writer) => {
+      const importSource = data.importSource ? structuredClone(data.importSource) : undefined
+      // Create the base story with custom system prompt stored in settings
+      const storyData = await writer.createStory({
         id: crypto.randomUUID(),
-        storyId,
-        name: data.protagonist.name,
-        description: data.protagonist.description ?? null,
-        relationship: 'self',
-        traits: data.protagonist.traits ?? [],
-        status: 'active',
-        metadata: { source: 'wizard' },
-        visualDescriptors: data.protagonist.visualDescriptors ?? {},
-        portrait: data.protagonist.portrait ?? null,
-        branchId: null, // New stories start on main branch
-        translatedName: protagonistTranslation?.name ?? null,
-        translatedDescription: protagonistTranslation?.description ?? null,
-        translatedTraits: protagonistTranslation?.traits ?? null,
-        translatedVisualDescriptors: undefined, // Translations not supported for structured visual descriptors yet
-        translationLanguage: protagonistTranslation ? (data.translations?.language ?? null) : null,
-      }
-      await database.addCharacter(protagonist)
-      log('Added protagonist:', protagonist.name)
-    }
-
-    // Add starting location
-    if (data.startingLocation.name) {
-      const locationTranslation = data.translations?.startingLocation
-      log('Starting location translation data:', {
-        hasTranslations: !!data.translations,
-        hasStartingLocation: !!locationTranslation,
-        translatedName: locationTranslation?.name,
-        translatedDesc: locationTranslation?.description?.substring(0, 50),
-      })
-      const location: Location = {
-        id: crypto.randomUUID(),
-        storyId,
-        name: data.startingLocation.name,
-        description: data.startingLocation.description ?? null,
-        visited: true,
-        current: true,
-        connections: [],
-        metadata: { source: 'wizard' },
-        branchId: null, // New stories start on main branch
-        translatedName: locationTranslation?.name ?? null,
-        translatedDescription: locationTranslation?.description ?? null,
-        translationLanguage: locationTranslation ? (data.translations?.language ?? null) : null,
-      }
-      log('Location object being stored:', {
-        name: location.name,
-        translatedName: location.translatedName,
-        translatedDesc: location.translatedDescription?.substring(0, 50),
-        translationLanguage: location.translationLanguage,
-      })
-      await database.addLocation(location)
-      log(
-        'Added starting location:',
-        location.name,
-        'with translation:',
-        !!location.translatedDescription,
-      )
-    }
-
-    // Add initial items
-    for (const itemData of data.initialItems) {
-      if (!itemData.name) continue
-      const item: Item = {
-        id: crypto.randomUUID(),
-        storyId,
-        name: itemData.name,
-        description: itemData.description ?? null,
-        quantity: itemData.quantity ?? 1,
-        equipped: itemData.equipped ?? false,
-        location: itemData.location ?? 'inventory',
-        metadata: { source: 'wizard' },
-        branchId: null, // New stories start on main branch
-      }
-      await database.addItem(item)
-    }
-
-    // Add supporting characters
-    for (const charData of data.characters) {
-      if (!charData.name) continue
-      const charTranslation = data.translations?.characters?.[charData.name]
-      const character: Character = {
-        id: crypto.randomUUID(),
-        storyId,
-        name: charData.name,
-        description: charData.description ?? null,
-        relationship: charData.relationship ?? null,
-        traits: charData.traits ?? [],
-        status: 'active',
-        metadata: { source: 'wizard' },
-        visualDescriptors: charData.visualDescriptors ?? {},
-        portrait: charData.portrait ?? null,
-        branchId: null, // New stories start on main branch
-        translatedName: charTranslation?.name ?? null,
-        translatedDescription: charTranslation?.description ?? null,
-        translatedRelationship: charTranslation?.relationship ?? null,
-        translatedTraits: charTranslation?.traits ?? null,
-        translatedVisualDescriptors: undefined, // Translations not supported for structured visual descriptors yet
-        translationLanguage: charTranslation ? (data.translations?.language ?? null) : null,
-      }
-      await database.addCharacter(character)
-      log('Added supporting character:', character.name)
-    }
-
-    // Add opening scene as first narration entry
-    let openingEntry: StoryEntry | undefined = undefined
-    if (data.openingScene) {
-      const tokenCount = countTokens(data.openingScene)
-      const baseTime = storyData.timeTracker ?? { years: 0, days: 0, hours: 0, minutes: 0 }
-      openingEntry = await database.addStoryEntry({
-        id: crypto.randomUUID(),
-        storyId,
-        type: 'narration',
-        content: data.openingScene,
-        parentId: null,
-        position: 0,
-        metadata: {
-          source: 'wizard',
-          tokenCount,
-          timeStart: { ...baseTime },
-          timeEnd: { ...baseTime },
+        title: data.title,
+        description: data.description ?? null,
+        genre: data.genre,
+        templateId: 'wizard-generated',
+        mode: data.mode,
+        settings: {
+          pov: data.settings.pov,
+          tense: data.settings.tense,
+          tone: data.settings.tone,
+          themes: data.settings.themes,
+          visualProseMode: data.settings.visualProseMode,
+          imageGenerationMode: data.settings.imageGenerationMode,
+          backgroundImagesEnabled: data.settings.backgroundImagesEnabled,
+          referenceMode: data.settings.referenceMode,
+          targetLength: data.settings.targetLength,
+          ...(importSource ? { importSource } : {}),
+          ...(data.mode === 'creative-writing'
+            ? { collaborativeNovelWorkflow: createDefaultCollaborativeWorkflow() }
+            : {}),
         },
-        branchId: null,
-        translatedContent: data.translations?.openingScene ?? null,
-        translationLanguage: data.translations?.openingScene
-          ? (data.translations?.language ?? null)
-          : null,
+        memoryConfig: DEFAULT_MEMORY_CONFIG,
+        retryState: null,
+        styleReviewState: null,
+        timeTracker: null,
+        currentBranchId: null,
+        currentBgImage: null,
+        packId: resolvedPackId,
+        customVariableValues: data.customVariableValues ?? null,
       })
-      log('Added opening scene')
-    }
 
-    // Add imported lorebook entries
-    if (data.importedEntries && data.importedEntries.length > 0) {
-      const entries = LorebookImportExport.convertToEntries(data.importedEntries, 'import')
-      for (const entryData of entries) {
-        const entry: Entry = {
-          ...entryData,
+      const storyId = storyData.id
+
+      // Add protagonist
+      if (data.protagonist.name) {
+        const protagonistTranslation = data.translations?.protagonist
+        const protagonist: Character = {
           id: crypto.randomUUID(),
           storyId,
+          name: data.protagonist.name,
+          description: data.protagonist.description ?? null,
+          relationship: 'self',
+          traits: data.protagonist.traits ?? [],
+          status: 'active',
+          metadata: { source: 'wizard' },
+          visualDescriptors: data.protagonist.visualDescriptors ?? {},
+          portrait: data.protagonist.portrait ?? null,
+          branchId: null, // New stories start on main branch
+          translatedName: protagonistTranslation?.name ?? null,
+          translatedDescription: protagonistTranslation?.description ?? null,
+          translatedTraits: protagonistTranslation?.traits ?? null,
+          translatedVisualDescriptors: undefined, // Translations not supported for structured visual descriptors yet
+          translationLanguage: protagonistTranslation
+            ? (data.translations?.language ?? null)
+            : null,
         }
-        await database.addEntry(entry)
+        await writer.addCharacter(protagonist)
+        log('Added protagonist:', protagonist.name)
       }
-      log('Added imported entries:', data.importedEntries.length)
+
+      // Add starting location
+      if (data.startingLocation.name) {
+        const locationTranslation = data.translations?.startingLocation
+        log('Starting location translation data:', {
+          hasTranslations: !!data.translations,
+          hasStartingLocation: !!locationTranslation,
+          translatedName: locationTranslation?.name,
+          translatedDesc: locationTranslation?.description?.substring(0, 50),
+        })
+        const location: Location = {
+          id: crypto.randomUUID(),
+          storyId,
+          name: data.startingLocation.name,
+          description: data.startingLocation.description ?? null,
+          visited: true,
+          current: true,
+          connections: [],
+          metadata: { source: 'wizard' },
+          branchId: null, // New stories start on main branch
+          translatedName: locationTranslation?.name ?? null,
+          translatedDescription: locationTranslation?.description ?? null,
+          translationLanguage: locationTranslation ? (data.translations?.language ?? null) : null,
+        }
+        log('Location object being stored:', {
+          name: location.name,
+          translatedName: location.translatedName,
+          translatedDesc: location.translatedDescription?.substring(0, 50),
+          translationLanguage: location.translationLanguage,
+        })
+        await writer.addLocation(location)
+        log(
+          'Added starting location:',
+          location.name,
+          'with translation:',
+          !!location.translatedDescription,
+        )
+      }
+
+      // Add initial items
+      for (const itemData of data.initialItems) {
+        if (!itemData.name) continue
+        const item: Item = {
+          id: crypto.randomUUID(),
+          storyId,
+          name: itemData.name,
+          description: itemData.description ?? null,
+          quantity: itemData.quantity ?? 1,
+          equipped: itemData.equipped ?? false,
+          location: itemData.location ?? 'inventory',
+          metadata: { source: 'wizard' },
+          branchId: null, // New stories start on main branch
+        }
+        await writer.addItem(item)
+      }
+
+      // Add supporting characters
+      for (const charData of data.characters) {
+        if (!charData.name) continue
+        const charTranslation = data.translations?.characters?.[charData.name]
+        const character: Character = {
+          id: crypto.randomUUID(),
+          storyId,
+          name: charData.name,
+          description: charData.description ?? null,
+          relationship: charData.relationship === 'self' ? null : (charData.relationship ?? null),
+          traits: charData.traits ?? [],
+          status: 'active',
+          metadata: { ...charData.metadata, source: 'wizard' },
+          visualDescriptors: charData.visualDescriptors ?? {},
+          portrait: charData.portrait ?? null,
+          branchId: null, // New stories start on main branch
+          translatedName: charTranslation?.name ?? null,
+          translatedDescription: charTranslation?.description ?? null,
+          translatedRelationship: charTranslation?.relationship ?? null,
+          translatedTraits: charTranslation?.traits ?? null,
+          translatedVisualDescriptors: undefined, // Translations not supported for structured visual descriptors yet
+          translationLanguage: charTranslation ? (data.translations?.language ?? null) : null,
+        }
+        await writer.addCharacter(character)
+        log('Added supporting character:', character.name)
+      }
+
+      // Add opening scene as first narration entry. Quick-start stories may be
+      // intentionally empty; do not manufacture placeholder prose for them.
+      let openingEntry: StoryEntry | undefined = undefined
+      if (data.openingScene && !data.chatMessages?.length) {
+        const tokenCount = countTokens(data.openingScene)
+        const baseTime = storyData.timeTracker ?? { years: 0, days: 0, hours: 0, minutes: 0 }
+        const openingTexts =
+          data.openingVariants && data.openingVariants.length > 0
+            ? data.openingVariants
+            : [data.openingScene]
+        const selectedOpeningId =
+          data.selectedOpeningVariantId &&
+          openingTexts.some((_, index) => `opening-${index}` === data.selectedOpeningVariantId)
+            ? data.selectedOpeningVariantId
+            : 'opening-0'
+        const openingVariants: StoryEntryVariant[] = openingTexts.map((content, index) => ({
+          id: `opening-${index}`,
+          content,
+          metadata: {
+            source: 'wizard',
+            tokenCount: countTokens(content),
+            timeStart: { ...baseTime },
+            timeEnd: { ...baseTime },
+          },
+          classificationResult: null,
+          worldStateDelta: null,
+          suggestedActions: null,
+          createdAt: Date.now(),
+        }))
+        const variantSet: StoryEntryVariantSet = {
+          version: 1,
+          activeVariantId: selectedOpeningId,
+          variants: openingVariants,
+        }
+        const selectedOpening =
+          openingVariants.find((variant) => variant.id === selectedOpeningId) ?? openingVariants[0]!
+        openingEntry = await writer.addStoryEntry({
+          id: crypto.randomUUID(),
+          storyId,
+          type: 'narration',
+          content: selectedOpening.content,
+          parentId: null,
+          position: 0,
+          metadata: {
+            source: 'wizard',
+            tokenCount: selectedOpening.metadata?.tokenCount ?? tokenCount,
+            timeStart: { ...baseTime },
+            timeEnd: { ...baseTime },
+            variantSet,
+          },
+          branchId: null,
+          translatedContent: data.translations?.openingScene ?? null,
+          translationLanguage: data.translations?.openingScene
+            ? (data.translations?.language ?? null)
+            : null,
+        })
+        log('Added opening scene')
+      }
+
+      // Add imported lorebook entries
+      if (data.importedEntries && data.importedEntries.length > 0) {
+        const entries = LorebookImportExport.convertToEntries(data.importedEntries, 'import')
+        for (const [index, entryData] of entries.entries()) {
+          const entry: Entry = {
+            ...entryData,
+            id: crypto.randomUUID(),
+            storyId,
+          }
+          await writer.addEntry(entry)
+          const key = data.importEntrySourceKeys?.[index]
+          if (importSource && key) {
+            importSource.entryIdsBySourceKey ??= {}
+            importSource.entryIdsBySourceKey[key] = entry.id
+          }
+        }
+        log('Added imported entries:', data.importedEntries.length)
+      }
+
+      if (data.chatMessages?.length) {
+        await writer.bulkInsertStoryEntries(
+          data.chatMessages.map((message, position) => ({
+            id: crypto.randomUUID(),
+            storyId,
+            type: message.type,
+            content: message.content,
+            parentId: null,
+            position,
+            metadata: { source: 'sillytavern_import' },
+            branchId: null,
+          })),
+        )
+      }
+      if (importSource) await writer.updateStory(storyId, { settings: storyData.settings })
+      return { storyData, openingEntry }
+    })
+    const storyId = storyData.id
+    this.allStories = [storyData, ...this.allStories]
+    this.currentStory = storyData
+    // The quick-start input is kept as a draft until the user explicitly
+    // submits it from the normal ActionInput. This preserves the distinction
+    // between author intent and persisted story history.
+    if (data.initialUserInput?.trim()) {
+      ui.setPendingCreativeInput(storyId, data.initialUserInput.trim())
+    } else if (data.mode === 'creative-writing') {
+      ui.requestCreativeInputFocus(storyId)
     }
 
     // Generate background image from opening scene
     if (data.openingScene && openingEntry && storyData.settings?.backgroundImagesEnabled) {
-      aiService.analyzeBackgroundChangeAndGenerateImage(
-        storyId,
-        [openingEntry],
-        this.updateCurrentBackgroundImage.bind(this),
-      )
+      aiService.analyzeBackgroundChangeAndGenerateImage(storyId, [openingEntry], (image) => {
+        if (
+          this.currentStory?.id === storyId &&
+          this.currentStory.settings?.backgroundImagesEnabled
+        )
+          void this.updateCurrentBackgroundImage(image)
+      })
       log('Generated background image')
     }
 

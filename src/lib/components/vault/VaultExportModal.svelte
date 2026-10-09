@@ -69,7 +69,7 @@
     <ResponsiveModal.Header class="border-b px-6 py-4">
       <div class="flex items-center gap-2">
         <Upload class="text-primary h-5 w-5" />
-        <ResponsiveModal.Title>Export {entityLabel}</ResponsiveModal.Title>
+        <ResponsiveModal.Title>导出 {entityLabel}</ResponsiveModal.Title>
       </div>
     </ResponsiveModal.Header>
 
@@ -78,14 +78,14 @@
       <div class="bg-muted/50 rounded-lg border p-3">
         <div class="text-foreground font-medium">{entity.name}</div>
         {#if entityType === 'lorebook'}
-          <div class="text-muted-foreground text-xs">{entryCount} entries</div>
+          <div class="text-muted-foreground text-xs">{entryCount} 条目</div>
         {/if}
       </div>
 
       <!-- Format selection (only for lorebooks) -->
       {#if entityType === 'lorebook'}
         <div class="space-y-3">
-          <Label>Export format</Label>
+          <Label>导出格式</Label>
           <RadioGroup
             value={selectedFormat}
             onValueChange={(v) => (selectedFormat = v as ExportFormat)}
@@ -125,21 +125,21 @@
       {:else}
         <div class="bg-muted/30 rounded-lg border p-3">
           <div class="text-muted-foreground text-sm">
-            {entityLabel}s are exported as Aventura JSON format.
+            {entityLabel}将导出为 Aventura JSON 格式。
           </div>
         </div>
       {/if}
     </div>
 
     <ResponsiveModal.Footer class="mt-auto border-t px-6 py-4">
-      <Button variant="outline" onclick={onClose} disabled={exporting}>Cancel</Button>
+      <Button variant="outline" onclick={onClose} disabled={exporting}>取消</Button>
       <Button onclick={handleExport} disabled={exporting} class="gap-2">
         {#if exporting}
           <Loader2 class="h-4 w-4 animate-spin" />
-          Exporting...
+          正在导出…
         {:else}
           <Upload class="h-4 w-4" />
-          Export
+          导出
         {/if}
       </Button>
     </ResponsiveModal.Footer>

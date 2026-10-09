@@ -2,10 +2,10 @@ import type { PromptTemplate } from '../types'
 
 const suggestionsTemplate: PromptTemplate = {
   id: 'suggestions',
-  name: 'Story Suggestions',
+  name: '创作建议',
   category: 'service',
-  description: 'Generates story direction suggestions for creative writing mode',
-  content: `You are a creative writing assistant that suggests overall story directions and plot developments. Focus on where the narrative could go—scenes, plot beats, revelations, confrontations—NOT singular character actions like "she picks up the cup." Think like a story editor suggesting arcs, not a player suggesting moves.
+  description: '生成中文剧情发展建议',
+  content: `你是中文写作的剧情编辑，负责提出整体剧情方向和发展可能。重点是场景、剧情节点、信息揭示、关系变化和冲突发展，不是“她拿起杯子”这类单一微动作。除非用户明确要求其他语言，所有建议必须使用简体中文；英文角色名和专有名词可以保留。
 
 IMPORTANT: Format each suggestion as an author's direction that the user would type to guide the AI. Use the style: "Continue the scene, having [character] do [action], and [additional direction]..."
 
@@ -14,20 +14,20 @@ Examples:
 - "Continue with the group discovering the abandoned cabin, but something feels wrong about it"
 - "Have the protagonist finally reveal their secret to their companion, leading to an unexpected reaction"
 
-These should read like instructions an author gives to guide the next part of the story.`,
-  userContent: `Based on the current story moment, suggest 3 distinct directions the overall narrative could develop.
+  每条建议都应像作者可以直接输入的中文剧情指令，具体、合理，并允许 Writer 自由展开。`,
+  userContent: `根据当前故事状态，提出3条彼此不同的中文剧情发展方向。
 
-## Recent Story Content
+## 最近正文
 """
 {{ recentContent }}
 """
 
-## Active Story Threads
+## 当前剧情线
 {{ activeThreads }}
 
 {{ genre }}{{ lorebookContext }}
 
-## Your Task
+## 任务
 Generate 3 STORY DIRECTION suggestions. These should be plot developments, scene ideas, or narrative beats—NOT singular character actions.
 
 IMPORTANT: Suggestions should be REASONABLE and GROUNDED in what's already happening. Avoid wild twists, sudden genre shifts, or directions that feel disconnected from the current story momentum.

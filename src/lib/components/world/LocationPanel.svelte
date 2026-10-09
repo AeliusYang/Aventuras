@@ -126,13 +126,13 @@
 <div class="flex flex-col gap-1 pb-12">
   <!-- Header -->
   <div class="mb-2 flex items-center justify-between">
-    <h3 class="text-foreground text-xl font-bold tracking-tight">Locations</h3>
+    <h3 class="text-foreground text-xl font-bold tracking-tight">地点</h3>
     <Button
       variant="text"
       size="icon"
       class="text-muted-foreground hover:text-foreground h-6 w-6"
       onclick={() => (showAddForm = !showAddForm)}
-      title="Add location"
+      title="添加地点"
     >
       <Plus class="h-6! w-6!" />
     </Button>
@@ -142,19 +142,19 @@
   {#if showAddForm}
     <div class="border-border bg-card rounded-lg border p-3 shadow-sm">
       <div class="space-y-3">
-        <Input type="text" bind:value={newName} placeholder="Location name" class="h-8 text-sm" />
+        <Input type="text" bind:value={newName} placeholder="地点名称" class="h-8 text-sm" />
         <Textarea
           bind:value={newDescription}
-          placeholder="Description (optional)"
+          placeholder="描述（选填）"
           class="min-h-[60px] resize-none text-sm"
           rows={2}
         />
       </div>
       <div class="mt-3 flex justify-end gap-2">
         <Button variant="text" size="sm" class="h-7" onclick={() => (showAddForm = false)}>
-          Cancel
+          取消
         </Button>
-        <Button size="sm" class="h-7" onclick={addLocation} disabled={!newName.trim()}>Add</Button>
+        <Button size="sm" class="h-7" onclick={addLocation} disabled={!newName.trim()}>添加</Button>
       </div>
     </div>
   {/if}
@@ -176,7 +176,7 @@
         <div class="space-y-3">
           <div class="mb-2 flex items-center justify-between">
             <h4 class="text-accent-400 text-xs font-semibold tracking-wider uppercase">
-              Editing Current Location
+              编辑当前位置
             </h4>
             <Button variant="text" size="icon" class="h-6 w-6" onclick={cancelEdit}
               ><X class="h-4 w-4" /></Button
@@ -184,18 +184,13 @@
           </div>
 
           <div class="space-y-1">
-            <Input
-              type="text"
-              bind:value={editName}
-              placeholder="Location name"
-              class="h-8 text-sm"
-            />
+            <Input type="text" bind:value={editName} placeholder="地点名称" class="h-8 text-sm" />
           </div>
 
           <div class="space-y-1">
             <Textarea
               bind:value={editDescription}
-              placeholder="Description"
+              placeholder="说明"
               class="min-h-[60px] resize-none text-xs"
             />
           </div>
@@ -214,9 +209,7 @@
           {/if}
 
           <div class="border-accent-500/30 flex justify-end gap-2 border-t pt-2">
-            <Button variant="text" size="sm" class="h-7 text-xs" onclick={cancelEdit}>
-              Cancel
-            </Button>
+            <Button variant="text" size="sm" class="h-7 text-xs" onclick={cancelEdit}>取消</Button>
             <Button
               size="sm"
               class="h-7 px-4 text-xs"
@@ -224,7 +217,7 @@
               disabled={!editName.trim()}
             >
               <Save class="mr-1.5 h-3.5 w-3.5" />
-              Save
+              保存
             </Button>
           </div>
         </div>
@@ -244,7 +237,7 @@
               {currentLocation.translatedName ?? currentLocation.name}
             </span>
             <span class="text-accent-500 w-fit text-[10px] font-bold tracking-wider uppercase">
-              Current Location
+              当前位置
             </span>
           </div>
         </div>
@@ -287,7 +280,7 @@
                 size="icon"
                 class="text-accent-500 hover:text-accent-600 h-6 w-6"
                 onclick={() => toggleCollapse(currentLocation.id)}
-                title={isCollapsed ? 'Show details' : 'Hide details'}
+                title={isCollapsed ? '展开详情' : '收起详情'}
               >
                 <ChevronDown
                   class={cn(
@@ -305,7 +298,7 @@
               size="icon"
               class="text-accent-500 hover:text-accent-600 h-6 w-6"
               onclick={() => startEdit(currentLocation)}
-              title="Edit location"
+              title="编辑地点"
             >
               <Pencil class="h-3.5 w-3.5" />
             </Button>
@@ -323,14 +316,14 @@
       <div class="bg-muted mb-3 rounded-full p-3">
         <MapPin class="text-muted-foreground h-6 w-6" />
       </div>
-      <p class="text-muted-foreground text-sm">No locations yet</p>
+      <p class="text-muted-foreground text-sm">尚无地点</p>
       <Button
         variant="link"
         class="text-primary mt-1 h-auto p-0 text-xs"
         onclick={() => (showAddForm = true)}
       >
         <Plus class="mr-1.5 h-3.5 w-3.5" />
-        Add your first location
+        添加第一个地点
       </Button>
     </div>
   {:else}
@@ -352,7 +345,7 @@
             <div class="space-y-3">
               <div class="mb-2 flex items-center justify-between">
                 <h4 class="text-muted-foreground text-xs font-semibold tracking-wider uppercase">
-                  Editing {location.name}
+                  编辑中 {location.name}
                 </h4>
                 <Button variant="text" size="icon" class="h-6 w-6" onclick={cancelEdit}
                   ><X class="h-4 w-4" /></Button
@@ -360,20 +353,20 @@
               </div>
 
               <div class="space-y-1">
-                <Label class="text-xs">Name</Label>
+                <Label class="text-xs">名称</Label>
                 <Input
                   type="text"
                   bind:value={editName}
-                  placeholder="Location name"
+                  placeholder="地点名称"
                   class="h-8 text-sm"
                 />
               </div>
 
               <div class="space-y-1">
-                <Label class="text-xs">Description</Label>
+                <Label class="text-xs">说明</Label>
                 <Textarea
                   bind:value={editDescription}
-                  placeholder="Description"
+                  placeholder="说明"
                   class="min-h-[60px] resize-none text-xs"
                 />
               </div>
@@ -393,7 +386,7 @@
 
               <div class="border-border flex justify-end gap-2 border-t pt-2">
                 <Button variant="text" size="sm" class="h-7 text-xs" onclick={cancelEdit}>
-                  Cancel
+                  取消
                 </Button>
                 <Button
                   size="sm"
@@ -402,7 +395,7 @@
                   disabled={!editName.trim()}
                 >
                   <Save class="mr-1.5 h-3.5 w-3.5" />
-                  Save Changes
+                  保存修改
                 </Button>
               </div>
             </div>
@@ -418,7 +411,7 @@
                     : 'bg-primary/10 ring-primary/50 text-primary hover:bg-primary/20',
                 )}
                 onclick={() => toggleVisited(location.id)}
-                title={location.visited ? 'Mark as unvisited' : 'Mark as visited'}
+                title={location.visited ? '标记为未到访' : '标记为已到访'}
               >
                 <MapPin class={cn('h-3.5 w-3.5', location.visited && 'opacity-60')} />
               </button>
@@ -438,7 +431,7 @@
                     location.visited ? 'text-muted-foreground/70' : 'text-primary',
                   )}
                 >
-                  {location.visited ? 'Visited' : 'Unvisited'}
+                  {location.visited ? '已到访' : '未到访'}
                 </span>
               </div>
             </div>
@@ -481,7 +474,7 @@
                     size="icon"
                     class="text-muted-foreground hover:text-foreground h-6 w-6"
                     onclick={() => toggleCollapse(location.id)}
-                    title={isCollapsed ? 'Show details' : 'Hide details'}
+                    title={isCollapsed ? '展开详情' : '收起详情'}
                   >
                     <ChevronDown
                       class={cn(
@@ -499,17 +492,17 @@
                   size="sm"
                   class="text-muted-foreground hover:text-primary h-6 text-xs"
                   onclick={() => goToLocation(location.id)}
-                  title="Travel to location"
+                  title="前往此地点"
                 >
                   <Navigation class="mr-1 h-3 w-3" />
-                  Travel
+                  前往
                 </Button>
                 <Button
                   variant="text"
                   size="icon"
                   class="text-muted-foreground hover:text-foreground h-6 w-6"
                   onclick={() => startEdit(location)}
-                  title="Edit"
+                  title="编辑"
                 >
                   <Pencil class="h-3.5 w-3.5" />
                 </Button>

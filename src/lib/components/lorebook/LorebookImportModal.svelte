@@ -151,11 +151,9 @@
     <ResponsiveModal.Header class="border-b px-6 py-4">
       <div class="flex items-center gap-2">
         <Download class="text-primary h-5 w-5" />
-        <ResponsiveModal.Title>Import Lorebook</ResponsiveModal.Title>
+        <ResponsiveModal.Title>导入世界书</ResponsiveModal.Title>
       </div>
-      <ResponsiveModal.Description>
-        Import entries from a JSON or Aventuras file.
-      </ResponsiveModal.Description>
+      <ResponsiveModal.Description>从 JSON 或 Aventuras 文件导入条目。</ResponsiveModal.Description>
     </ResponsiveModal.Header>
 
     <div class="flex-1 space-y-4 overflow-y-auto px-6 py-6">
@@ -177,19 +175,19 @@
           onkeydown={(e) => e.key === 'Enter' && handleBrowse()}
         >
           <FileJson class="text-muted-foreground mx-auto mb-3 h-12 w-12" />
-          <p class="text-foreground mb-1">Drop a lorebook file here</p>
-          <p class="text-muted-foreground text-sm">or click to browse</p>
+          <p class="text-foreground mb-1">将世界书文件拖到此处</p>
+          <p class="text-muted-foreground text-sm">或点击选择文件</p>
         </div>
 
         <p class="text-muted-foreground text-center text-xs">
-          Supports Aventuras (.avt, .json) and SillyTavern lorebook formats
+          支持 Aventuras（.avt、.json）和 SillyTavern 世界书格式
         </p>
       {:else}
         <!-- Preview -->
         <div class="bg-muted/50 rounded-lg border p-4">
           <div class="mb-3 flex items-center gap-2">
             <Check class="h-5 w-5 text-green-500" />
-            <span class="text-foreground font-medium">Found {previewCount} entries</span>
+            <span class="text-foreground font-medium">已找到 {previewCount} 条目</span>
           </div>
 
           <!-- Entry type breakdown -->
@@ -211,11 +209,9 @@
               for="ai-classification"
               class="text-sm leading-none font-medium peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
             >
-              AI-powered classification
+              AI 自动分类
             </Label>
-            <p class="text-muted-foreground text-xs">
-              Use AI to better categorize entry types based on their content
-            </p>
+            <p class="text-muted-foreground text-xs">使用 AI 根据条目内容判断类型</p>
           </div>
         </div>
 
@@ -237,19 +233,19 @@
             parseResult = null
           }}
         >
-          Choose a different file
+          重新选择文件
         </Button>
       {/if}
     </div>
 
     <ResponsiveModal.Footer class="mt-auto border-t px-6 py-4">
-      <Button variant="outline" onclick={close} disabled={importing}>Cancel</Button>
+      <Button variant="outline" onclick={close} disabled={importing}>取消</Button>
       <Button onclick={handleImport} disabled={!parseResult || importing} class="gap-2">
         {#if importing}
           <Loader2 class="h-4 w-4 animate-spin" />
-          {importProgress?.phase === 'classifying' ? 'Classifying...' : 'Importing...'}
+          {importProgress?.phase === 'classifying' ? '正在分类…' : '正在导入…'}
         {:else}
-          Import {previewCount} Entries
+          导入 {previewCount} 条目
         {/if}
       </Button>
     </ResponsiveModal.Footer>

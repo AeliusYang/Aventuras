@@ -58,6 +58,7 @@ export interface WizardData {
     targetLength?: TargetLength
   }
   title: string
+  customVariableValues?: Record<string, string>
   openingGuidance?: string
 }
 
@@ -537,7 +538,7 @@ class ScenarioService {
     const tenseInstruction =
       writingStyle.tense === 'present' ? 'Use present tense.' : 'Use past tense.'
 
-    const tone = writingStyle.tone || 'immersive and engaging'
+    const tone = writingStyle.tone || ''
     const outputFormat = this.getOpeningOutputFormat(
       mode,
       protagonistName,
@@ -565,6 +566,7 @@ class ScenarioService {
 
     const ctx = await ContextBuilder.forPackId(packId)
     ctx.add({
+      ...wizardData.customVariableValues,
       genreLabel,
       mode,
       tenseInstruction,
@@ -573,7 +575,7 @@ class ScenarioService {
       protagonistName,
       protagonistDescription,
       title: title || '(suggest one)',
-      settingName: expandedSetting?.name || 'Unknown World',
+      settingName: expandedSetting?.name || '',
       settingDescription: expandedSetting?.description || wizardData.settingSeed,
       atmosphereSection,
       supportingCharactersSection,
@@ -614,7 +616,7 @@ class ScenarioService {
     const tenseInstruction =
       writingStyle.tense === 'present' ? 'Use present tense.' : 'Use past tense.'
 
-    const tone = writingStyle.tone || 'immersive and engaging'
+    const tone = writingStyle.tone || ''
     const outputFormat = this.getOpeningOutputFormat(
       mode,
       protagonistName,
@@ -652,6 +654,7 @@ class ScenarioService {
 
     const ctx = await ContextBuilder.forPackId(packId)
     ctx.add({
+      ...wizardData.customVariableValues,
       genreLabel,
       mode,
       tenseInstruction,
@@ -811,6 +814,8 @@ class ScenarioService {
     startingLocation: Partial<Location>
     initialItems: Partial<Item>[]
     openingScene: string
+    openingVariants?: string[]
+    selectedOpeningVariantId?: string
     characters: Partial<Character>[]
   }> {
     const { mode, genre, customGenre, expandedSetting, protagonist, characters, writingStyle } =
@@ -820,7 +825,7 @@ class ScenarioService {
     return {
       title: opening.title || wizardData.title,
       genre: genreLabel,
-      description: expandedSetting?.description,
+      description: expandedSetting?.description ?? (wizardData.settingSeed.trim() || undefined),
       mode,
       settings: {
         pov: writingStyle.pov,
@@ -849,6 +854,7 @@ class ScenarioService {
       },
       initialItems: [],
       openingScene: opening.scene,
+      openingVariants: [opening.scene],
       characters: (characters || []).map((c) => ({
         name: c.name,
         description: c.description,

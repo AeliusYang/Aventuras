@@ -27,6 +27,19 @@ const CATEGORY_LABELS: Record<keyof VisualDescriptors, string> = {
   distinguishing: 'Distinguishing',
 }
 
+/** Collaborative extraction sends only evidenced categories; omissions are not deletions. */
+export function mergeVisualDescriptors(
+  previous: VisualDescriptors | null | undefined,
+  patch: VisualDescriptors | null | undefined,
+): VisualDescriptors {
+  const merged = { ...previous }
+  for (const key of CATEGORY_ORDER) {
+    const value = patch?.[key]
+    if (typeof value === 'string' && value.trim()) merged[key] = value.trim()
+  }
+  return merged
+}
+
 /**
  * Convert VisualDescriptors object to a display string for editing.
  */

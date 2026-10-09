@@ -6,6 +6,7 @@ import type { AventuraExport } from './export'
 import { gatherPackBinding } from './export'
 import { database } from './database'
 import { story } from '$lib/stores/story.svelte'
+import { normalizeCollaborativeStory } from '$lib/services/generation/collaborativeWorkflow'
 
 /**
  * Service for local network sync functionality
@@ -143,7 +144,7 @@ class SyncService {
       // here, where it would only change what gets logged.
       version: '1.7.0',
       exportedAt: Date.now(),
-      story: storyData,
+      story: normalizeCollaborativeStory(storyData),
       entries,
       characters,
       locations,

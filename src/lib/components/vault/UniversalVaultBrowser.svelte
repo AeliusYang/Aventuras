@@ -142,16 +142,16 @@
             {@const lbName = lorebookVault.getById(char.metadata.linkedLorebookId as string)?.name}
             <span class="text-muted-foreground flex max-w-40 items-center gap-1 text-[10px]">
               <Link class="h-3 w-3 shrink-0" />
-              <span class="truncate">{lbName ?? 'Lorebook'}</span>
+              <span class="truncate">{lbName ?? '世界书'}</span>
             </span>
           {/if}
         {/snippet}
 
         {#snippet end()}
           {#if isSelected(char.id)}
-            <Badge variant="default" class="h-5 px-1.5 text-[10px]">Selected</Badge>
+            <Badge variant="default" class="h-5 px-1.5 text-[10px]">已选择</Badge>
           {:else if isDisabled(char.id)}
-            <div class="text-muted-foreground bg-muted rounded px-1.5 py-0.5 text-xs">Added</div>
+            <div class="text-muted-foreground bg-muted rounded px-1.5 py-0.5 text-xs">已添加</div>
           {/if}
         {/snippet}
       </VaultListItem>
@@ -177,9 +177,9 @@
         {/snippet}
         {#snippet end()}
           {#if isSelected(book.id)}
-            <Badge variant="default" class="h-5 px-1.5 text-[10px]">Selected</Badge>
+            <Badge variant="default" class="h-5 px-1.5 text-[10px]">已选择</Badge>
           {:else if isDisabled(book.id)}
-            <div class="text-muted-foreground bg-muted rounded px-1.5 py-0.5 text-xs">Added</div>
+            <div class="text-muted-foreground bg-muted rounded px-1.5 py-0.5 text-xs">已添加</div>
           {/if}
         {/snippet}
       </VaultListItem>
@@ -200,15 +200,15 @@
             {@const lbName = lorebookVault.getById(scen.metadata.linkedLorebookId)?.name}
             <span class="text-muted-foreground flex max-w-40 items-center gap-1 text-[10px]">
               <Link class="h-3 w-3 shrink-0" />
-              <span class="truncate">{lbName ?? 'Lorebook'}</span>
+              <span class="truncate">{lbName ?? '世界书'}</span>
             </span>
           {/if}
         {/snippet}
         {#snippet end()}
           {#if isSelected(scen.id)}
-            <div class="rounded bg-green-500/20 px-1.5 py-0.5 text-xs text-green-400">Selected</div>
+            <div class="rounded bg-green-500/20 px-1.5 py-0.5 text-xs text-green-400">已选择</div>
           {:else if isDisabled(scen.id)}
-            <div class="text-muted-foreground bg-muted rounded px-1.5 py-0.5 text-xs">Added</div>
+            <div class="text-muted-foreground bg-muted rounded px-1.5 py-0.5 text-xs">已添加</div>
           {/if}
         {/snippet}
       </VaultListItem>

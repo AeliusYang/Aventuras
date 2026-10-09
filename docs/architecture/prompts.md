@@ -4,15 +4,34 @@ Where prompt text comes from, and the order it is assembled in.
 
 ## Prompt Packs and Template Resolution
 
+Collaborative stories use six canonical templates: `collaborative-scene-director`,
+`collaborative-long-planner`, `collaborative-pattern-reviewer`, `collaborative-chinese-writer`,
+`collaborative-fact-extractor`, and `collaborative-plot-suggestions`. All six use normal active-pack
+resolution and pass their task input through the shared context. An independent Chinese novel pack
+can be created through the existing PackService; authored custom packs are never replaced.
+
+Director, Writer, long planner and pattern reviewer use ordinary text generation; Director and Writer
+stream their text to the UI. The Director→Writer handoff is deliberately a natural-language protocol:
+the Director returns raw prose, and the Writer reads that prose together with the original user input.
+The application does not request provider-native structured output, `response_format`, or tool calling
+for this handoff, and does not parse, validate, repair, or retry Director fields locally. A Director
+timeout, empty response, or provider error is surfaced and recorded, then the Writer may continue with
+the remaining context and an explicit fallback indication. Fact extractor and plot suggestions are a
+separate boundary: their prompts ask for JSON text because their existing application contracts consume
+those results; that does not turn the Director→Writer handoff into a JSON contract.
+
 Every prompt the app sends is a Liquid template. The code baseline lives in
 `src/lib/services/prompts/templates/`; at runtime templates are served from a **prompt pack** stored in
 SQLite, which the user can edit in the Vault.
 
 Resolution order (`ContextBuilder.resolveTemplate`), first hit wins:
 
-1. the active pack's own row
-2. `default-pack`'s row
+1. the active pack's canonical template id, then its legacy alias
+2. `default-pack`'s canonical template id, then its legacy alias
 3. the compiled-in baseline in `PROMPT_TEMPLATES`
+
+The old system-only Writer template has an additional compatibility path for its user half; inspect the
+resolved system and user sources separately when diagnosing an upgraded custom pack.
 
 A template has a system half (`content`) and an optional user half (`userContent`). The user half is
 stored under the id `<template-id>-user`, and `ContextBuilder.render(id)` returns `{ system, user }` by
@@ -25,11 +44,11 @@ There is no ambient one. A pack is chosen per story (`stories.pack_id`), and the
 selection until the story it is building exists. A `ContextBuilder` therefore has to be told, and there
 are three ways to build one:
 
-| Factory                          | Use when                                                             |
-| -------------------------------- | -------------------------------------------------------------------- |
-| `ContextBuilder.forStory(id)`    | the template also wants story variables (mode, pov, protagonist, …)   |
-| `ContextBuilder.forPack(id)`     | the service populates its own context and needs only the pack         |
-| `ContextBuilder.forPackId(pack)` | the wizard and the Vault, which hold a pack but no story              |
+| Factory                          | Use when                                                            |
+| -------------------------------- | ------------------------------------------------------------------- |
+| `ContextBuilder.forStory(id)`    | the template also wants story variables (mode, pov, protagonist, …) |
+| `ContextBuilder.forPack(id)`     | the service populates its own context and needs only the pack       |
+| `ContextBuilder.forPackId(pack)` | the wizard and the Vault, which hold a pack but no story            |
 
 `forPack` skips `forStory`'s entity loads but still resolves pack variables and per-story overrides, so
 a user's custom variable works in any template. Neither factory throws: several callers build their
@@ -69,16 +88,16 @@ and reverts it on the next app start.
 The two hashes carry more than "edited or not". Comparing `baseline_hash` against the hash of what the code
 ships **now** separates a customisation from a template that has genuinely fallen behind:
 
-| | `content_hash` vs `baseline_hash` | `baseline_hash` vs hash of shipped text | |
-| ---------------- | ------------ | ------ | ------------------------------------------------ |
-| **Current** | equal | equal | the startup refresh keeps it up to date |
-| **Customised** | differ | equal | the user edited it; nothing newer has shipped |
-| **Behind** | differ | differ | the user edited it **and** newer text has shipped |
+|                | `content_hash` vs `baseline_hash` | `baseline_hash` vs hash of shipped text |                                                   |
+| -------------- | --------------------------------- | --------------------------------------- | ------------------------------------------------- |
+| **Current**    | equal                             | equal                                   | the startup refresh keeps it up to date           |
+| **Customised** | differ                            | equal                                   | the user edited it; nothing newer has shipped     |
+| **Behind**     | differ                            | differ                                  | the user edited it **and** newer text has shipped |
 
 `classifyTemplate` in `services/packs/staleness.ts` is the predicate; both halves are needed, since
 `isUntouched` alone counts customisations as stale and the baseline comparison alone flags every row of a
 pack whose baseline was never the shipped text. It survives edit → ship → edit, because only a baseline
-write moves `baseline_hash` and the refresh never touches an edited row. A row the editor *created*
+write moves `baseline_hash` and the refresh never touches an edited row. A row the editor _created_
 carries `baseline_hash = ''` and so reads as behind — a known false positive, which the UI mitigates by
 naming every affected template before anything is written.
 
@@ -94,7 +113,7 @@ effect the per-template "Reset to default" button has.
 
 **Only `default-pack` can be refreshed.** A custom pack's baseline is not the shipped text: for an imported
 pack it is the file its author wrote, so taking "the shipped version" there would replace their prompts
-with Aventuras' own. (The per-template reset button predates this and *is* offered on every pack, imported
+with Aventuras' own. (The per-template reset button predates this and _is_ offered on every pack, imported
 ones included.)
 
 ### Updating a Pack From a File
@@ -121,7 +140,7 @@ counts them first. That count uses `isUntouched` (did the user change this?), no
 `getModifiedTemplates` (does this differ from what ships today?); the second also flags templates the user
 never touched but a later app version has improved.
 
-Rows are written with `isBaseline: true` — the file *is* this pack's baseline. **That is why `default-pack`
+Rows are written with `isBaseline: true` — the file _is_ this pack's baseline. **That is why `default-pack`
 is excluded**: marking every row as its own baseline makes them all read as untouched, so
 `refreshDefaultPackTemplates` would decide the shipped prompts had changed and overwrite the whole import
 on the next launch. Importing over the built-in pack would appear to work until the next restart.
@@ -131,7 +150,7 @@ code baseline, and `backfillMissingTemplates` re-inserts them on the next start.
 updated pack should match what a fresh import of the same file produces, not carry ghosts of its previous
 self.
 
-Importing a file always creates a *new* pack. A name collision offers a copy or a cancel, never an
+Importing a file always creates a _new_ pack. A name collision offers a copy or a cancel, never an
 overwrite: replacing a pack is reached from that pack, not from a name that happens to match.
 
 ## Prompt Ordering and Prefix Caching

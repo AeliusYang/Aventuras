@@ -21,6 +21,7 @@ const calls = {
   items: [] as any[],
   storyBeats: [] as any[],
   checkpoints: [] as any[],
+  snapshots: [] as any[],
 }
 let failOnCreateStory = false
 
@@ -41,6 +42,7 @@ vi.mock('$lib/services/database', () => ({
     addEntry: vi.fn(async () => {}),
     addChapter: vi.fn(async () => {}),
     createCheckpoint: vi.fn(async (c: any) => void calls.checkpoints.push(c)),
+    createWorldStateSnapshot: vi.fn(async (s: any) => void calls.snapshots.push(s)),
     updateBranch: vi.fn(async () => {}),
     setStoryCurrentBranch: vi.fn(async () => {}),
   },
@@ -59,6 +61,7 @@ beforeEach(() => {
   calls.items.length = 0
   calls.storyBeats.length = 0
   calls.checkpoints.length = 0
+  calls.snapshots.length = 0
   failOnCreateStory = false
   invoke.mockReset()
 })
@@ -75,17 +78,60 @@ function sampleExport() {
         content: 'c',
         parentId: null,
         position: 0,
+        metadata: {
+          collaborativeStateMaintenance: {
+            version: 2,
+            status: 'applied',
+            deltaVersion: 2,
+            completedAt: 123,
+            warning: 'kept for diagnostics',
+          },
+        },
         reasoning: 'because the hero hesitated',
         suggestedActions: '[{"text":"Fight","type":"action"}]',
         // A realistic delta: almost every field in one is an entity id, and the import mints a
         // fresh id for every entity, so this is the shape that proves the remap happens.
         worldStateDelta: {
+          version: 2,
           classificationResult: { summary: 'the hero drew a blade' },
           previousState: {
-            characters: [{ id: 'char-old', name: 'Ren', status: 'active', traits: [] }],
-            locations: [{ id: 'loc-old', name: 'Cave', visited: true, current: true }],
-            items: [{ id: 'item-old', name: 'Blade', quantity: 1, location: 'loc-old' }],
-            storyBeats: [{ id: 'beat-old', title: 'Q', status: 'active' }],
+            characters: [
+              {
+                id: 'char-old',
+                name: 'Ren',
+                status: 'active',
+                relationship: null,
+                traits: [],
+                visualDescriptors: {},
+              },
+            ],
+            locations: [
+              {
+                id: 'loc-old',
+                name: 'Cave',
+                visited: true,
+                current: true,
+                description: null,
+              },
+            ],
+            items: [
+              {
+                id: 'item-old',
+                name: 'Blade',
+                quantity: 1,
+                equipped: false,
+                location: 'loc-old',
+              },
+            ],
+            storyBeats: [
+              {
+                id: 'beat-old',
+                title: 'Q',
+                status: 'active',
+                description: null,
+                resolvedAt: null,
+              },
+            ],
             currentLocationId: 'loc-old',
             timeTracker: { years: 0, days: 1, hours: 2, minutes: 0 },
           },
@@ -114,11 +160,14 @@ function sampleExport() {
 
 describe('runImport — image strategy', () => {
   it('uses the inline path by default', async () => {
-    const result = await runImport(sampleExport())
+    const data = sampleExport()
+    data.embeddedImages![0].contentVersion = JSON.stringify(['prose-v1', '她把信锁进抽屉。'])
+    const result = await runImport(data)
 
     expect(result.success).toBe(true)
     expect(calls.images).toHaveLength(1)
     expect(calls.images[0].imageData).toBe('BASE64')
+    expect(calls.images[0].contentVersion).toBe(data.embeddedImages![0].contentVersion)
   })
 
   it('lets a caller supply its own image strategy, and runs it after the structure', async () => {
@@ -239,6 +288,20 @@ describe('runImport — entry fields', () => {
     expect(delta.previousState.timeTracker).toEqual({ years: 0, days: 1, hours: 2, minutes: 0 })
   })
 
+  it('preserves v2 state maintenance metadata while remapping its separate delta', async () => {
+    const data = sampleExport()
+    const maintenance = structuredClone(data.entries[0].metadata.collaborativeStateMaintenance)
+
+    const result = await runImport(data)
+
+    expect(result.success).toBe(true)
+    expect(calls.entries[0].metadata.collaborativeStateMaintenance).toEqual(maintenance)
+    expect(calls.entries[0].worldStateDelta.previousState.currentLocationId).toBe(
+      calls.locations[0].id,
+    )
+    expect(calls.entries[0].worldStateDelta.previousState.currentLocationId).not.toBe('loc-old')
+  })
+
   it("keeps the 'inventory' sentinel out of the delta's id remapping", async () => {
     const data = sampleExport()
     data.entries[0].worldStateDelta.previousState.items[0].location = 'inventory'
@@ -249,17 +312,14 @@ describe('runImport — entry fields', () => {
     expect(calls.entries[0].worldStateDelta.previousState.items[0].location).toBe('inventory')
   })
 
-  it('normalises a delta whose sub-objects are missing instead of failing the import', async () => {
+  it('keeps a delta with missing sub-objects unknown instead of inventing rollback data', async () => {
     const data = sampleExport()
     data.entries[0].worldStateDelta = { classificationResult: { note: 'partial' } }
 
     const result = await runImport(data)
 
     expect(result.success).toBe(true)
-    const delta = calls.entries[0].worldStateDelta
-    expect(delta.previousState.characters).toEqual([])
-    expect(delta.previousState.currentLocationId).toBeNull()
-    expect(delta.createdEntities.itemIds).toEqual([])
+    expect(calls.entries[0].worldStateDelta).toBeNull()
   })
 
   it('imports an entry lacking all three fields without inventing values', async () => {
@@ -335,15 +395,28 @@ describe('runImport — entry fields', () => {
     )
   })
 
-  it('remaps the delta inside a checkpoint entriesSnapshot too', async () => {
+  it('roundtrips v2 maintenance and remaps delta and branch ids in checkpoints', async () => {
     // A checkpoint snapshot carries whole entry rows, deltas included. Restoring one writes those
     // rows back, so a stale-id delta surviving in a snapshot puts the bug back after the live
     // rows have already shed it — and it would keep returning every time that checkpoint is used.
     const data = sampleExport()
+    data.branches = [
+      {
+        id: 'branch-1',
+        storyId: 'story-old',
+        name: 'side-quest',
+        parentBranchId: null,
+        forkEntryId: 'entry-1',
+        checkpointId: 'cp-1',
+        createdAt: 1,
+      },
+    ]
+    data.entries[0].branchId = 'branch-1'
     data.checkpoints = [
       {
         id: 'cp-1',
         storyId: 'story-old',
+        branchId: 'branch-1',
         name: 'before the cave',
         lastEntryId: 'entry-1',
         lastEntryPreview: 'c',
@@ -365,6 +438,9 @@ describe('runImport — entry fields', () => {
     expect(calls.checkpoints).toHaveLength(1)
 
     const snapshotDelta = calls.checkpoints[0].entriesSnapshot[0].worldStateDelta
+    expect(calls.checkpoints[0].entriesSnapshot[0].metadata.collaborativeStateMaintenance).toEqual(
+      data.entries[0].metadata.collaborativeStateMaintenance,
+    )
     expect(snapshotDelta.previousState.currentLocationId).toBe(calls.locations[0].id)
     expect(snapshotDelta.previousState.characters[0].id).toBe(calls.characters[0].id)
     expect(snapshotDelta.createdEntities.characterIds).toEqual([calls.characters[1].id])
@@ -372,6 +448,8 @@ describe('runImport — entry fields', () => {
 
     // The snapshot's own entry id is remapped as well, or it points at no live row.
     expect(calls.checkpoints[0].entriesSnapshot[0].id).toBe(calls.entries[0].id)
+    expect(calls.checkpoints[0].branchId).toBe(calls.entries[0].branchId)
+    expect(calls.checkpoints[0].branchId).not.toBe('branch-1')
   })
 })
 

@@ -11,6 +11,7 @@ import { BaseAIService } from '../BaseAIService'
 import { createLogger } from '$lib/log'
 import { generatePlainText } from '../sdk/generate'
 import { ContextBuilder } from '$lib/services/context'
+import { database } from '$lib/services/database'
 import {
   translatedUIResultSchema,
   translatedSuggestionsResultSchema,
@@ -86,6 +87,12 @@ export class TranslationService extends BaseAIService {
     super(serviceId)
   }
 
+  private async isCollaborative(storyId: string | undefined): Promise<boolean> {
+    if (!storyId) return false
+    const story = await database.getStory(storyId)
+    return story?.mode === 'creative-writing'
+  }
+
   /**
    * Get the human-readable name for a language code using Intl API
    */
@@ -115,6 +122,7 @@ export class TranslationService extends BaseAIService {
 
     try {
       const ctx = await ContextBuilder.forPack(storyId)
+      if (await this.isCollaborative(storyId)) return { translatedContent: content }
       ctx.add({ targetLanguage: this.getLanguageName(targetLanguage), content })
       const { system, user: prompt } = await ctx.render('translate-narration')
 
@@ -150,6 +158,7 @@ export class TranslationService extends BaseAIService {
 
     try {
       const ctx = await ContextBuilder.forPack(storyId)
+      if (await this.isCollaborative(storyId)) return { translatedContent: content }
       ctx.add({ sourceLanguage: this.getLanguageName(sourceLanguage), content })
       const { system, user: prompt } = await ctx.render('translate-input')
 
@@ -190,6 +199,7 @@ export class TranslationService extends BaseAIService {
         })),
       )
       const ctx = await ContextBuilder.forPack(storyId)
+      if (await this.isCollaborative(storyId)) return items
       ctx.add({ targetLanguage: this.getLanguageName(targetLanguage), elementsJson })
       const { system, user: prompt } = await ctx.render('translate-ui')
 
@@ -227,6 +237,7 @@ export class TranslationService extends BaseAIService {
         })),
       )
       const ctx = await ContextBuilder.forPack(storyId)
+      if (await this.isCollaborative(storyId)) return suggestions
       ctx.add({ targetLanguage: this.getLanguageName(targetLanguage), suggestionsJson })
       const { system, user: prompt } = await ctx.render('translate-suggestions')
 
@@ -269,6 +280,7 @@ export class TranslationService extends BaseAIService {
         })),
       )
       const ctx = await ContextBuilder.forPack(storyId)
+      if (await this.isCollaborative(storyId)) return choices
       ctx.add({ targetLanguage: this.getLanguageName(targetLanguage), choicesJson })
       const { system, user: prompt } = await ctx.render('translate-action-choices')
 

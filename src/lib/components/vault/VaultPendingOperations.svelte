@@ -59,7 +59,7 @@
   const typeConfig = {
     merge: {
       icon: GitMerge,
-      label: 'MERGE',
+      label: '合并',
       borderColor: 'border-l-amber-500',
       bgColor: 'bg-amber-500/5',
       bgHover: 'hover:bg-amber-500/10',
@@ -68,7 +68,7 @@
     },
     create: {
       icon: Plus,
-      label: 'NEW',
+      label: '新建',
       borderColor: 'border-l-emerald-500',
       bgColor: 'bg-emerald-500/5',
       bgHover: 'hover:bg-emerald-500/10',
@@ -77,7 +77,7 @@
     },
     edit: {
       icon: Pencil,
-      label: 'EDIT',
+      label: '修改',
       borderColor: 'border-l-blue-500',
       bgColor: 'bg-blue-500/5',
       bgHover: 'hover:bg-blue-500/10',
@@ -86,7 +86,7 @@
     },
     delete: {
       icon: Trash2,
-      label: 'DELETE',
+      label: '删除',
       borderColor: 'border-l-red-500',
       bgColor: 'bg-red-500/5',
       bgHover: 'hover:bg-red-500/10',
@@ -111,7 +111,7 @@
             <ChevronUp class="h-3 w-3 text-amber-400" />
           {/if}
         </div>
-        <span class="text-surface-200 text-xs font-semibold">Pending</span>
+        <span class="text-surface-200 text-xs font-semibold">待推进</span>
         <span
           class="rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-bold text-amber-400"
         >
@@ -129,7 +129,7 @@
           }}
         >
           <CheckCheck class="h-3 w-3" />
-          Approve All
+          全部批准
         </Button>
       {/if}
     </button>
@@ -190,7 +190,7 @@
                 variant="ghost"
                 class="text-surface-500 hover:bg-foreground/5 hover:text-foreground h-6 w-6 p-0"
                 onclick={() => onRejectOperation(op)}
-                title="Reject"
+                title="拒绝"
               >
                 <X class="h-3 w-3" />
               </Button>

@@ -36,16 +36,33 @@
   let { entry = null, onSave, onCancel }: Props = $props()
 
   // Form state
-  let name = $derived(entry?.name ?? '')
-  let type = $derived<EntryType>(entry?.type ?? 'character')
-  let description = $derived(entry?.description ?? '')
-  let hiddenInfo = $derived(entry?.hiddenInfo ?? '')
-  let aliases = $derived<string[]>(entry?.aliases ?? [])
-  let keywords = $derived<string[]>(entry?.injection.keywords ?? [])
-  let injectionMode = $derived<EntryInjectionMode>(entry?.injection.mode ?? 'keyword')
-  let priority = $derived(entry?.injection.priority ?? 50)
-  let showHiddenInfo = $derived(!!entry?.hiddenInfo)
-  let loreManagementBlacklisted = $derived(entry?.loreManagementBlacklisted ?? false)
+  let name = $state('')
+  let type = $state<EntryType>('character')
+  let description = $state('')
+  let hiddenInfo = $state('')
+  let aliases = $state<string[]>([])
+  let keywords = $state<string[]>([])
+  let injectionMode = $state<EntryInjectionMode>('keyword')
+  let priority = $state(50)
+  let showHiddenInfo = $state(false)
+  let loreManagementBlacklisted = $state(false)
+  let loadedEntryId = $state<string | null | undefined>(undefined)
+
+  $effect(() => {
+    const nextId = entry?.id ?? null
+    if (nextId === loadedEntryId) return
+    loadedEntryId = nextId
+    name = entry?.name ?? ''
+    type = entry?.type ?? 'character'
+    description = entry?.description ?? ''
+    hiddenInfo = entry?.hiddenInfo ?? ''
+    showHiddenInfo = !!entry?.hiddenInfo
+    aliases = [...new Set(entry?.aliases ?? [])]
+    keywords = [...new Set(entry?.injection.keywords ?? [])]
+    injectionMode = entry?.injection.mode ?? 'keyword'
+    priority = entry?.injection.priority ?? 50
+    loreManagementBlacklisted = entry?.loreManagementBlacklisted ?? false
+  })
 
   // Tag input states
   let newAlias = $state('')
@@ -54,18 +71,18 @@
   let saving = $state(false)
 
   const entryTypes: Array<{ value: EntryType; label: string }> = [
-    { value: 'character', label: 'Character' },
-    { value: 'location', label: 'Location' },
-    { value: 'item', label: 'Item' },
-    { value: 'faction', label: 'Faction' },
-    { value: 'concept', label: 'Concept' },
-    { value: 'event', label: 'Event' },
+    { value: 'character', label: '角色' },
+    { value: 'location', label: '地点' },
+    { value: 'item', label: '物品' },
+    { value: 'faction', label: '阵营' },
+    { value: 'concept', label: '概念' },
+    { value: 'event', label: '事件' },
   ]
 
   const injectionModes: Array<{ value: EntryInjectionMode; label: string; description: string }> = [
-    { value: 'always', label: 'Always Active', description: 'Always included in every response' },
-    { value: 'keyword', label: 'Automatic', description: 'Matched by keywords or AI relevance' },
-    { value: 'never', label: 'Disabled', description: 'Not included in AI context' },
+    { value: 'always', label: '始终启用', description: '每次生成均包含' },
+    { value: 'keyword', label: '自动', description: '按关键词或 AI 相关性匹配' },
+    { value: 'never', label: '禁用', description: '不加入 AI 上下文' },
   ]
 
   function getDefaultState(entryType: EntryType): EntryState {
@@ -214,17 +231,17 @@
   <!-- Name -->
   <div class="space-y-2">
     <Label for="entry-name">
-      Name <span class="text-red-500">*</span>
+      名称 <span class="text-red-500">*</span>
     </Label>
-    <Input id="entry-name" type="text" bind:value={name} placeholder="Entry name" />
+    <Input id="entry-name" type="text" bind:value={name} placeholder="条目名称" />
   </div>
 
   <!-- Type -->
   <div class="space-y-2">
-    <Label for="entry-type">Type</Label>
+    <Label for="entry-type">类型</Label>
     <Select type="single" value={type} onValueChange={(v) => (type = v as EntryType)}>
       <SelectTrigger id="entry-type">
-        {entryTypes.find((t) => t.value === type)?.label ?? 'Select type'}
+        {entryTypes.find((t) => t.value === type)?.label ?? '选择类型'}
       </SelectTrigger>
       <SelectContent>
         {#each entryTypes as option ((option.value, option.label))}
@@ -236,11 +253,11 @@
 
   <!-- Description -->
   <div class="space-y-2">
-    <Label for="entry-description">Description</Label>
+    <Label for="entry-description">说明</Label>
     <Textarea
       id="entry-description"
       bind:value={description}
-      placeholder="Describe this entry..."
+      placeholder="描述此条目…"
       rows={4}
       class="resize-none"
     />
@@ -249,10 +266,8 @@
   <!-- Aliases -->
   <div class="space-y-2">
     <Label>
-      Aliases
-      <span class="text-muted-foreground ml-1 text-xs font-normal">
-        Alternative names for matching
-      </span>
+      别名
+      <span class="text-muted-foreground ml-1 text-xs font-normal"> 用于匹配的其他名称 </span>
     </Label>
     <div class="mb-2 flex flex-wrap gap-2">
       {#each aliases as alias (alias)}
@@ -268,7 +283,7 @@
       <Input
         type="text"
         bind:value={newAlias}
-        placeholder="Add alias..."
+        placeholder="添加别名…"
         class="flex-1"
         onkeydown={handleAliasKeydown}
       />
@@ -281,10 +296,8 @@
   <!-- Keywords -->
   <div class="space-y-2">
     <Label>
-      Keywords
-      <span class="text-muted-foreground ml-1 text-xs font-normal">
-        Trigger words for injection
-      </span>
+      关键词
+      <span class="text-muted-foreground ml-1 text-xs font-normal"> 触发上下文注入的词语 </span>
     </Label>
     <div class="mb-2 flex flex-wrap gap-2">
       {#each keywords as keyword (keyword)}
@@ -306,7 +319,7 @@
       <Input
         type="text"
         bind:value={newKeyword}
-        placeholder="Add keyword..."
+        placeholder="添加关键词…"
         class="flex-1"
         onkeydown={handleKeywordKeydown}
       />
@@ -318,7 +331,7 @@
 
   <!-- Context Inclusion Mode -->
   <div class="space-y-3">
-    <Label>Context Inclusion</Label>
+    <Label>上下文注入</Label>
     <RadioGroup
       value={injectionMode}
       onValueChange={(v) => (injectionMode = v as EntryInjectionMode)}
@@ -349,8 +362,7 @@
 
     {#if injectionMode === 'keyword'}
       <p class="text-muted-foreground mt-2 text-xs">
-        Entry will be included when keywords/aliases match the story, or when the AI determines it's
-        contextually relevant.
+        关键词或别名与故事匹配，或 AI 判断条目与当前场景相关时，将其加入上下文。
       </p>
     {/if}
   </div>
@@ -359,9 +371,9 @@
   <div class="space-y-4">
     <div class="flex items-center justify-between">
       <Label>
-        Priority
+        优先级
         <span class="text-muted-foreground ml-1 text-xs font-normal">
-          Higher priority entries are injected first
+          优先加入优先级更高的条目
         </span>
       </Label>
       <span class="w-8 text-right text-sm font-medium">{priority}</span>
@@ -379,10 +391,8 @@
   <!-- Lore Management Blacklist -->
   <div class="bg-muted/30 flex items-center justify-between rounded-lg border p-3">
     <div class="space-y-0.5">
-      <Label class="text-base">Hide from AI Lore Management</Label>
-      <p class="text-muted-foreground text-xs">
-        When enabled, the AI won't see or modify this entry during lore management
-      </p>
+      <Label class="text-base">排除在 AI 世界书管理之外</Label>
+      <p class="text-muted-foreground text-xs">开启后，AI 世界书管理不会读取或修改此条目</p>
     </div>
     <Switch bind:checked={loreManagementBlacklisted} />
   </div>
@@ -397,10 +407,8 @@
           class="flex w-full justify-between px-0 hover:bg-transparent"
         >
           <span class="flex items-center gap-2 text-sm font-medium">
-            Hidden Info
-            <span class="text-muted-foreground text-xs font-normal"
-              >(secrets the protagonist doesn't know)</span
-            >
+            隐藏信息
+            <span class="text-muted-foreground text-xs font-normal">（主角尚不知道的秘密）</span>
           </span>
           {#if showHiddenInfo}
             <ChevronUp class="text-muted-foreground h-4 w-4" />
@@ -413,7 +421,7 @@
     <CollapsibleContent>
       <Textarea
         bind:value={hiddenInfo}
-        placeholder="Hidden information, revealed secrets, etc..."
+        placeholder="隐藏信息、已揭露的秘密等…"
         rows={3}
         class="mt-2 resize-none"
       />
@@ -422,9 +430,9 @@
 
   <!-- Actions -->
   <div class="mt-4 flex gap-2 border-t pt-4">
-    <Button variant="outline" class="flex-1" onclick={onCancel} disabled={saving}>Cancel</Button>
+    <Button variant="outline" class="flex-1" onclick={onCancel} disabled={saving}>取消</Button>
     <Button class="flex-1" onclick={handleSave} disabled={saving || !name.trim()}>
-      {saving ? 'Saving...' : entry ? 'Save Changes' : 'Create Entry'}
+      {saving ? '正在保存…' : entry ? '保存修改' : '创建条目'}
     </Button>
   </div>
 </div>

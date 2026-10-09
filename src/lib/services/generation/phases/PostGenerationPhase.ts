@@ -17,6 +17,7 @@ import type {
   AbortedEvent,
   ErrorEvent,
 } from '../types'
+import { asError } from '$lib/utils/error'
 import type {
   StoryEntry,
   Entry,
@@ -81,6 +82,7 @@ export interface PostGenerationDependencies {
 
 /** Input for the post-generation phase */
 export interface PostGenerationInput {
+  isCollaborative?: boolean
   isCreativeMode: boolean
   disableSuggestions: boolean
   /** Story whose pack supplies the suggestion and action-choice templates. */
@@ -115,7 +117,7 @@ export class PostGenerationPhase {
   ): AsyncGenerator<GenerationEvent, PostGenerationResult> {
     yield { type: 'phase_start', phase: 'post' } satisfies PhaseStartEvent
 
-    const { isCreativeMode, disableSuggestions, abortSignal } = input
+    const { isCreativeMode, disableSuggestions, abortSignal, isCollaborative } = input
 
     if (abortSignal?.aborted) {
       yield { type: 'aborted', phase: 'post' } satisfies AbortedEvent
@@ -124,7 +126,13 @@ export class PostGenerationPhase {
 
     const result: PostGenerationResult = { suggestions: null, actionChoices: null }
 
-    if (!disableSuggestions) {
+    if (isCollaborative) {
+      yield { type: 'phase_complete', phase: 'post', result } satisfies PhaseCompleteEvent
+      return result
+    }
+
+    // Collaborative stories only generate these when explicitly requested.
+    if (!disableSuggestions && !input.isCollaborative) {
       if (isCreativeMode) {
         try {
           result.suggestions = await this.generateSuggestions(input)
@@ -214,7 +222,7 @@ export class PostGenerationPhase {
     return {
       type: 'error',
       phase: 'post',
-      error: error instanceof Error ? error : new Error(String(error)),
+      error: asError(error, '后处理阶段返回了无法识别的错误。'),
       fatal: false,
     }
   }

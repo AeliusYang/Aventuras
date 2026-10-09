@@ -182,7 +182,7 @@
       <Command.List class={virtualized ? 'overflow-hidden' : ''}>
         {#if totalItemCount === 0}
           <Command.Empty>
-            {allowCustom ? 'Type custom value to select...' : 'No items found.'}
+            {allowCustom ? '输入并选择自定义值…' : '未找到项目。'}
           </Command.Empty>
         {:else}
           <Command.Group class={virtualized ? 'p-0' : ''}>
@@ -204,7 +204,7 @@
                             onSelect={handleCustomSelection}
                           >
                             <Plus class="mr-2 h-4 w-4" />
-                            Use "{inputValue}"
+                            使用“{inputValue}"
                           </Command.Item>
                         {:else}
                           {@const itemIndex = showCustomOption ? index - 1 : index}
@@ -235,7 +235,7 @@
               {#if showCustomOption}
                 <Command.Item value={`__custom__${inputValue}`} onSelect={handleCustomSelection}>
                   <Plus class="mr-2 h-4 w-4" />
-                  Use "{inputValue}"
+                  使用“{inputValue}"
                 </Command.Item>
               {/if}
               {#each filteredItems as itemData, i (i)}

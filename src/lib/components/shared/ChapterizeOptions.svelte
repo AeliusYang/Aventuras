@@ -31,12 +31,12 @@
     <div class="flex items-center justify-between">
       <div class="flex items-center gap-2">
         <Library class="text-muted-foreground h-4 w-4" />
-        <span class="text-sm">Generate chapters from history</span>
+        <span class="text-sm">从历史记录生成章节</span>
       </div>
       <Switch
         checked={chapterizeAfterImport}
         onCheckedChange={(v) => onChapterizeAfterImportChange(v)}
-        aria-label="Generate chapters from history"
+        aria-label="从历史记录生成章节"
       />
     </div>
     {#if chapterizeAfterImport}
@@ -44,49 +44,48 @@
         <div class="flex items-center justify-between">
           <div class="flex items-center gap-2 pl-6">
             <BookOpen class="text-muted-foreground h-4 w-4" />
-            <span class="text-muted-foreground text-sm">Also update the lorebook</span>
+            <span class="text-muted-foreground text-sm">同时更新世界书</span>
           </div>
           <Switch
             checked={chapterizeIncludeLorebook}
             onCheckedChange={(v) => onChapterizeIncludeLorebookChange(v)}
-            aria-label="Also update the lorebook"
+            aria-label="同时更新世界书"
           />
         </div>
         <p class="text-muted-foreground mt-1 pl-6 text-xs">
-          One extra AI pass over the whole batch to create and update lorebook entries.
+          额外调用一次 AI 分析整批内容，以创建和更新世界书条目。
         </p>
       </div>
       <div class="border-t pt-3">
         <div class="flex items-center justify-between">
           <div class="flex items-center gap-2 pl-6">
             <Clock class="text-muted-foreground h-4 w-4" />
-            <span class="text-muted-foreground text-sm">Estimate timeline</span>
+            <span class="text-muted-foreground text-sm">估算时间线</span>
           </div>
           <Switch
             checked={chapterizeIncludeTimeline}
             onCheckedChange={(v) => onChapterizeIncludeTimelineChange(v)}
-            aria-label="Estimate timeline"
+            aria-label="估算时间线"
           />
         </div>
         <p class="text-muted-foreground mt-1 pl-6 text-xs">
-          Estimates how much in-story time passed in each chapter. Adds 1 AI call per chapter.
+          估算每章经过的故事时间，每章额外调用一次 AI。
         </p>
       </div>
       <div class="border-t pt-3">
         <div class="flex items-center justify-between">
           <div class="flex items-center gap-2 pl-6">
             <ScanSearch class="text-muted-foreground h-4 w-4" />
-            <span class="text-muted-foreground text-sm">Populate characters, locations & items</span
-            >
+            <span class="text-muted-foreground text-sm">补全角色、地点和物品</span>
           </div>
           <Switch
             checked={chapterizeIncludeClassification}
             onCheckedChange={(v) => onChapterizeIncludeClassificationChange(v)}
-            aria-label="Populate characters, locations & items"
+            aria-label="补全角色、地点和物品"
           />
         </div>
         <p class="text-muted-foreground mt-1 pl-6 text-xs">
-          Backfills the World Tracking panels from each chapter. Adds 1 AI call per chapter.
+          根据各章内容补全世界状态面板，每章额外调用一次 AI。
         </p>
       </div>
     {/if}

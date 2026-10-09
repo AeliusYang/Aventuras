@@ -15,7 +15,7 @@
 import type { EmbeddedImage } from '$lib/types'
 import { parseStoryMarkdown, parseStoryMarkdownInline } from '$lib/utils/markdown'
 import { dialogueSpans } from '$lib/utils/dialogue'
-import { sanitizeVisualProse } from '$lib/utils/htmlSanitize'
+import { highlightDialogueHtml, sanitizeVisualProse } from '$lib/utils/htmlSanitize'
 import {
   picTagRegex,
   renderSinglePicTag,
@@ -313,9 +313,8 @@ export function getPlacedImageIds(content: string, images: EmbeddedImage[]): Set
  * Handles both agentic markers and inline <pic> tags in a single pass.
  *
  * Renders through `parseStoryMarkdown`, which additionally marks up dialogue. The
- * Visual Prose path below deliberately does not: that content is authored HTML and
- * goes through `sanitizeVisualProse` instead, which is what keeps the dialogue
- * feature off for those stories without a mode check anywhere.
+ * Visual Prose path below keeps its authored HTML intact and applies the same marker
+ * during sanitization.
  */
 export function processStoryContent(
   content: string,
@@ -344,15 +343,16 @@ export function processVisualProseStoryContent(
   entryId: string,
   regeneratingIds: Set<string> = new Set(),
   picOptions: Omit<PicTagRenderOptions, 'regeneratingIds'> = {},
+  highlightDialogue = false,
 ): string {
-  // Marker text stays raw here: in this mode it is already HTML, and running it
-  // through a markdown renderer would mangle the tags it is made of.
+  // Marker text stays as HTML here: in this mode it is already authored HTML, and
+  // running it through a markdown renderer would mangle its tags.
   return processUnified(
     content,
     images,
     regeneratingIds,
-    (t) => sanitizeVisualProse(t, entryId),
-    (t) => t,
+    (t) => sanitizeVisualProse(t, entryId, highlightDialogue),
+    (t) => (highlightDialogue ? highlightDialogueHtml(t) : t),
     false,
     picOptions,
   )

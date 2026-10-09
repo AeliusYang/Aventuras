@@ -32,8 +32,8 @@
     onModelChange,
     showProfileSelector = true,
     onManageProfiles,
-    label = 'Model',
-    placeholder = 'Select or type model...',
+    label = '模型',
+    placeholder = '选择或输入模型标识…',
     class: className,
     onRefreshModels,
     isRefreshingModels = false,
@@ -61,9 +61,9 @@
 
   // Get selected profile name
   let selectedProfileName = $derived.by(() => {
-    if (!profileId) return 'Select Profile'
+    if (!profileId) return '选择连接配置'
     const profile = settings.getProfile(profileId)
-    return profile?.name || 'Unknown'
+    return profile?.name || '未知配置'
   })
 
   // Create framework options for Select
@@ -118,7 +118,7 @@
 <div class={cn('grid gap-4', className)}>
   {#if showProfileSelector}
     <div class="grid gap-2">
-      <div class="flex h-4 items-center"><Label>API Profile</Label></div>
+      <div class="flex h-4 items-center"><Label>模型连接</Label></div>
       <div class="flex gap-2">
         <Select.Root
           type="single"
@@ -139,7 +139,7 @@
             variant="outline"
             size="icon"
             onclick={onManageProfiles}
-            title="Manage API Profiles"
+            title="管理模型连接"
             class="shrink-0"
           >
             <Server class="h-4 w-4" />
@@ -154,11 +154,9 @@
       <Label>{label}</Label>
       <div class="flex items-center gap-2">
         {#if isModelMissing}
-          <span class="hidden text-[0.7rem] text-yellow-500 md:inline">Not in profile list</span>
+          <span class="hidden text-[0.7rem] text-yellow-500 md:inline">不在模型列表中</span>
         {:else if availableModels.length === 0}
-          <span class="text-muted-foreground hidden text-[0.7rem] md:inline"
-            >No models available</span
-          >
+          <span class="text-muted-foreground hidden text-[0.7rem] md:inline">没有可用模型</span>
         {/if}
         {#if onRefreshModels}
           <Button
@@ -169,7 +167,7 @@
             disabled={isRefreshingModels}
           >
             <RefreshCw class={cn('mr-1 h-3 w-3', isRefreshingModels && 'animate-spin')} />
-            Refresh
+            刷新
           </Button>
         {/if}
       </div>
@@ -218,12 +216,10 @@
       {/snippet}
     </Autocomplete>
     {#if isModelMissing}
-      <p class="mt-1 text-[0.8rem] text-yellow-500 md:hidden">
-        Model not found in this profile's model list.
-      </p>
+      <p class="mt-1 text-[0.8rem] text-yellow-500 md:hidden">此连接的模型列表中没有该模型。</p>
     {:else if availableModels.length === 0}
       <p class="text-muted-foreground mt-1 text-[0.8rem] md:hidden">
-        No models available. Add models to the profile.
+        没有可用模型，请先在连接配置中添加。
       </p>
     {/if}
   </div>

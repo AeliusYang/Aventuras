@@ -10,7 +10,7 @@ import { scenarioService, type WizardData } from '$lib/services/ai/wizard/Scenar
 import { TranslationService } from '$lib/services/ai/utils/TranslationService'
 import { QUICK_START_SEEDS } from '$lib/services/templates'
 import { replaceUserPlaceholders } from '$lib/components/wizard/wizardTypes'
-import type { VaultScenario } from '$lib/types'
+import type { StoryMode, VaultScenario } from '$lib/types'
 import { lorebookVault } from '$lib/stores/lorebookVault.svelte'
 import { stringToDescriptors } from '$lib/utils/visualDescriptors'
 import { packService } from '$lib/services/packs/pack-service'
@@ -32,6 +32,24 @@ export class WizardStore {
   image = new ImageStore(() => this.selectedPackId)
 
   // Wizard State
+  novelSetupBusy = $state(false)
+  async setMode(mode: StoryMode) {
+    if (this.novelSetupBusy) return
+    this.novelSetupBusy = true
+    try {
+      if (mode === 'creative-writing') {
+        const pack = await packService.ensureCollaborativePack()
+        await this.selectPack(pack.id)
+      }
+      if (this.narrative.selectedMode !== mode)
+        this.narrative.selectedPOV = mode === 'creative-writing' ? 'third' : 'first'
+      this.narrative.selectedMode = mode
+    } catch (error) {
+      ui.showToast(error instanceof Error ? error.message : '无法准备中文写作', 'error')
+    } finally {
+      this.novelSetupBusy = false
+    }
+  }
   currentStep = $state(1)
   totalSteps = 9
   isCreatingStory = $state(false)
@@ -49,12 +67,19 @@ export class WizardStore {
 
   onClose: () => void
 
-  constructor(onClose: () => void) {
+  constructor(onClose: () => void, initialMode?: StoryMode) {
     this.onClose = onClose
+    if (initialMode) {
+      this.narrative.selectedMode = initialMode
+      this.narrative.selectedPOV = initialMode === 'creative-writing' ? 'third' : 'first'
+      this.currentStep = 2
+      if (initialMode === 'creative-writing') void this.setMode(initialMode)
+    }
   }
 
   // Navigation
   canProceed(): boolean {
+    if (this.novelSetupBusy) return false
     switch (this.currentStep) {
       case 1: // Mode
         return true
@@ -579,13 +604,10 @@ export class WizardStore {
         ...storyData,
         importedEntries: processedEntries.length > 0 ? processedEntries : undefined,
         translations,
+        packId: this.selectedPackId,
+        customVariableValues:
+          Object.keys(this.customVariableValues).length > 0 ? this.customVariableValues : null,
       })
-
-      // Assign pack and save custom variable values
-      await database.setStoryPack(newStory.id, this.selectedPackId)
-      if (Object.keys(this.customVariableValues).length > 0) {
-        await database.setStoryCustomVariables(newStory.id, this.customVariableValues)
-      }
 
       await story.loadStory(newStory.id)
       ui.setActivePanel('story')

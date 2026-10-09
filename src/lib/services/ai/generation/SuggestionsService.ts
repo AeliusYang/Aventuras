@@ -8,12 +8,17 @@
  */
 
 import type { StoryEntry, StoryBeat, Entry } from '$lib/types'
-import type { ServiceId } from '$lib/stores/settings.svelte'
+import { settings, type ServiceId } from '$lib/stores/settings.svelte'
 import { BaseAIService } from '../BaseAIService'
 import { ContextBuilder } from '$lib/services/context'
 import { getContextConfig, getLorebookConfig } from '../core/config'
 import { createLogger } from '$lib/log'
 import { suggestionsResultSchema, type SuggestionsResult } from '../sdk/schemas/suggestions'
+import { database } from '$lib/services/database'
+import { generateCollaborativeJsonText } from '../sdk/generate'
+import { CollaborativePromptService } from '../core/CollaborativePromptService'
+import { collaborativeServiceIds } from '../core/collaborativeAgentDefaults'
+import { collaborativeOptionalContext } from '$lib/services/generation/collaborative'
 
 const log = createLogger('Suggestions')
 
@@ -56,11 +61,21 @@ export class SuggestionsService extends BaseAIService {
       lorebookEntriesCount: lorebookEntries?.length ?? 0,
       hasLatestNarrativeResponse: !!latestNarrativeResponse?.trim(),
     })
+    const currentStory = storyId ? await database.getStory(storyId) : null
+    const collaborative = currentStory?.mode === 'creative-writing'
+    if (
+      collaborative &&
+      currentStory?.settings?.collaborativeNovelWorkflow?.plotSuggestions?.enabled === false
+    ) {
+      throw new Error('中文写作短期剧情建议已关闭。')
+    }
 
     // Get the last few entries for context
     const contextConfig = getContextConfig()
     const lorebookConfig = getLorebookConfig()
-    const lastEntries = recentEntries.slice(-contextConfig.recentEntriesForSuggestions)
+    const lastEntries = recentEntries
+      .filter((entry) => !collaborative || entry.type === 'narration')
+      .slice(-contextConfig.recentEntriesForSuggestions)
     let recentContent = lastEntries
       .map((e) => {
         const prefix = e.type === 'user_action' ? '[DIRECTION]' : '[NARRATIVE]'
@@ -109,7 +124,9 @@ export class SuggestionsService extends BaseAIService {
     // Create ContextBuilder -- use forStory when storyId available
     let ctx: ContextBuilder
     if (storyId) {
-      ctx = await ContextBuilder.forStory(storyId)
+      ctx = collaborative
+        ? await ContextBuilder.forStory(storyId, undefined, false)
+        : await ContextBuilder.forStory(storyId)
     } else {
       ctx = new ContextBuilder()
       ctx.add({
@@ -125,24 +142,64 @@ export class SuggestionsService extends BaseAIService {
     const genreStr = ctxData.genre ? `## Genre: ${ctxData.genre}\n` : ''
 
     // Add runtime variables for template rendering
+    const planningInput = {
+      recentContent,
+      activeThreads: activeThreadsStr,
+      ...(lorebookContext ? { lorebookContext } : {}),
+      ...(collaborative && currentStory
+        ? collaborativeOptionalContext(currentStory, recentEntries)
+        : {}),
+    }
     ctx.add({
       recentContent,
       activeThreads: activeThreadsStr,
       genre: genreStr,
       lorebookContext,
+      planningInput: JSON.stringify(planningInput),
     })
 
-    // Render through the suggestions template
-    const { system, user: prompt } = await ctx.render('suggestions')
+    const templateId = collaborative ? 'collaborative-plot-suggestions' : 'suggestions'
+    const rendered =
+      collaborative && currentStory
+        ? await CollaborativePromptService.render(
+            currentStory.id,
+            'plotSuggestions',
+            planningInput,
+            ctx.getContext(),
+          )
+        : await ctx.render(templateId)
+    const { system, user: prompt } = rendered
 
     try {
       // Use SDK's generateStructured - all boilerplate handled automatically
-      const result = await this.generate(suggestionsResultSchema, system, prompt, 'suggestions')
+      const result =
+        collaborative && currentStory
+          ? await generateCollaborativeJsonText(
+              {
+                presetId: templateId,
+                presetOverride: settings.getPresetConfig(
+                  settings.getServicePresetId(collaborativeServiceIds.plotSuggestions),
+                  collaborativeServiceIds.plotSuggestions,
+                ),
+                schema: suggestionsResultSchema.refine(
+                  (value) =>
+                    value.suggestions.every((suggestion) =>
+                      /\p{Script=Han}/u.test(suggestion.text),
+                    ),
+                  '中文写作剧情建议必须使用中文。',
+                ),
+                system,
+                prompt,
+              },
+              templateId,
+            )
+          : await this.generate(suggestionsResultSchema, system, prompt, templateId)
 
       log('Suggestions generated:', result.suggestions.length)
       return result
     } catch (error) {
       log('Suggestions generation failed:', error)
+      if (collaborative) throw error
       return { suggestions: [] }
     }
   }

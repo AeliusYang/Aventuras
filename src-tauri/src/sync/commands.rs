@@ -12,6 +12,13 @@ use super::types::{
     QrCodeData, SyncAction, SyncRequest, SyncResponse, SyncServerInfo, SyncStoryPreview,
 };
 
+fn ensure_sync_allowed(app: &AppHandle) -> Result<(), String> {
+    if app.config().identifier.starts_with("com.karelian.aventura.candidate.") {
+        return Err("独立候选禁止同步，以免写入正式环境".to_string());
+    }
+    Ok(())
+}
+
 /// State managed by Tauri for sync operations
 pub struct SyncState {
     /// Handle to the running server task
@@ -90,6 +97,7 @@ pub async fn start_sync_server(
     state: State<'_, SyncState>,
     stories_json: Option<Vec<String>>,
 ) -> Result<SyncServerInfo, String> {
+    ensure_sync_allowed(&app)?;
     // Stop any existing server first
     stop_sync_server(state.clone()).await?;
 
@@ -191,10 +199,12 @@ pub async fn clear_received_stories(state: State<'_, SyncState>) -> Result<(), S
 /// Connect to a remote sync server and list available stories
 #[tauri::command]
 pub async fn sync_connect(
+    app: AppHandle,
     ip: String,
     port: u16,
     token: String,
 ) -> Result<Vec<SyncStoryPreview>, String> {
+    ensure_sync_allowed(&app)?;
     let url = format!("http://{}:{}/sync", ip, port);
 
     let request = SyncRequest {
@@ -226,11 +236,13 @@ pub async fn sync_connect(
 /// Pull a story from a remote server
 #[tauri::command]
 pub async fn sync_pull_story(
+    app: AppHandle,
     ip: String,
     port: u16,
     token: String,
     story_id: String,
 ) -> Result<String, String> {
+    ensure_sync_allowed(&app)?;
     let url = format!("http://{}:{}/sync", ip, port);
 
     let request = SyncRequest {
@@ -262,11 +274,13 @@ pub async fn sync_pull_story(
 /// Push a story to a remote server
 #[tauri::command]
 pub async fn sync_push_story(
+    app: AppHandle,
     ip: String,
     port: u16,
     token: String,
     story_json: String,
 ) -> Result<(), String> {
+    ensure_sync_allowed(&app)?;
     let url = format!("http://{}:{}/sync", ip, port);
 
     let request = SyncRequest {

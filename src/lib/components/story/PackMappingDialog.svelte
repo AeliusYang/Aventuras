@@ -124,35 +124,31 @@
   <Dialog.Content class="sm:max-w-lg">
     <Dialog.Header>
       <Dialog.Title>
-        {lockedPack ? 'One more thing for this story' : 'Prompt Pack for this story'}
+        {lockedPack ? '还需补充一项故事设置' : '本故事的提示词包'}
       </Dialog.Title>
       <Dialog.Description>
         {#if lockedPack}
-          This story uses your "{lockedPack.name}" pack, which needs a value the story does not
-          carry.
+          此故事使用你的“{lockedPack.name}”提示词包，需要补充故事中未保存的变量值。
         {:else if context.binding && context.match.confidence === 'none'}
           <!-- Leads with the absence: the useful response may well be to cancel and go install
                the pack, which a neutral "choose one" would not suggest. -->
-          The prompt pack this story was written with — "{context.binding.pack.name}"{context
-            .binding.pack.author
+          此故事原来使用的提示词包“{context.binding.pack.name}"{context.binding.pack.author
             ? ` by ${context.binding.pack.author}`
-            : ''} — is not installed on this device. Choose one of your packs to use instead, or cancel
-          and install that pack first.
+            : ''} ”尚未安装在本设备上。请选择已有提示词包替代，或取消导入并先安装原提示词包。
         {:else if context.binding}
-          This story was written with a pack called "{context.binding.pack.name}"{context.binding
-            .pack.author
+          此故事原来使用的提示词包名为“{context.binding.pack.name}"{context.binding.pack.author
             ? ` by ${context.binding.pack.author}`
-            : ''}. Choose which of your packs it should use.
+            : ''}。请选择要使用的提示词包。
         {:else}
-          This story file records no prompt pack. Choose which of your packs it should use.
+          此故事文件未记录提示词包，请选择要使用的提示词包。
         {/if}
       </Dialog.Description>
     </Dialog.Header>
 
     {#if authorMismatch}
       <p class="rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-500">
-        Your pack "{authorMismatch.name}" has the same name but a different author ({authorMismatch.author ??
-          'no author'}). It may not be the same pack.
+        你的提示词包“{authorMismatch.name}”名称相同，但作者不同（{authorMismatch.author ??
+          '未填写作者'}），可能不是同一个提示词包。
       </p>
     {/if}
 
@@ -170,8 +166,8 @@
     {/if}
 
     <Dialog.Footer>
-      <Button variant="outline" onclick={cancel}>Cancel import</Button>
-      <Button onclick={confirm} disabled={loading}>Import story</Button>
+      <Button variant="outline" onclick={cancel}>取消导入</Button>
+      <Button onclick={confirm} disabled={loading}>导入故事</Button>
     </Dialog.Footer>
   </Dialog.Content>
 </Dialog.Root>

@@ -22,6 +22,11 @@ import { remapRuntimeVars } from '$lib/services/packs'
 import type { RuntimeVariable, RuntimeEntityType } from '$lib/services/packs'
 import type { PackBindingResolution } from './packBinding'
 import { createMappers } from './idMaps'
+import {
+  isLegacyWorldStateDelta,
+  validateWorldStateDeltaV2,
+} from '$lib/services/collaborativeStateMaintenance'
+import { normalizeCollaborativeStory } from '$lib/services/generation/collaborativeWorkflow'
 
 /** The resolved binding, plus both sides' runtime variable definitions for the re-keying. */
 export interface StoryPackBinding extends PackBindingResolution {
@@ -71,7 +76,7 @@ export async function importStructure(
       packBinding?.targetRuntimeVars,
     ) as T
 
-  const importedStory: CreateStoryInput = {
+  const importedStory = normalizeCollaborativeStory<CreateStoryInput>({
     id: newStoryId,
     title: skipImportedSuffix ? data.story.title : `${data.story.title} (Imported)`,
     description: data.story.description,
@@ -87,7 +92,7 @@ export async function importStructure(
     currentBgImage: data.story.currentBgImage || null,
     packId: packBinding?.packId ?? null,
     customVariableValues: packBinding?.customVariableValues ?? null,
-  }
+  })
 
   await database.createStory(importedStory)
   onStoryCreated?.()
@@ -163,6 +168,9 @@ export async function importStructure(
     delta: WorldStateDelta | null | undefined,
   ): WorldStateDelta | null => {
     if (!delta) return null
+    const sourceValid =
+      delta.version === 2 ? validateWorldStateDeltaV2(delta).valid : isLegacyWorldStateDelta(delta)
+    if (!sourceValid) return null
 
     // Rebuilt field by field rather than spread, so a delta written by an older version (or a
     // hand-edited file) arrives normalised instead of throwing half-way through the import.
@@ -170,6 +178,7 @@ export async function importStructure(
     const createdEntities = delta.createdEntities
 
     return {
+      ...(delta.version === 2 ? { version: 2 as const } : {}),
       classificationResult: delta.classificationResult ?? {},
       previousState: {
         characters: (previousState?.characters ?? []).map((c) => ({
@@ -208,6 +217,19 @@ export async function importStructure(
     }
   }
 
+  const remapEntryMetadata = (metadata: StoryEntry['metadata']): StoryEntry['metadata'] => {
+    if (!metadata?.collaborativeStateRebuild) return metadata
+    return {
+      ...metadata,
+      collaborativeStateRebuild: {
+        ...metadata.collaborativeStateRebuild,
+        targetEntryId:
+          mapEntryId(metadata.collaborativeStateRebuild.targetEntryId) ??
+          metadata.collaborativeStateRebuild.targetEntryId,
+      },
+    }
+  }
+
   for (const entry of data.entries) {
     const newEntryId = oldToNewId.get(entry.id) ?? crypto.randomUUID()
 
@@ -218,7 +240,9 @@ export async function importStructure(
       content: entry.content,
       parentId: entry.parentId ? (oldToNewId.get(entry.parentId) ?? null) : null,
       position: entry.position,
-      metadata: entry.metadata,
+      // The v2 maintenance record contains only status/version metadata. Its associated entity
+      // ids live in worldStateDelta, which is remapped separately below.
+      metadata: remapEntryMetadata(entry.metadata),
       branchId: mapBranchId(entry.branchId ?? null),
       translatedContent: entry.translatedContent ?? null,
       translationLanguage: entry.translationLanguage ?? null,
@@ -360,6 +384,7 @@ export async function importStructure(
       storyId: newStoryId,
       parentId: entry.parentId ? (remapEntityId(entry.parentId) ?? entry.parentId) : null,
       branchId: mapBranchId(entry.branchId ?? null),
+      metadata: remapEntryMetadata(entry.metadata),
       // The snapshot carries whole entry rows, deltas included: without this a checkpoint
       // restore would put the stale-id deltas back that the live rows above just shed.
       worldStateDelta: remapWorldStateDelta(entry.worldStateDelta),
@@ -419,6 +444,7 @@ export async function importStructure(
       await database.createCheckpoint({
         id: newCheckpointId,
         storyId: newStoryId,
+        branchId: mapBranchId(checkpoint.branchId ?? null),
         name: checkpoint.name,
         lastEntryId: remapEntityId(checkpoint.lastEntryId),
         lastEntryPreview: checkpoint.lastEntryPreview,
@@ -475,6 +501,51 @@ export async function importStructure(
       emotionalTone: chapter.emotionalTone,
       branchId: chapter.branchId ? (branchIdMap.get(chapter.branchId) ?? null) : null,
       createdAt: chapter.createdAt,
+    })
+  }
+
+  for (const snapshot of data.worldStateSnapshots ?? []) {
+    const remapSnapshotEntity = <
+      T extends { id: string; storyId: string; branchId: string | null },
+    >(
+      value: T,
+    ): T => ({
+      ...value,
+      id: remapEntityId(value.id),
+      storyId: newStoryId,
+      branchId: mapBranchId(value.branchId),
+    })
+    const locations = snapshot.locationsSnapshot.map((location) => ({
+      ...remapSnapshotEntity(location),
+      connections: location.connections.map(remapEntityId),
+      metadata: remapMetadata(location.metadata, 'location'),
+    }))
+    await database.createWorldStateSnapshot({
+      ...snapshot,
+      id: remapEntityId(snapshot.id),
+      storyId: newStoryId,
+      branchId: mapBranchId(snapshot.branchId),
+      entryId: remapEntityId(snapshot.entryId),
+      charactersSnapshot: snapshot.charactersSnapshot.map((character) => ({
+        ...remapSnapshotEntity(character),
+        metadata: remapMetadata(character.metadata, 'character'),
+      })),
+      locationsSnapshot: locations,
+      itemsSnapshot: snapshot.itemsSnapshot.map((item) => ({
+        ...remapSnapshotEntity(item),
+        location: item.location === 'inventory' ? 'inventory' : remapEntityId(item.location),
+        metadata: remapMetadata(item.metadata, 'item'),
+      })),
+      storyBeatsSnapshot: snapshot.storyBeatsSnapshot.map((beat) => ({
+        ...remapSnapshotEntity(beat),
+        metadata: remapMetadata(beat.metadata, 'story_beat'),
+      })),
+      lorebookEntriesSnapshot: snapshot.lorebookEntriesSnapshot?.map((entry) => ({
+        ...entry,
+        id: remapEntityId(entry.id),
+        storyId: newStoryId,
+        branchId: mapBranchId(entry.branchId),
+      })),
     })
   }
 }

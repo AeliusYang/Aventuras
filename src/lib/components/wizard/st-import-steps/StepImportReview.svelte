@@ -113,7 +113,7 @@
     const baseDone = chapterizationProgress !== null
     list.push({
       id: 'base',
-      label: 'Preparing story database',
+      label: '准备故事数据',
       status: baseDone ? 'completed' : 'active',
       details: baseDone ? 'Done' : 'Creating database records...',
     })
@@ -128,7 +128,7 @@
         chapterizationProgress.current === chapterizationProgress.total
       list.push({
         id: 'chapters',
-        label: 'Generating chapters',
+        label: '生成章节',
         status: done ? 'completed' : active ? 'active' : 'pending',
         details: active
           ? `Processing chapter ${chapterizationProgress.current}/${chapterizationProgress.total}`
@@ -148,7 +148,7 @@
         chapterizationTimelineProgress.current === chapterizationTimelineProgress.total
       list.push({
         id: 'timeline',
-        label: 'Estimating timelines',
+        label: '估算时间线',
         status: done ? 'completed' : active ? 'active' : 'pending',
         details: active
           ? `Estimating timeline: chapter ${chapterizationTimelineProgress.current}/${chapterizationTimelineProgress.total}`
@@ -168,7 +168,7 @@
         chapterizationClassificationProgress.current === chapterizationClassificationProgress.total
       list.push({
         id: 'classification',
-        label: 'Classifying chapters',
+        label: '分析章节',
         status: done ? 'completed' : active ? 'active' : 'pending',
         details: active
           ? `Classifying: chapter ${chapterizationClassificationProgress.current}/${chapterizationClassificationProgress.total}`
@@ -191,7 +191,7 @@
           chapterizationClassificationProgress?.current === chapterizationProgress.total)
       list.push({
         id: 'lorebook',
-        label: 'Updating lorebook',
+        label: '更新世界书',
         status: done ? 'completed' : active ? 'active' : 'pending',
         details: done ? 'Done' : active ? chapterizationStatus : 'Waiting in queue...',
       })
@@ -234,14 +234,14 @@
 </script>
 
 <div class="space-y-5">
-  <p class="text-muted-foreground">Review your import and give your story a title.</p>
+  <p class="text-muted-foreground">检查导入内容，并为故事命名。</p>
 
   <!-- Story Title -->
   <div class="space-y-2">
-    <Label for="story-title">Story Title</Label>
+    <Label for="story-title">故事标题</Label>
     <Input
       id="story-title"
-      placeholder="Enter a title for your story"
+      placeholder="输入故事标题"
       value={storyTitle}
       oninput={(e) => onTitleChange(e.currentTarget.value)}
     />
@@ -249,19 +249,19 @@
 
   <!-- Tag & Description -->
   <div class="space-y-2">
-    <Label for="vault-tag">Tag</Label>
+    <Label for="vault-tag">标签</Label>
     <Input
       id="vault-tag"
-      placeholder="e.g. fantasy, sci-fi, romance"
+      placeholder="例如：奇幻、科幻、爱情"
       value={vaultTag}
       oninput={(e) => onVaultTagChange(e.currentTarget.value)}
     />
   </div>
   <div class="space-y-2">
-    <Label for="vault-description">Description</Label>
+    <Label for="vault-description">说明</Label>
     <Input
       id="vault-description"
-      placeholder="Enter Description for your story"
+      placeholder="输入故事简介"
       value={vaultDescription}
       oninput={(e) => onVaultDescriptionChange(e.currentTarget.value)}
     />
@@ -274,10 +274,10 @@
       <Card.Content class="p-3">
         <div class="flex flex-wrap gap-2">
           <Badge variant="secondary">
-            {selectedMode === 'adventure' ? 'Adventure' : 'Creative Writing'}
+            {selectedMode === 'adventure' ? '冒险模式' : '中文写作'}
           </Badge>
-          <Badge variant="outline">{selectedPOV} person</Badge>
-          <Badge variant="outline">{selectedTense} tense</Badge>
+          <Badge variant="outline">{selectedPOV} 人称</Badge>
+          <Badge variant="outline">{selectedTense} 时态</Badge>
           {#if tone}
             <Badge variant="outline">{tone}</Badge>
           {/if}
@@ -315,7 +315,7 @@
         <Card.Content class="p-3">
           <div class="flex items-center gap-2">
             <Users class="text-muted-foreground h-4 w-4" />
-            <span class="text-sm">{supportingCharacters.length} supporting characters</span>
+            <span class="text-sm">{supportingCharacters.length} 名配角</span>
           </div>
           <div class="mt-1.5 flex flex-wrap gap-1">
             {#each supportingCharacters as char (char.name)}
@@ -332,7 +332,7 @@
         <Card.Content class="p-3">
           <div class="flex items-center gap-2">
             <MapPin class="text-muted-foreground h-4 w-4" />
-            <span class="text-sm font-medium">World Setting</span>
+            <span class="text-sm font-medium">世界设定</span>
           </div>
           <p class="text-muted-foreground mt-1 line-clamp-2 text-xs">{settingSeed}</p>
         </Card.Content>
@@ -345,10 +345,7 @@
         <Card.Content class="flex items-center gap-2 p-3">
           <BookOpen class="text-muted-foreground h-4 w-4" />
           <span class="text-sm">
-            {totalLorebookEntries} lorebook entries from {importedLorebooks.length} lorebook{importedLorebooks.length >
-            1
-              ? 's'
-              : ''}
+            {totalLorebookEntries} 个世界书条目，来自 {importedLorebooks.length} 本世界书
           </span>
         </Card.Content>
       </Card.Root>
@@ -359,10 +356,10 @@
       <Card.Content class="flex items-center gap-2 p-3">
         {#if importChatAsEntries}
           <MessageSquare class="text-muted-foreground h-4 w-4" />
-          <span class="text-sm">{chatMessageCount} chat messages will be imported</span>
+          <span class="text-sm">{chatMessageCount} 条聊天记录将被导入</span>
         {:else}
           <FileText class="text-muted-foreground h-4 w-4" />
-          <span class="text-sm">Starting fresh with card opening</span>
+          <span class="text-sm">使用角色卡开场，开始新故事</span>
         {/if}
       </Card.Content>
     </Card.Root>
@@ -387,7 +384,7 @@
         <Card.Content class="flex items-center justify-between p-3">
           <div class="flex items-center gap-2">
             <Save class="text-muted-foreground h-4 w-4" />
-            <span class="text-sm">Save scenario to vault</span>
+            <span class="text-sm">将场景保存到素材库</span>
           </div>
           <Switch checked={saveToVault} onCheckedChange={(v) => onSaveToVaultChange(v)} />
         </Card.Content>
@@ -399,11 +396,11 @@
   {#if isCreatingStory}
     <div class="bg-muted/40 border-muted space-y-4 rounded-lg border p-4 text-sm">
       <div class="flex items-center justify-between border-b pb-2">
-        <span class="text-foreground font-medium">Importing Story & Processing Chapters</span>
+        <span class="text-foreground font-medium">正在导入故事并处理章节</span>
         {#if (chapterizationProgress || chapterizationStatus) && (!chapterizationStatus || !chapterizationStatus.includes('lore'))}
           <Button variant="outline" size="sm" class="h-8 gap-1.5" onclick={onCancelChapterization}>
             <X class="h-3.5 w-3.5" />
-            Cancel chapter generation
+            取消章节生成
           </Button>
         {/if}
       </div>
@@ -411,7 +408,7 @@
       {#if progressPercent > 0}
         <div class="space-y-1.5 border-b pb-3">
           <div class="text-muted-foreground flex justify-between text-xs">
-            <span>Overall progress</span>
+            <span>总体进度</span>
             <span class="text-foreground font-medium">{Math.round(progressPercent)}%</span>
           </div>
           <div class="bg-secondary h-2 w-full overflow-hidden rounded-full">

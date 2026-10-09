@@ -92,7 +92,7 @@
     const confirmed = await ask(
       `Are you sure you want to delete Chapter ${chapter.number}${chapter.title ? `: ${chapter.title}` : ''}? The story entries will remain, but the summary will be lost.`,
       {
-        title: 'Delete Chapter',
+        title: '删除章节',
         kind: 'warning',
       },
     )
@@ -107,7 +107,7 @@
     <div class="min-w-0 flex-1">
       <div class="flex flex-wrap items-center gap-x-2 gap-y-0.5">
         <span class="text-foreground shrink-0 text-sm font-medium">
-          Chapter {chapter.number}
+          章节 {chapter.number}
         </span>
         {#if chapter.title}
           <span class="text-muted-foreground hidden text-sm sm:inline">—</span>
@@ -121,13 +121,7 @@
     <!-- Action Buttons -->
     {#if !isEditing}
       <div class="flex shrink-0 items-center gap-1">
-        <Button
-          variant="ghost"
-          size="icon"
-          class="h-7 w-7"
-          onclick={startEdit}
-          title="Edit summary"
-        >
+        <Button variant="ghost" size="icon" class="h-7 w-7" onclick={startEdit} title="编辑摘要">
           <Edit2 class="h-3.5 w-3.5" />
         </Button>
         <Button
@@ -135,7 +129,7 @@
           size="icon"
           class="h-7 w-7"
           onclick={handleResummarize}
-          title="Regenerate summary"
+          title="重新生成摘要"
           disabled={ui.memoryLoading}
         >
           <RefreshCw
@@ -150,7 +144,7 @@
           size="icon"
           class="text-muted-foreground h-7 w-7 hover:text-red-500"
           onclick={handleDelete}
-          title="Delete chapter"
+          title="删除章节"
         >
           <Trash2 class="h-3.5 w-3.5" />
         </Button>
@@ -162,11 +156,11 @@
           size="icon"
           class="h-7 w-7 text-green-500 hover:text-green-600"
           onclick={saveEdit}
-          title="Save changes"
+          title="保存修改"
         >
           <Save class="h-3.5 w-3.5" />
         </Button>
-        <Button variant="ghost" size="icon" class="h-7 w-7" onclick={cancelEdit} title="Cancel">
+        <Button variant="ghost" size="icon" class="h-7 w-7" onclick={cancelEdit} title="取消">
           <X class="h-3.5 w-3.5" />
         </Button>
       </div>
@@ -226,7 +220,7 @@
         {:else}
           <ChevronRight class="h-3.5 w-3.5" />
         {/if}
-        <span>{entries.length} entries</span>
+        <span>{entries.length} 条目</span>
       </Button>
     </div>
 

@@ -213,6 +213,8 @@ vite.config.ts.timestamp-*
 # Release Artifacts
 # -----------------------------------------------------------------------------
 releases/
+!docs/releases/
+!docs/releases/**
 *.tar.gz
 *.zip
 *.dmg
@@ -274,3 +276,17 @@ key.properties
 nul
 test_data/
 debug_screenshot/
+.local/novel-evaluation/
+
+# Private workspaces and runtime exports must never be published.
+archive/
+backups/
+release-backups/
+STcard/
+STpreset/
+test-artifacts/
+*.jsonl
+*.har
+*.db-*
+*.sqlite-*
+*.sqlite3-*

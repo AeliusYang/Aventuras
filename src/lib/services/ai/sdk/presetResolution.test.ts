@@ -1,10 +1,14 @@
-import { describe, it, expect, vi } from 'vitest'
+import { beforeEach, describe, it, expect, vi } from 'vitest'
 
 vi.mock('$lib/stores/settings.svelte', () => ({
   settings: {
     advancedRequestSettings: {
       manualMode: false,
     },
+    apiSettings: { mainNarrativeProfileId: 'main' },
+    getPresetConfig: vi.fn(),
+    getProfile: vi.fn(),
+    getProfileModels: vi.fn(),
   },
 }))
 
@@ -17,11 +21,128 @@ vi.mock('$lib/stores/debug.svelte', () => ({
 
 import {
   buildProviderOptions,
+  resolvePresetModel,
   resolveStructuredOutputs,
   thinkingNudgeApplies,
 } from './presetResolution'
 import { usesThinkTag } from './providers/config'
-import type { GenerationPreset } from '$lib/types'
+import type { APIProfile, GenerationPreset } from '$lib/types'
+import { settings } from '$lib/stores/settings.svelte'
+import { createModelFromProfile } from './providers'
+
+vi.mock('./providers', () => ({ createModelFromProfile: vi.fn(() => ({ modelId: 'mock' })) }))
+
+beforeEach(() => {
+  settings.advancedRequestSettings.manualMode = false
+})
+
+describe('resolvePresetModel', () => {
+  const preset: GenerationPreset = {
+    id: 'task',
+    name: 'Task',
+    description: null,
+    profileId: 'task-profile',
+    model: 'task-model',
+    temperature: 0.3,
+    maxTokens: 1000,
+    reasoningEffort: 'none',
+    manualBody: '',
+  }
+  const override: GenerationPreset = {
+    ...preset,
+    id: 'collaborative:sceneDirector',
+    profileId: 'workflow-profile',
+    model: 'workflow-model',
+    temperature: 0.9,
+    maxTokens: 6000,
+    reasoningEffort: 'high',
+    manualBody: '{"top_p":0.8}',
+    structuredOutputOverride: 'off',
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(settings.getPresetConfig).mockReturnValue(preset)
+    vi.mocked(settings.getProfile).mockImplementation(
+      (id) => ({ id, providerType: 'openai-compatible' }) as APIProfile,
+    )
+    vi.mocked(settings.getProfileModels).mockReturnValue([])
+  })
+
+  it('preserves normal task/service resolution without an override', () => {
+    const result = resolvePresetModel({ presetId: 'task', serviceId: 'classification' })
+    expect(settings.getPresetConfig).toHaveBeenCalledExactlyOnceWith('task', 'classification')
+    expect(result.preset).toBe(preset)
+    expect(createModelFromProfile).toHaveBeenCalledWith(
+      expect.objectContaining({
+        profile: expect.objectContaining({ id: 'task-profile' }),
+        modelId: 'task-model',
+        presetId: 'classification',
+        serviceId: 'classification',
+        manualBody: '',
+      }),
+    )
+  })
+
+  it('bypasses task resolution and uses the complete override for model construction', () => {
+    const snapshot = JSON.stringify(override)
+    const result = resolvePresetModel({
+      presetId: 'task',
+      serviceId: 'classification',
+      debugId: 'debug',
+      presetOverride: override,
+    })
+    expect(settings.getPresetConfig).not.toHaveBeenCalled()
+    expect(settings.getProfileModels).toHaveBeenCalledWith('workflow-profile')
+    expect(result.preset).toBe(override)
+    expect(result.reasoning).toBe('high')
+    expect(result.providerOptions).toEqual({ openaiCompatible: { reasoningEffort: 'high' } })
+    expect(result.supportsStructuredOutput).toBe(false)
+    expect(createModelFromProfile).toHaveBeenCalledExactlyOnceWith({
+      profile: { id: 'workflow-profile', providerType: 'openai-compatible' },
+      modelId: 'workflow-model',
+      presetId: 'classification',
+      serviceId: 'classification',
+      debugId: 'debug',
+      structuredOutputs: false,
+      manualBody: '{"top_p":0.8}',
+    })
+    expect(JSON.stringify(override)).toBe(snapshot)
+  })
+
+  it('uses the main narrative profile for a null override profile', () => {
+    resolvePresetModel({
+      presetId: 'task',
+      serviceId: 'test',
+      presetOverride: { ...override, profileId: null },
+    })
+    expect(settings.getProfile).toHaveBeenCalledWith('main')
+    expect(settings.getPresetConfig).not.toHaveBeenCalled()
+  })
+
+  it('keeps override provider options while preserving ordinary manual mode', () => {
+    settings.advancedRequestSettings.manualMode = true
+    expect(
+      resolvePresetModel({ presetId: 'task', serviceId: 'test' }).providerOptions,
+    ).toBeUndefined()
+    const result = resolvePresetModel({
+      presetId: 'task',
+      serviceId: 'test',
+      presetOverride: override,
+    })
+    expect(result.providerOptions).toEqual({ openaiCompatible: { reasoningEffort: 'high' } })
+    expect(settings.advancedRequestSettings.manualMode).toBe(true)
+  })
+
+  it('fails for a missing explicit override profile instead of falling back', () => {
+    vi.mocked(settings.getProfile).mockReturnValue(undefined)
+    expect(() =>
+      resolvePresetModel({ presetId: 'task', serviceId: 'test', presetOverride: override }),
+    ).toThrow('Profile not found: workflow-profile')
+    expect(settings.getPresetConfig).not.toHaveBeenCalled()
+    expect(createModelFromProfile).not.toHaveBeenCalled()
+  })
+})
 
 describe('buildProviderOptions', () => {
   const basePreset: GenerationPreset = {

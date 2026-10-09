@@ -7,6 +7,7 @@ import { openFilters } from '$lib/utils/dialogFilters'
 import { importFromJson, importFromFile, EXPORT_FORMAT_VERSION } from './import'
 import type { AventuraExport, ImportResult, RunImportOptions } from './import'
 import type { PackBindingExport } from './import'
+import { normalizeCollaborativeStory } from '$lib/services/generation/collaborativeWorkflow'
 
 // Re-exported for the modules that imported these from here before the import logic moved.
 export type { AventuraExport } from './import'
@@ -23,6 +24,7 @@ import type {
   Checkpoint,
   Branch,
   EmbeddedImageMeta,
+  WorldStateSnapshot,
 } from '$lib/types'
 
 class ExportService {
@@ -43,6 +45,7 @@ class ExportService {
     // Identity and variable *shape* only — never the pack's templates, which stay owned by the
     // pack as installed on whichever device generates. Null for a story with no pack row.
     packBinding: PackBindingExport | null = null,
+    worldStateSnapshots: WorldStateSnapshot[] = [],
   ): Promise<boolean> {
     // embeddedImages is metadata only (no base64). The native exporter fills in each image's
     // imageData from SQLite, so the heavy bytes never sit in the JS heap (their only home would
@@ -52,7 +55,7 @@ class ExportService {
     } = {
       version: EXPORT_FORMAT_VERSION,
       exportedAt: Date.now(),
-      story,
+      story: normalizeCollaborativeStory(story),
       entries,
       characters,
       locations,
@@ -68,6 +71,7 @@ class ExportService {
       // Omitted rather than written as null, so a story with no pack produces a file that is
       // byte-for-byte the legacy shape and takes the legacy import path.
       ...(packBinding ? { packBinding } : {}),
+      worldStateSnapshots,
     }
 
     const target = await resolveSaveTarget(`${this.sanitizeFilename(story.title)}.avt`, [

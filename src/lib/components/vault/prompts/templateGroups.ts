@@ -15,6 +15,16 @@ export interface TemplateGroup {
 
 /** Template IDs mapped to display group names */
 const TEMPLATE_GROUP_MAP: Record<string, string> = {
+  'collaborative-scene-director': '中文写作',
+  'collaborative-long-planner': '中文写作',
+  'collaborative-pattern-reviewer': '中文写作',
+  'collaborative-chinese-writer': '中文写作',
+  'collaborative-fact-extractor': '中文写作',
+  'collaborative-plot-suggestions': '中文写作',
+  'novel-scene': '旧版中文写作模板',
+  'novel-plan': '旧版中文写作模板',
+  'novel-patterns': '旧版中文写作模板',
+  'collaborative-novel': '旧版中文写作模板',
   // Story Generation
   adventure: 'Story Generation',
   'creative-writing': 'Story Generation',
@@ -46,6 +56,7 @@ const TEMPLATE_GROUP_MAP: Record<string, string> = {
   'image-prompt-analysis': 'Image',
   'image-prompt-analysis-reference': 'Image',
   'image-portrait-generation': 'Image',
+  'image-portrait-preparation': 'Image',
   'background-image-prompt-analysis': 'Image',
 
   // Translation
@@ -73,6 +84,8 @@ const TEMPLATE_GROUP_MAP: Record<string, string> = {
 
 /** Group display order */
 const GROUP_ORDER = [
+  '中文写作',
+  '旧版中文写作模板',
   'Story Generation',
   'Analysis',
   'Memory',
@@ -86,7 +99,7 @@ const GROUP_ORDER = [
  * Build template groups from PROMPT_TEMPLATES.
  * Returns ordered array of groups, each containing their templates.
  */
-export function getTemplateGroups(): TemplateGroup[] {
+export function getTemplateGroups(allowedTemplateIds?: readonly string[]): TemplateGroup[] {
   const groupMap = new Map<string, PromptTemplate[]>()
 
   for (const template of PROMPT_TEMPLATES) {
@@ -103,10 +116,14 @@ export function getTemplateGroups(): TemplateGroup[] {
     orderedGroups.push('Other')
   }
 
-  return orderedGroups.map((name) => ({
-    name,
-    templates: groupMap.get(name)!,
-  }))
+  return orderedGroups
+    .map((name) => ({
+      name,
+      templates: allowedTemplateIds
+        ? groupMap.get(name)!.filter((template) => allowedTemplateIds.includes(template.id))
+        : groupMap.get(name)!,
+    }))
+    .filter((group) => group.templates.length > 0)
 }
 
 /** Get the group name for a template ID */

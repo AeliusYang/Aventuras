@@ -93,51 +93,34 @@ class RollbackService {
 
     // 3. Restore time tracker from the earliest rolled-back delta
     if (earliestTimeTracker !== undefined) {
-      try {
-        if (earliestTimeTracker === null) {
-          await database.clearTimeTracker(storyId)
-        } else {
-          await database.saveTimeTracker(storyId, earliestTimeTracker)
-        }
-        summary.restoredTimeTracker = true
-        log('Time tracker restored to', earliestTimeTracker)
-      } catch (error) {
-        console.error('[RollbackService] Failed to restore time tracker:', error)
+      if (earliestTimeTracker === null) {
+        await database.clearTimeTracker(storyId)
+      } else {
+        await database.saveTimeTracker(storyId, earliestTimeTracker)
       }
+      summary.restoredTimeTracker = true
+      log('Time tracker restored to', earliestTimeTracker)
     }
 
     // 4. Restore current location from the earliest rolled-back delta
     if (earliestCurrentLocationId !== undefined) {
-      try {
-        if (earliestCurrentLocationId) {
-          await database.setCurrentLocation(storyId, earliestCurrentLocationId)
-        } else {
-          // No current location before rollback — unset all
-          await this.clearCurrentLocation(storyId, branchId)
-        }
-        summary.restoredCurrentLocation = true
-        log('Current location restored to', earliestCurrentLocationId)
-      } catch (error) {
-        console.error('[RollbackService] Failed to restore current location:', error)
+      if (earliestCurrentLocationId) {
+        await database.setCurrentLocation(storyId, earliestCurrentLocationId)
+      } else {
+        await this.clearCurrentLocation(storyId, branchId)
       }
+      summary.restoredCurrentLocation = true
+      log('Current location restored to', earliestCurrentLocationId)
     }
 
     // 5. Clean up auto-snapshots after the rollback position
-    try {
-      await database.deleteWorldStateSnapshotsAfter(storyId, branchId, fromPosition - 1)
-      log('Cleaned up snapshots after position', fromPosition - 1)
-    } catch (error) {
-      console.error('[RollbackService] Failed to clean up snapshots:', error)
-    }
+    await database.deleteWorldStateSnapshotsAfter(storyId, branchId, fromPosition - 1)
+    log('Cleaned up snapshots after position', fromPosition - 1)
 
     // 6. Clean up no-op COW overrides (overrides whose data matches the original)
-    try {
-      const cleaned = await database.cleanupNoopOverrides(storyId, branchId)
-      if (cleaned > 0) {
-        log('Cleaned up', cleaned, 'no-op COW override(s)')
-      }
-    } catch (error) {
-      console.error('[RollbackService] Failed to clean up no-op overrides:', error)
+    const cleaned = await database.cleanupNoopOverrides(storyId, branchId)
+    if (cleaned > 0) {
+      log('Cleaned up', cleaned, 'no-op COW override(s)')
     }
 
     log('Rollback complete:', summary)
@@ -154,39 +137,23 @@ class RollbackService {
     const { createdEntities } = delta
 
     for (const id of createdEntities.characterIds) {
-      try {
-        await database.deleteCharacter(id)
-        summary.deletedCharacters++
-      } catch (error) {
-        console.warn('[RollbackService] Failed to delete character', id, error)
-      }
+      await database.deleteCharacter(id)
+      summary.deletedCharacters++
     }
 
     for (const id of createdEntities.locationIds) {
-      try {
-        await database.deleteLocation(id)
-        summary.deletedLocations++
-      } catch (error) {
-        console.warn('[RollbackService] Failed to delete location', id, error)
-      }
+      await database.deleteLocation(id)
+      summary.deletedLocations++
     }
 
     for (const id of createdEntities.itemIds) {
-      try {
-        await database.deleteItem(id)
-        summary.deletedItems++
-      } catch (error) {
-        console.warn('[RollbackService] Failed to delete item', id, error)
-      }
+      await database.deleteItem(id)
+      summary.deletedItems++
     }
 
     for (const id of createdEntities.storyBeatIds) {
-      try {
-        await database.deleteStoryBeat(id)
-        summary.deletedStoryBeats++
-      } catch (error) {
-        console.warn('[RollbackService] Failed to delete story beat', id, error)
-      }
+      await database.deleteStoryBeat(id)
+      summary.deletedStoryBeats++
     }
   }
 
@@ -200,60 +167,44 @@ class RollbackService {
     const { previousState } = delta
 
     for (const charBefore of previousState.characters) {
-      try {
-        await database.updateCharacter(charBefore.id, {
-          status: charBefore.status as 'active' | 'inactive' | 'deceased',
-          relationship: charBefore.relationship,
-          traits: charBefore.traits,
-          visualDescriptors: charBefore.visualDescriptors,
-          ...(charBefore.metadata !== undefined ? { metadata: charBefore.metadata } : {}),
-        })
-        summary.restoredCharacters++
-      } catch (error) {
-        console.warn('[RollbackService] Failed to restore character', charBefore.id, error)
-      }
+      await database.updateCharacter(charBefore.id, {
+        status: charBefore.status as 'active' | 'inactive' | 'deceased',
+        relationship: charBefore.relationship,
+        traits: charBefore.traits,
+        visualDescriptors: charBefore.visualDescriptors,
+        ...(charBefore.metadata !== undefined ? { metadata: charBefore.metadata } : {}),
+      })
+      summary.restoredCharacters++
     }
 
     for (const locBefore of previousState.locations) {
-      try {
-        await database.updateLocation(locBefore.id, {
-          visited: locBefore.visited,
-          current: locBefore.current,
-          description: locBefore.description,
-          ...(locBefore.metadata !== undefined ? { metadata: locBefore.metadata } : {}),
-        })
-        summary.restoredLocations++
-      } catch (error) {
-        console.warn('[RollbackService] Failed to restore location', locBefore.id, error)
-      }
+      await database.updateLocation(locBefore.id, {
+        visited: locBefore.visited,
+        current: locBefore.current,
+        description: locBefore.description,
+        ...(locBefore.metadata !== undefined ? { metadata: locBefore.metadata } : {}),
+      })
+      summary.restoredLocations++
     }
 
     for (const itemBefore of previousState.items) {
-      try {
-        await database.updateItem(itemBefore.id, {
-          quantity: itemBefore.quantity,
-          equipped: itemBefore.equipped,
-          location: itemBefore.location,
-          ...(itemBefore.metadata !== undefined ? { metadata: itemBefore.metadata } : {}),
-        })
-        summary.restoredItems++
-      } catch (error) {
-        console.warn('[RollbackService] Failed to restore item', itemBefore.id, error)
-      }
+      await database.updateItem(itemBefore.id, {
+        quantity: itemBefore.quantity,
+        equipped: itemBefore.equipped,
+        location: itemBefore.location,
+        ...(itemBefore.metadata !== undefined ? { metadata: itemBefore.metadata } : {}),
+      })
+      summary.restoredItems++
     }
 
     for (const beatBefore of previousState.storyBeats) {
-      try {
-        await database.updateStoryBeat(beatBefore.id, {
-          status: beatBefore.status as 'pending' | 'active' | 'completed' | 'failed',
-          description: beatBefore.description,
-          resolvedAt: beatBefore.resolvedAt,
-          ...(beatBefore.metadata !== undefined ? { metadata: beatBefore.metadata } : {}),
-        })
-        summary.restoredStoryBeats++
-      } catch (error) {
-        console.warn('[RollbackService] Failed to restore story beat', beatBefore.id, error)
-      }
+      await database.updateStoryBeat(beatBefore.id, {
+        status: beatBefore.status as 'pending' | 'active' | 'completed' | 'failed',
+        description: beatBefore.description,
+        resolvedAt: beatBefore.resolvedAt,
+        ...(beatBefore.metadata !== undefined ? { metadata: beatBefore.metadata } : {}),
+      })
+      summary.restoredStoryBeats++
     }
   }
 

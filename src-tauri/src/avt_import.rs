@@ -200,6 +200,7 @@ struct ImageRow {
     height: Option<i64>,
     status: String,
     error_message: Option<String>,
+    content_version: Option<String>,
 }
 
 fn string_field(map: &mut Map<String, Value>, key: &str) -> String {
@@ -241,6 +242,7 @@ impl<'de> Visitor<'de> for ImageRowSeed {
         }
 
         Ok(ImageRow {
+            content_version: rest.get("contentVersion").and_then(|v| v.as_str()).map(str::to_owned),
             id: string_field(&mut rest, "id"),
             image_data,
             source_text: string_field(&mut rest, "sourceText"),
@@ -389,8 +391,8 @@ async fn import_images_from<R: Read + Send + 'static>(
                 sqlx::query(
                     "INSERT INTO embedded_images (
                         id, story_id, entry_id, source_text, prompt, style_id, model,
-                        image_data, width, height, status, error_message, created_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        image_data, width, height, status, error_message, created_at, content_version
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 )
                 .bind(uuid_v4())
                 .bind(&story_id)
@@ -405,6 +407,7 @@ async fn import_images_from<R: Read + Send + 'static>(
                 .bind(&row.status)
                 .bind(&row.error_message)
                 .bind(now)
+                .bind(&row.content_version)
                 .execute(&pool)
                 .await
                 .map_err(|e| format!("failed to insert image: {e}"))
@@ -476,7 +479,7 @@ mod tests {
             "embeddedImages": [
                 { "id": "img-1", "entryId": "e1", "prompt": "a castle", "imageData": payload,
                   "styleId": "st", "model": "flux", "sourceText": "src", "status": "completed",
-                  "width": 512, "height": 512 },
+                  "width": 512, "height": 512, "contentVersion": "[\"prose-v1\",\"hello\"]" },
                 { "id": "img-2", "entryId": "e1", "prompt": "a forest", "imageData": payload,
                   "styleId": "st", "model": "flux", "sourceText": "src", "status": "completed" }
             ],
@@ -655,7 +658,7 @@ mod tests {
                 source_text TEXT NOT NULL, prompt TEXT NOT NULL, style_id TEXT NOT NULL,
                 model TEXT NOT NULL, image_data TEXT NOT NULL DEFAULT '',
                 width INTEGER, height INTEGER, status TEXT DEFAULT 'pending',
-                error_message TEXT, created_at INTEGER NOT NULL
+                error_message TEXT, created_at INTEGER NOT NULL, content_version TEXT
             )",
         )
         .execute(&pool)
@@ -687,7 +690,7 @@ mod tests {
 
         assert_eq!(written, 2);
 
-        let rows = sqlx::query("SELECT id, story_id, entry_id, prompt, image_data, width FROM embedded_images ORDER BY prompt")
+        let rows = sqlx::query("SELECT id, story_id, entry_id, prompt, image_data, width, content_version FROM embedded_images ORDER BY prompt")
             .fetch_all(&pool)
             .await
             .unwrap();
@@ -699,6 +702,8 @@ mod tests {
         assert_eq!(castle.get::<String, _>("entry_id"), "new-entry-1");
         assert_eq!(castle.get::<String, _>("image_data"), "PAYLOAD64");
         assert_eq!(castle.get::<Option<i64>, _>("width"), Some(512));
+        assert_eq!(castle.get::<Option<String>, _>("content_version").as_deref(), Some("[\"prose-v1\",\"hello\"]"));
+        assert_eq!(rows[1].get::<Option<String>, _>("content_version"), None);
         // The row must get a fresh id, never the export's.
         assert_ne!(castle.get::<String, _>("id"), "img-1");
     }

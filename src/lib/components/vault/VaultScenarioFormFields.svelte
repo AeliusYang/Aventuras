@@ -106,21 +106,21 @@
         class="data-[state=active]:border-primary h-full rounded-none px-4 data-[state=active]:border-b-2 data-[state=active]:bg-transparent data-[state=active]:shadow-none"
       >
         <FileText class="mr-2 h-4 w-4" />
-        General
+        基本信息
       </Tabs.Trigger>
       <Tabs.Trigger
         value="npcs"
         class="data-[state=active]:border-primary h-full rounded-none px-4 data-[state=active]:border-b-2 data-[state=active]:bg-transparent data-[state=active]:shadow-none"
       >
         <Users class="mr-2 h-4 w-4" />
-        NPCs ({data.npcs.length})
+        配角（{data.npcs.length})
       </Tabs.Trigger>
       <Tabs.Trigger
         value="opening"
         class="data-[state=active]:border-primary h-full rounded-none px-4 data-[state=active]:border-b-2 data-[state=active]:bg-transparent data-[state=active]:shadow-none"
       >
         <MessageSquare class="mr-2 h-4 w-4" />
-        Opening
+        开场
       </Tabs.Trigger>
     </Tabs.List>
   </div>
@@ -130,17 +130,17 @@
       <Tabs.Content value="general" class="mt-0 space-y-6">
         <div class="space-y-4">
           <div class="space-y-2 {changed('name')}">
-            <Label for="name">Scenario Name</Label>
+            <Label for="name">场景名称</Label>
             <Input
               id="name"
               bind:value={data.name}
               oninput={handleInput}
-              placeholder="e.g. The Cyberpunk City"
+              placeholder="例如：赛博之城"
             />
           </div>
 
           <div class="space-y-2 {changed('description')}">
-            <Label for="description">Description</Label>
+            <Label for="description">说明</Label>
             <Textarea
               id="description"
               value={data.description ?? ''}
@@ -149,23 +149,23 @@
                 handleInput()
               }}
               rows={2}
-              placeholder="Brief overview shown on the card..."
+              placeholder="显示在卡片上的简短介绍…"
               class="resize-none"
             />
           </div>
 
           <div class="space-y-2 {changed('primaryCharacterName')}">
-            <Label for="protagonist">Protagonist Name</Label>
+            <Label for="protagonist">主角姓名</Label>
             <Input
               id="protagonist"
               bind:value={data.primaryCharacterName}
               oninput={handleInput}
-              placeholder="Protagonist name"
+              placeholder="主角姓名"
             />
           </div>
 
           <div class="space-y-2 {changed('settingSeed')}">
-            <Label for="seed">Setting Seed</Label>
+            <Label for="seed">初始世界设定</Label>
             <div class="relative">
               <Textarea
                 id="seed"
@@ -173,18 +173,18 @@
                 oninput={handleInput}
                 rows={10}
                 class="min-h-[200px] font-mono text-sm leading-relaxed"
-                placeholder="Detailed world setting..."
+                placeholder="详细的世界设定…"
               />
               <div
                 class="text-muted-foreground bg-background/80 absolute right-2 bottom-2 rounded px-2 py-0.5 text-xs"
               >
-                Markdown supported
+                支持 Markdown
               </div>
             </div>
           </div>
 
           <div class="space-y-2 {changed('tags')}">
-            <Label>Tags</Label>
+            <Label>标签</Label>
             <TagInput
               value={data.tags}
               type="scenario"
@@ -192,7 +192,7 @@
                 data.tags = t
                 handleInput()
               }}
-              placeholder="Add tags..."
+              placeholder="添加标签…"
             />
           </div>
         </div>
@@ -202,7 +202,7 @@
         <div
           class="bg-background sticky top-0 z-10 mb-4 flex items-center justify-between border-b pt-2 pb-4"
         >
-          <h3 class="text-muted-foreground text-sm font-medium">Supporting Characters</h3>
+          <h3 class="text-muted-foreground text-sm font-medium">配角</h3>
           <div class="flex items-center gap-2">
             <Button
               variant="outline"
@@ -213,11 +213,11 @@
               }}
             >
               <Users class="h-3.5 w-3.5 " />
-              Import
+              导入
             </Button>
             <Button size="sm" onclick={addNpc}>
               <Plus class="h-3.5 w-3.5 " />
-              New NPC
+              新建配角
             </Button>
           </div>
         </div>
@@ -228,8 +228,8 @@
               class="text-muted-foreground bg-muted/30 flex flex-col items-center justify-center rounded-lg border border-dashed p-8"
             >
               <Users class="mb-2 h-10 w-10 opacity-20" />
-              <p>No NPCs defined yet.</p>
-              <Button variant="link" onclick={addNpc}>Create your first NPC</Button>
+              <p>尚未创建配角。</p>
+              <Button variant="link" onclick={addNpc}>创建第一个配角</Button>
             </div>
           {:else}
             {#each data.npcs as npc, i (i)}
@@ -248,10 +248,10 @@
                       </div>
                       <div class="flex-1">
                         <div class="text-sm font-medium">
-                          {npc.name || 'Unnamed NPC'}
+                          {npc.name || '未命名配角'}
                         </div>
                         <div class="text-muted-foreground text-xs">
-                          {npc.role || 'No role'}
+                          {npc.role || '未设置身份'}
                         </div>
                       </div>
                     </Collapsible.Trigger>
@@ -269,17 +269,17 @@
                     <div class="bg-muted/10 mt-2 space-y-4 border-t p-4 px-4 pt-0 pb-4">
                       <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
                         <div class="space-y-2">
-                          <Label class="text-xs">Name</Label>
+                          <Label class="text-xs">名称</Label>
                           <Input bind:value={npc.name} oninput={handleInput} class="h-8" />
                         </div>
                         <div class="space-y-2">
-                          <Label class="text-xs">Role</Label>
+                          <Label class="text-xs">角色定位</Label>
                           <Input bind:value={npc.role} oninput={handleInput} class="h-8" />
                         </div>
                       </div>
 
                       <div class="space-y-2">
-                        <Label class="text-xs">Description</Label>
+                        <Label class="text-xs">说明</Label>
                         <Textarea
                           bind:value={npc.description}
                           oninput={handleInput}
@@ -290,11 +290,11 @@
 
                       <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
                         <div class="space-y-2">
-                          <Label class="text-xs">Relationship</Label>
+                          <Label class="text-xs">关系</Label>
                           <Input bind:value={npc.relationship} oninput={handleInput} class="h-8" />
                         </div>
                         <div class="space-y-2">
-                          <Label class="text-xs">Traits</Label>
+                          <Label class="text-xs">性格特征</Label>
                           <Input
                             value={npc.traits.join(', ')}
                             oninput={(e) => {
@@ -305,7 +305,7 @@
                               handleInput()
                             }}
                             class="h-8"
-                            placeholder="Comma separated..."
+                            placeholder="用英文逗号分隔…"
                           />
                         </div>
                       </div>
@@ -320,7 +320,7 @@
 
       <Tabs.Content value="opening" class="mt-0 space-y-6">
         <div class="space-y-2 {changed('firstMessage')}">
-          <Label>First Message</Label>
+          <Label>开场正文</Label>
           <Textarea
             value={data.firstMessage ?? ''}
             oninput={(e) => {
@@ -329,16 +329,16 @@
             }}
             rows={6}
             class="font-mono text-sm leading-relaxed"
-            placeholder="The opening scene..."
+            placeholder="故事的开场场景…"
           />
-          <p class="text-muted-foreground text-[0.8rem]">Shown when the story begins.</p>
+          <p class="text-muted-foreground text-[0.8rem]">在故事开始时显示。</p>
         </div>
 
         <div class="space-y-4 {changed('alternateGreetings')}">
           <div class="flex items-center justify-between">
-            <Label>Alternate Greetings</Label>
+            <Label>备选开场</Label>
             <Button variant="outline" size="sm" onclick={addGreeting}>
-              <Plus class="h-3.5 w-3.5 " /> Add
+              <Plus class="h-3.5 w-3.5 " /> 添加
             </Button>
           </div>
 
@@ -368,9 +368,7 @@
           {/each}
 
           {#if (data.alternateGreetings ?? []).length === 0}
-            <p class="text-muted-foreground py-4 text-center text-sm italic">
-              No variations added.
-            </p>
+            <p class="text-muted-foreground py-4 text-center text-sm italic">尚未添加备选内容。</p>
           {/if}
         </div>
       </Tabs.Content>
@@ -386,13 +384,13 @@
   >
     <ResponsiveModal.Content class="flex h-[500px] flex-col p-0 sm:max-w-md">
       <ResponsiveModal.Header class="border-b px-4 py-3">
-        <h3 class="font-semibold">Import Character</h3>
+        <h3 class="font-semibold">导入角色</h3>
       </ResponsiveModal.Header>
 
       <div class="border-b p-4">
         <div class="relative">
           <Search class="text-muted-foreground absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2" />
-          <Input bind:value={charSearchQuery} placeholder="Search characters..." class="pl-9" />
+          <Input bind:value={charSearchQuery} placeholder="搜索角色…" class="pl-9" />
         </div>
       </div>
 
@@ -400,7 +398,7 @@
         {#if filteredCharacters.length === 0}
           <div class="text-muted-foreground flex h-full flex-col items-center justify-center">
             <Users class="mb-2 h-8 w-8 opacity-50" />
-            <p>No characters found</p>
+            <p>未找到角色</p>
           </div>
         {:else}
           {#each filteredCharacters as char (char.id)}

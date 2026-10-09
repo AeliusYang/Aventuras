@@ -166,10 +166,10 @@
     <ResponsiveModal.Header class="border-b px-6 py-4">
       <div class="flex items-center gap-2">
         <MessageSquare class="text-primary h-5 w-5" />
-        <ResponsiveModal.Title>Import SillyTavern Chat</ResponsiveModal.Title>
+        <ResponsiveModal.Title>导入 SillyTavern 聊天记录</ResponsiveModal.Title>
       </div>
       <ResponsiveModal.Description>
-        Replace this story's entries with a SillyTavern .jsonl chat export.
+        使用 SillyTavern 导出的 .jsonl 聊天记录替换本故事的条目。
       </ResponsiveModal.Description>
     </ResponsiveModal.Header>
 
@@ -179,13 +179,9 @@
         <div class="border-destructive/40 bg-destructive/10 flex gap-3 rounded-lg border p-4">
           <GitBranch class="text-destructive mt-0.5 h-5 w-5 shrink-0" />
           <div class="space-y-1 text-sm">
-            <p class="text-foreground font-medium">Branches must be deleted first</p>
+            <p class="text-foreground font-medium">请先删除分支</p>
             <p class="text-muted-foreground">
-              This story has {story.branches.length} branch{story.branches.length === 1
-                ? ''
-                : 'es'}. Because branches reference main-branch entries via fork points, importing
-              would leave them broken. Delete all branches in the Branch panel, then re-open this
-              dialog.
+              本故事有 {story.branches.length} 个分支。分支通过分叉点引用主线条目，直接导入会破坏这些引用。请先在分支面板删除所有分支，再重新打开此窗口。
             </p>
           </div>
         </div>
@@ -197,10 +193,10 @@
             {#if story.chapterizationStatus}
               {story.chapterizationStatus}
             {:else if story.chapterizationProgress}
-              Generating chapters: {story.chapterizationProgress.current}/{story
-                .chapterizationProgress.total}
+              正在生成章节： {story.chapterizationProgress.current}/{story.chapterizationProgress
+                .total}
             {:else}
-              Generating chapters…
+              正在生成章节…
             {/if}
           </p>
         </div>
@@ -211,15 +207,14 @@
             <Check class="h-8 w-8 text-green-500" />
           </div>
           <div class="space-y-1">
-            <p class="text-foreground font-medium">{total} messages imported</p>
+            <p class="text-foreground font-medium">{total} 条消息已导入</p>
             <p class="text-muted-foreground text-sm">
-              Locations, items, story beats, and the time tracker still reflect your previous story.
-              Reset them now, or keep them to fill in manually later.
+              地点、物品、剧情节点和时间记录仍保留原故事状态。可以立即重置，也可以保留并稍后手动填写。
             </p>
           </div>
           <div class="text-muted-foreground w-full rounded-md border px-3 py-2 text-left text-xs">
-            <strong class="text-foreground">Characters and lorebook are not affected</strong>
-            — they are always preserved.
+            <strong class="text-foreground">角色和世界书不受影响</strong>
+            ，始终予以保留。
           </div>
         </div>
 
@@ -252,39 +247,38 @@
           onkeydown={(e) => e.key === 'Enter' && handleBrowse()}
         >
           <Upload class="text-muted-foreground mx-auto mb-3 h-12 w-12" />
-          <p class="text-foreground mb-1">Drop a .jsonl chat file here</p>
-          <p class="text-muted-foreground text-sm">or click to browse</p>
+          <p class="text-foreground mb-1">将 .jsonl 聊天文件拖到这里</p>
+          <p class="text-muted-foreground text-sm">或点击选择文件</p>
         </div>
         <p class="text-muted-foreground text-center text-xs">
-          Supports SillyTavern .jsonl chat exports
+          支持 SillyTavern 导出的 .jsonl 聊天记录
         </p>
         <p class="text-muted-foreground text-center text-xs">
-          <strong class="text-foreground">Recommended:</strong> An empty story is recommended for better
-          state tracking and classification.
+          <strong class="text-foreground">建议：</strong> 建议导入到空故事，以便更好地跟踪和分类状态。
         </p>
       {:else}
         <!-- Parse preview -->
         <div class="bg-muted/50 rounded-lg border p-4">
           <div class="mb-3 flex items-center gap-2">
             <Check class="h-5 w-5 text-green-500" />
-            <span class="text-foreground font-medium">Found {total} messages</span>
+            <span class="text-foreground font-medium">已找到 {total} 条消息</span>
           </div>
           <div class="text-muted-foreground space-y-1 text-sm">
             <div class="flex items-center justify-between">
-              <span>Character</span>
+              <span>角色</span>
               <span class="text-foreground font-medium">{parseResult.characterName}</span>
             </div>
             <div class="flex items-center justify-between">
-              <span>User messages</span>
+              <span>用户消息</span>
               <span>{userCount}</span>
             </div>
             <div class="flex items-center justify-between">
-              <span>Narration messages</span>
+              <span>正文消息</span>
               <span>{narrationCount}</span>
             </div>
             {#if parseResult.totalSkipped > 0}
               <div class="flex items-center justify-between">
-                <span class="text-muted-foreground/70">Skipped (system / empty)</span>
+                <span class="text-muted-foreground/70">已跳过（系统／空消息）</span>
                 <span class="text-muted-foreground/70">{parseResult.totalSkipped}</span>
               </div>
             {/if}
@@ -296,18 +290,18 @@
           <AlertTriangle class="mt-0.5 h-5 w-5 shrink-0 text-amber-500" />
           <div class="space-y-1 text-sm">
             <p class="text-foreground font-medium">
-              This will permanently replace all entries in "{story.currentStory?.title}".
+              这将永久替换“{story.currentStory?.title}".
             </p>
             <p class="text-muted-foreground">
-              Back up first: use <strong>Export → Aventuras (.avt)</strong> in the header, or
-              <strong>Settings → Labs</strong> for a full database backup.
+              请先备份：可使用顶部菜单中的 <strong>导出 → Aventuras (.avt)</strong> ，或进入
+              <strong>设置 → 实验室</strong> 备份整个数据库。
             </p>
           </div>
         </div>
 
         <!-- Change file button -->
         <Button variant="link" class="h-auto p-0 text-xs" onclick={() => (parseResult = null)}>
-          Choose a different file
+          重新选择文件
         </Button>
       {/if}
     </div>
@@ -316,7 +310,7 @@
       {#if chapterizing && !story.chapterizationStatus}
         <Button variant="outline" onclick={() => story.requestChapterizationCancel()} class="gap-2">
           <X class="h-4 w-4" />
-          Cancel
+          取消
         </Button>
       {:else if imported}
         <Button
@@ -324,7 +318,7 @@
           disabled={resettingWorldState}
           class="gap-2 bg-yellow-500 text-black hover:bg-yellow-400"
         >
-          Keep World State
+          保留世界状态
         </Button>
         <Button
           onclick={handleResetWorldState}
@@ -333,14 +327,14 @@
         >
           {#if resettingWorldState}
             <Loader2 class="h-4 w-4 animate-spin" />
-            Resetting…
+            正在重置…
           {:else}
             <RefreshCw class="h-4 w-4" />
-            Reset World State
+            重置世界状态
           {/if}
         </Button>
       {:else}
-        <Button variant="outline" onclick={close} disabled={importing}>Cancel</Button>
+        <Button variant="outline" onclick={close} disabled={importing}>取消</Button>
         <Button
           onclick={handleImport}
           disabled={!parseResult || importing || story.branches.length > 0}
@@ -348,9 +342,9 @@
         >
           {#if importing}
             <Loader2 class="h-4 w-4 animate-spin" />
-            Importing…
+            正在导入…
           {:else}
-            Replace with {total} Messages
+            替换为 {total} 条消息
           {/if}
         </Button>
       {/if}

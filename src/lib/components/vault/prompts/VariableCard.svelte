@@ -189,7 +189,7 @@
     <div class="space-y-4 px-4 py-4">
       <!-- Variable Name -->
       <div class="space-y-2">
-        <Label>Variable Name</Label>
+        <Label>变量名称</Label>
         <Input bind:value={editName} placeholder="my_variable" class="font-mono text-sm" />
         {#if nameError}
           <p class="text-destructive text-xs">{nameError}</p>
@@ -198,19 +198,19 @@
 
       <!-- Display Name -->
       <div class="space-y-1.5">
-        <Label>Display Name</Label>
-        <Input bind:value={editDisplayName} placeholder="My Variable" />
+        <Label>显示名称</Label>
+        <Input bind:value={editDisplayName} placeholder="我的变量" />
       </div>
 
       <!-- Description -->
       <div class="space-y-1.5">
-        <Label>Description</Label>
-        <Input bind:value={editDescription} placeholder="Help text shown in wizard" />
+        <Label>说明</Label>
+        <Input bind:value={editDescription} placeholder="向导中显示的帮助文字" />
       </div>
 
       <!-- Type -->
       <div class="space-y-1.5">
-        <Label>Type</Label>
+        <Label>类型</Label>
         <Select.Root type="single" value={editType} onValueChange={handleTypeChange}>
           <Select.Trigger class="h-9 w-full">
             {TYPE_LABELS[editType]}
@@ -227,11 +227,11 @@
 
       <!-- Default Value -->
       <div class="space-y-1.5">
-        <Label>Default Value</Label>
+        <Label>默认值</Label>
         {#if editType === 'text'}
-          <Input bind:value={editDefault} placeholder="Default text value" />
+          <Input bind:value={editDefault} placeholder="默认文本" />
         {:else if editType === 'textarea'}
-          <Textarea bind:value={editDefault} placeholder="Default text value" rows={3} />
+          <Textarea bind:value={editDefault} placeholder="默认文本" rows={3} />
         {:else if editType === 'number'}
           <Input type="number" bind:value={editDefault} placeholder="0" />
         {:else if editType === 'boolean'}
@@ -243,7 +243,7 @@
           {#if editEnumOptions.length > 0}
             <Select.Root type="single" value={editDefault} onValueChange={(v) => (editDefault = v)}>
               <Select.Trigger class="h-9 w-full">
-                {editEnumOptions.find((o) => o.value === editDefault)?.label || 'Select default'}
+                {editEnumOptions.find((o) => o.value === editDefault)?.label || '选择默认值'}
               </Select.Trigger>
               <Select.Content>
                 {#each editEnumOptions as opt (opt.value)}
@@ -256,7 +256,7 @@
               </Select.Content>
             </Select.Root>
           {:else}
-            <p class="text-muted-foreground text-xs">Add enum options first</p>
+            <p class="text-muted-foreground text-xs">请先添加枚举选项</p>
           {/if}
         {/if}
       </div>
@@ -264,20 +264,20 @@
       <!-- Enum Options Editor -->
       {#if editType === 'enum'}
         <div class="space-y-2">
-          <Label>Enum Options</Label>
+          <Label>枚举选项</Label>
           <div class="space-y-2">
             {#each editEnumOptions as opt, i (i)}
               <div class="flex items-center gap-2">
                 <Input
                   value={opt.label}
                   oninput={(e) => updateEnumOption(i, 'label', e.currentTarget.value)}
-                  placeholder="Label"
+                  placeholder="标签"
                   class="h-8 flex-1 text-xs"
                 />
                 <Input
                   value={opt.value}
                   oninput={(e) => updateEnumOption(i, 'value', e.currentTarget.value)}
-                  placeholder="Value"
+                  placeholder="值"
                   class="h-8 flex-1 font-mono text-xs"
                 />
                 <div class="flex shrink-0 gap-0.5">
@@ -313,7 +313,7 @@
           </div>
           <Button variant="outline" size="sm" class="h-7 gap-1 text-xs" onclick={addEnumOption}>
             <Plus class="h-3 w-3" />
-            Add Option
+            添加选项
           </Button>
         </div>
       {/if}
@@ -324,14 +324,14 @@
       <div class="flex items-center justify-between">
         {#if showDeleteConfirm}
           <div class="flex items-center gap-2">
-            <span class="text-destructive text-xs">Delete this variable?</span>
+            <span class="text-destructive text-xs">删除此变量？</span>
             <Button
               variant="destructive"
               size="sm"
               class="h-7 text-xs"
               onclick={() => onDelete(variable.id)}
             >
-              Confirm
+              确认
             </Button>
             <Button
               variant="ghost"
@@ -339,7 +339,7 @@
               class="h-7 text-xs"
               onclick={() => (showDeleteConfirm = false)}
             >
-              Cancel
+              取消
             </Button>
           </div>
         {:else}
@@ -350,16 +350,16 @@
             onclick={() => (showDeleteConfirm = true)}
           >
             <Trash2 class="h-3 w-3" />
-            Delete
+            删除
           </Button>
         {/if}
 
         <div class="flex gap-2">
           <Button variant="outline" size="sm" class="h-7 text-xs" onclick={handleCancel}>
-            Cancel
+            取消
           </Button>
           <Button size="sm" class="h-7 text-xs" disabled={!canSave} onclick={handleSave}>
-            Save
+            保存
           </Button>
         </div>
       </div>

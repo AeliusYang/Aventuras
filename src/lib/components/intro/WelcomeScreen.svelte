@@ -32,11 +32,11 @@
   let { onComplete }: Props = $props()
 
   const fontSizes: { value: FontSizeOption; label: string }[] = [
-    { value: 'small', label: 'Small' },
-    { value: 'medium', label: 'Medium' },
-    { value: 'large', label: 'Large' },
-    { value: 'xlarge', label: 'XL' },
-    { value: 'xxlarge', label: 'XXL' },
+    { value: 'small', label: '小' },
+    { value: 'medium', label: '中' },
+    { value: 'large', label: '大' },
+    { value: 'xlarge', label: '特大' },
+    { value: 'xxlarge', label: '超大' },
   ]
 
   // State
@@ -52,7 +52,7 @@
     {
       id: 'openrouter' as ProviderPreset,
       name: 'OpenRouter',
-      description: 'Access multiple models via one API.',
+      description: '通过一个 API 使用多种模型。',
       icon: Globe,
       signupUrl: 'https://openrouter.ai/keys',
       keyPrefix: 'sk-or-',
@@ -63,25 +63,25 @@
     {
       id: 'nanogpt' as ProviderPreset,
       name: 'NanoGPT',
-      description: 'Affordable access to models like Deepseek.',
+      description: '提供 DeepSeek 等模型的 API 服务。',
       icon: Zap,
       signupUrl: 'https://nano-gpt.com/api',
       keyPrefix: 'sk-nano-',
       requiresKey: true,
-      note: 'Reasoning models are auto-detected',
+      note: '自动识别推理模型',
       color:
         'border-yellow-500/20 hover:border-yellow-500/50 bg-yellow-500/5 hover:bg-yellow-500/10',
       iconColor: 'text-yellow-500',
     },
     {
       id: 'openai-compatible' as ProviderPreset,
-      name: 'Custom / Self-Hosted',
-      description: 'Configure your own OpenAI-compatible endpoint.',
+      name: '自定义／本地服务',
+      description: '配置兼容 OpenAI 接口的模型服务。',
       icon: Server,
       signupUrl: '',
       keyPrefix: '',
       requiresKey: false,
-      note: 'Configure endpoint in settings later.',
+      note: '稍后可在设置中填写 API 地址。',
       color:
         'border-purple-500/20 hover:border-purple-500/50 bg-purple-500/5 hover:bg-purple-500/10',
       iconColor: 'text-purple-500',
@@ -117,7 +117,7 @@
     if (!providerInfo) return
 
     if (providerInfo.requiresKey && !apiKey.trim()) {
-      error = 'Please enter your API key'
+      error = '请输入 API 密钥'
       return
     }
 
@@ -129,7 +129,7 @@
       onComplete()
     } catch (e) {
       console.error('Failed to initialize with provider:', e)
-      error = e instanceof Error ? e.message : 'Failed to initialize. Please try again.'
+      error = e instanceof Error ? e.message : '初始化失败，请重试。'
     } finally {
       isSubmitting = false
     }
@@ -147,15 +147,15 @@
   out:fade={{ duration: 300 }}
 >
   <div class="mb-8 space-y-2">
-    <h1 class="text-foreground text-4xl font-bold tracking-tight">Welcome to Aventuras</h1>
+    <h1 class="text-foreground text-4xl font-bold tracking-tight">欢迎使用 Aventuras</h1>
     <p class="text-muted-foreground text-lg">
       {#if step === 'interface'}
-        Customize your reading environment
+        设置你的阅读环境
       {:else if step === 'select'}
-        Choose your AI provider to get started
+        选择模型服务商，开始创作
       {:else}
         {@const p = getSelectedProviderInfo()}
-        Configure {p?.name ?? 'Provider'}
+        配置 {p?.name ?? 'Provider'}
       {/if}
     </p>
   </div>
@@ -173,7 +173,7 @@
             <div class="space-y-3">
               <Label class="flex items-center gap-2 text-base">
                 <Palette size={18} class="text-primary" />
-                Theme
+                主题
               </Label>
               <Select.Root
                 type="single"
@@ -196,7 +196,7 @@
             <div class="space-y-3">
               <Label class="flex items-center gap-2 text-base">
                 <Type size={18} class="text-primary" />
-                Font Size
+                字号
               </Label>
               <div class="grid grid-cols-5 gap-1.5">
                 {#each fontSizes as option (option.value)}
@@ -216,7 +216,7 @@
               <div class="flex items-center justify-between">
                 <Label class="flex items-center gap-2 text-base">
                   <Languages size={18} class="text-primary" />
-                  Translation
+                  内容翻译
                 </Label>
                 <Switch
                   checked={settings.translationSettings.enabled}
@@ -230,7 +230,7 @@
                   transition:slide={{ duration: 200, axis: 'y' }}
                 >
                   <div class="space-y-2">
-                    <Label for="lang-select" class="text-sm">Target Language</Label>
+                    <Label for="lang-select" class="text-sm">目标语言</Label>
                     <Select.Root
                       type="single"
                       value={settings.translationSettings.targetLanguage}
@@ -253,9 +253,7 @@
                   </div>
 
                   <div class="flex items-center justify-between pt-2">
-                    <Label class="text-muted-foreground text-sm font-normal"
-                      >Translate my input</Label
-                    >
+                    <Label class="text-muted-foreground text-sm font-normal">翻译我的输入</Label>
                     <Switch
                       checked={settings.translationSettings.translateUserInput}
                       onCheckedChange={(v) =>
@@ -266,9 +264,7 @@
                   </div>
 
                   <div class="flex items-center justify-between">
-                    <Label class="text-muted-foreground text-sm font-normal"
-                      >Translate World State</Label
-                    >
+                    <Label class="text-muted-foreground text-sm font-normal">翻译世界状态</Label>
                     <Switch
                       checked={settings.translationSettings.translateWorldState}
                       onCheckedChange={(v) =>
@@ -283,7 +279,7 @@
           </Card.Content>
           <Card.Footer>
             <Button class="w-full" size="lg" onclick={goToSelect}>
-              Next Step <ArrowRight class="ml-2 h-4 w-4" />
+              下一步 <ArrowRight class="ml-2 h-4 w-4" />
             </Button>
           </Card.Footer>
         </Card.Root>
@@ -321,7 +317,7 @@
             onclick={() => (step = 'interface')}
             class="text-muted-foreground hover:text-foreground"
           >
-            <ArrowLeft size={16} class="mr-2" /> Back to Customization
+            <ArrowLeft size={16} class="mr-2" /> 返回阅读设置
           </Button>
         </div>
       </div>
@@ -337,12 +333,12 @@
           <Card.Root class="bg-card/95 border-border w-full shadow-2xl backdrop-blur-sm">
             <Card.Header>
               <div class="flex items-center gap-4">
-                <Button variant="ghost" size="icon" onclick={goBack} title="Go back">
+                <Button variant="ghost" size="icon" onclick={goBack} title="返回">
                   <ArrowLeft size={20} />
                 </Button>
                 <div class="flex items-center gap-3">
                   <provider.icon size={24} class={provider.iconColor} />
-                  <Card.Title>Setup</Card.Title>
+                  <Card.Title>配置</Card.Title>
                 </div>
               </div>
             </Card.Header>
@@ -350,7 +346,7 @@
               {#if provider.requiresKey}
                 <div class="space-y-2">
                   <div class="flex items-center justify-between">
-                    <Label for="api-key">API Key</Label>
+                    <Label for="api-key">API 密钥</Label>
                     {#if provider.signupUrl}
                       <a
                         href={provider.signupUrl}
@@ -358,7 +354,7 @@
                         rel="noopener noreferrer"
                         class="text-primary flex items-center gap-1 text-xs hover:underline"
                       >
-                        Get a key <ExternalLink size={10} />
+                        获取密钥 <ExternalLink size={10} />
                       </a>
                     {/if}
                   </div>
@@ -368,7 +364,7 @@
                       type={showApiKey ? 'text' : 'password'}
                       placeholder={provider.keyPrefix
                         ? `${provider.keyPrefix}...`
-                        : 'Enter your API key'}
+                        : '输入 API 密钥'}
                       bind:value={apiKey}
                       onkeydown={handleKeyDown}
                       autofocus
@@ -383,7 +379,7 @@
 
               {#if provider.note}
                 <div class="bg-muted text-muted-foreground rounded-lg p-3 text-xs">
-                  <span class="text-primary font-semibold">Note:</span>
+                  <span class="text-primary font-semibold">提示：</span>
                   {provider.note}
                 </div>
               {/if}
@@ -406,10 +402,10 @@
                   <div
                     class="border-primary-foreground/30 border-t-primary-foreground mr-2 h-4 w-4 animate-spin rounded-full border-2"
                   ></div>
-                  Setting up...
+                  正在配置…
                 {:else}
                   <Check class="mr-2 h-4 w-4" />
-                  Get Started
+                  开始使用
                 {/if}
               </Button>
             </Card.Content>

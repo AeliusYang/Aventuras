@@ -3,6 +3,7 @@
  */
 
 import type { Entry, EntryCreator, VaultLorebookEntry } from '$lib/types'
+import { normalizeEntryInjection, normalizeStringArray } from '$lib/utils/lorebookEntry'
 import type { ImportedEntry } from '../types'
 
 export function entryToVaultEntry(entry: Entry): VaultLorebookEntry {
@@ -30,19 +31,24 @@ export function convertToEntries(
 
     if (isAventuraEntry && original.state) {
       return {
-        name: original.name || imported.name,
-        type: original.type || imported.type,
-        description: original.description || imported.description,
+        name: typeof original.name === 'string' && original.name ? original.name : imported.name,
+        type: ['character', 'location', 'item', 'faction', 'concept', 'event'].includes(
+          original.type ?? '',
+        )
+          ? original.type!
+          : imported.type,
+        description:
+          typeof original.description === 'string' ? original.description : imported.description,
         hiddenInfo: original.hiddenInfo || null,
-        aliases: original.aliases || [],
+        aliases: normalizeStringArray(original.aliases, imported.aliases),
         state: original.state,
         adventureState: original.adventureState || null,
         creativeState: original.creativeState || null,
-        injection: original.injection || {
+        injection: normalizeEntryInjection(original.injection, {
           mode: imported.injectionMode,
           keywords: imported.keywords,
           priority: imported.priority,
-        },
+        }),
         createdBy,
         createdAt: now,
         updatedAt: now,

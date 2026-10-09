@@ -82,7 +82,7 @@
       class="bg-background/80 absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 backdrop-blur-sm"
     >
       <Loader2 class="text-primary h-8 w-8 animate-spin" />
-      <span class="text-muted-foreground text-sm font-medium">Processing...</span>
+      <span class="text-muted-foreground text-sm font-medium">正在处理…</span>
     </div>
   {/if}
 
@@ -134,7 +134,7 @@
                     e.stopPropagation()
                     onToggleFavorite?.()
                   }}
-                  title={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
+                  title={isFavorite ? '取消收藏' : '加入收藏'}
                 />
               {/if}
               {#if onEdit}
@@ -148,7 +148,7 @@
                     e.stopPropagation()
                     onEdit?.()
                   }}
-                  title="Edit"
+                  title="编辑"
                 />
               {/if}
               {#if onExport}
@@ -162,7 +162,7 @@
                     e.stopPropagation()
                     onExport?.()
                   }}
-                  title="Export"
+                  title="导出"
                 />
               {/if}
               {#if onDuplicate}
@@ -176,7 +176,7 @@
                     e.stopPropagation()
                     onDuplicate?.()
                   }}
-                  title="Duplicate"
+                  title="创建副本"
                 />
               {/if}
             </IconRow>

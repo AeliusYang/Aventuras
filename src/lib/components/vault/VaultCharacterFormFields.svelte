@@ -117,24 +117,24 @@
 
   <!-- Name -->
   <div class="space-y-2 {changed('name')}">
-    <Label for="name">Name *</Label>
+    <Label for="name">名称 *</Label>
     <Input
       id="name"
       type="text"
       bind:value={data.name}
       oninput={handleInput}
-      placeholder="Character name"
+      placeholder="角色姓名"
     />
   </div>
 
   <!-- Description -->
   <div class="space-y-2 {changed('description')}">
-    <Label for="description">Description</Label>
+    <Label for="description">说明</Label>
     <Textarea
       id="description"
       bind:value={() => data.description ?? '', (v) => (data.description = v || null)}
       oninput={handleInput}
-      placeholder="Brief description of character"
+      placeholder="简要描述角色"
       rows={3}
       class="resize-none"
     />
@@ -142,20 +142,20 @@
 
   <!-- Traits -->
   <div class="space-y-2 {changed('traits')}">
-    <Label for="traits">Traits</Label>
+    <Label for="traits">性格特征</Label>
     <Input
       id="traits"
       type="text"
       bind:value={traitsStr}
       oninput={handleInput}
-      placeholder="Brave, Curious, Stubborn (comma-separated)"
+      placeholder="勇敢, 好奇, 固执（用英文逗号分隔）"
     />
-    <p class="text-muted-foreground text-[0.8rem]">Comma-separated personality traits</p>
+    <p class="text-muted-foreground text-[0.8rem]">性格特征，用英文逗号分隔</p>
   </div>
 
   <!-- Visual Descriptors -->
   <div class="space-y-2 {changed('visualDescriptors')}">
-    <Label for="visualDescriptors">Visual Descriptors</Label>
+    <Label for="visualDescriptors">外貌描述</Label>
     <Input
       id="visualDescriptors"
       type="text"
@@ -165,23 +165,24 @@
     />
     {#if visualDescriptorsInvalid}
       <p class="text-[0.8rem] text-amber-500">
-        Use "Category: value" format, e.g. <span class="font-medium">Face: oval, Hair: dark</span>.
-        Categories: Face, Hair, Eyes, Build, Clothing, Accessories, Distinguishing features.
+        使用“类别: 内容”格式，例如 <span class="font-medium">Face: oval, Hair: dark</span>。类别包括
+        Face（脸型）、Hair（头发）、Eyes（眼睛）、Build（体型）、Clothing（服装）、Accessories（配饰）、Distinguishing
+        features（显著特征）。
       </p>
     {:else}
-      <p class="text-muted-foreground text-[0.8rem]">Used for portrait generation</p>
+      <p class="text-muted-foreground text-[0.8rem]">用于生成肖像</p>
     {/if}
   </div>
 
   <!-- Portrait -->
   <div class="space-y-2">
-    <Label>Portrait</Label>
+    <Label>肖像</Label>
     <div class="flex items-start gap-4">
       {#if data.portrait}
         <div class="group relative">
           <img
             src={normalizeImageDataUrl(data.portrait) ?? ''}
-            alt="Portrait preview"
+            alt="肖像预览"
             class="ring-border h-20 w-20 rounded-md object-cover ring-1"
           />
           <button
@@ -211,7 +212,7 @@
           {:else}
             <ImageUp class="mr-2 h-4 w-4" />
           {/if}
-          Upload Image
+          上传图片
           <input
             type="file"
             accept="image/*"
@@ -226,7 +227,7 @@
 
   <!-- Tags -->
   <div class="space-y-2 {changed('tags')}">
-    <Label for="tags">Tags</Label>
+    <Label for="tags">标签</Label>
     <TagInput
       value={data.tags}
       type="character"
@@ -234,8 +235,8 @@
         data.tags = newTags
         handleInput()
       }}
-      placeholder="Add tags..."
+      placeholder="添加标签…"
     />
-    <p class="text-muted-foreground text-[0.8rem]">For organizing your vault</p>
+    <p class="text-muted-foreground text-[0.8rem]">用于整理素材库</p>
   </div>
 </div>

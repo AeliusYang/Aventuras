@@ -763,7 +763,7 @@
     <div
       class="border-surface-700 bg-surface-900 relative flex flex-shrink-0 items-center justify-center border-b px-6 py-3"
     >
-      <h2 class="text-surface-100 text-sm font-semibold tracking-tight">Edit Lorebook</h2>
+      <h2 class="text-surface-100 text-sm font-semibold tracking-tight">编辑世界书</h2>
       {#if error}
         <div
           class="absolute top-full left-0 w-full border-b border-red-500/20 bg-red-500/8 py-1 text-center text-xs text-red-400 backdrop-blur"
@@ -781,7 +781,7 @@
         <div class="flex h-6 w-6 items-center justify-center rounded-md bg-cyan-500/15">
           <List class="h-3 w-3 text-cyan-400" />
         </div>
-        <span class="text-surface-200 text-xs font-semibold">Lorebook Editor</span>
+        <span class="text-surface-200 text-xs font-semibold">世界书编辑器</span>
       </div>
       <Button
         variant="ghost"
@@ -811,14 +811,14 @@
           class="data-[state=active]:border-accent-500 data-[state=active]:text-foreground h-full rounded-none px-3.5 text-xs data-[state=active]:border-b-2 data-[state=active]:bg-transparent data-[state=active]:shadow-none"
         >
           <List class="mr-1.5 h-3.5 w-3.5" />
-          Entries ({entries.length})
+          条目（{entries.length})
         </Tabs.Trigger>
         <Tabs.Trigger
           value="settings"
           class="data-[state=active]:border-accent-500 data-[state=active]:text-foreground h-full rounded-none px-3.5 text-xs data-[state=active]:border-b-2 data-[state=active]:bg-transparent data-[state=active]:shadow-none"
         >
           <Settings class="mr-1.5 h-3.5 w-3.5" />
-          Settings
+          设置
         </Tabs.Trigger>
       </Tabs.List>
     </div>
@@ -831,29 +831,29 @@
           <div class="mx-auto max-w-2xl space-y-6">
             <div class="space-y-4">
               <div class="space-y-2">
-                <Label for="name">Lorebook Name</Label>
+                <Label for="name">世界书名称</Label>
                 <Input
                   id="name"
                   bind:value={name}
                   oninput={() => (settingsDirty = true)}
-                  placeholder="Lorebook Name"
+                  placeholder="世界书名称"
                 />
               </div>
 
               <div class="space-y-2">
-                <Label for="description">Description</Label>
+                <Label for="description">说明</Label>
                 <Textarea
                   id="description"
                   bind:value={description}
                   oninput={() => (settingsDirty = true)}
                   rows={4}
-                  placeholder="Describe what this lorebook contains..."
+                  placeholder="描述这本世界书的内容…"
                   class="resize-none"
                 />
               </div>
 
               <div class="space-y-2">
-                <Label>Tags</Label>
+                <Label>标签</Label>
                 <TagInput
                   value={tags}
                   type="lorebook"
@@ -861,23 +861,23 @@
                     tags = newTags
                     settingsDirty = true
                   }}
-                  placeholder="Add tags..."
+                  placeholder="添加标签…"
                 />
               </div>
 
               <div class="border-surface-700 bg-surface-800 rounded-xl border p-4">
-                <h4 class="text-surface-300 mb-3 text-xs font-semibold">Statistics</h4>
+                <h4 class="text-surface-300 mb-3 text-xs font-semibold">统计</h4>
                 <div class="grid grid-cols-2 gap-3 text-xs">
                   <div
                     class="border-surface-700 bg-surface-900 flex justify-between rounded-lg border p-2.5"
                   >
-                    <span class="text-surface-400">Total Entries</span>
+                    <span class="text-surface-400">条目总数</span>
                     <span class="text-surface-200 font-semibold">{entries.length}</span>
                   </div>
                   <div
                     class="border-surface-700 bg-surface-900 flex justify-between rounded-lg border p-2.5"
                   >
-                    <span class="text-surface-400">Active Entries</span>
+                    <span class="text-surface-400">已启用条目</span>
                     <span class="text-surface-200 font-semibold"
                       >{entries.filter((e) => e.injectionMode !== 'never').length}</span
                     >
@@ -902,15 +902,15 @@
                 >
                   {#if savedFeedback === 'settings'}
                     <Check class="h-4 w-4" />
-                    Saved
+                    已保存
                   {:else if saving}
                     <div
                       class="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent"
                     ></div>
-                    Saving...
+                    正在保存…
                   {:else}
                     <Save class="h-4 w-4" />
-                    Save Settings
+                    保存设置
                   {/if}
                 </Button>
               {/if}
@@ -937,13 +937,13 @@
               <div class="relative">
                 <Input
                   bind:value={searchQuery}
-                  placeholder="Search entries..."
+                  placeholder="搜索条目…"
                   class="border-surface-700 bg-surface-800 placeholder:text-surface-500 h-8 rounded-lg pl-9 text-xs"
                   leftIcon={Search}
                 />
               </div>
               <Button class="h-8 w-full rounded-lg text-xs" onclick={handleAddEntry}>
-                <Plus class="h-3.5 w-3.5" /> Add Entry
+                <Plus class="h-3.5 w-3.5" /> 添加条目
               </Button>
             </div>
 
@@ -963,9 +963,9 @@
                   class="text-surface-500 flex min-h-[200px] flex-1 flex-col items-center justify-center text-center text-xs"
                 >
                   {#if searchQuery}
-                    No matches found
+                    未找到匹配内容
                   {:else}
-                    No entries yet
+                    暂无条目
                   {/if}
                 </div>
               {:else}
@@ -1086,7 +1086,7 @@
                       disabled={saving}
                     >
                       <Save class="h-3.5 w-3.5" />
-                      Save Entry
+                      保存条目
                     </Button>
                   {:else if selectedPendingChange}
                     <Button
@@ -1106,16 +1106,16 @@
                     >
                       {#if selectedPendingAction === 'delete'}
                         <Trash2 class="h-3.5 w-3.5" />
-                        Approve Delete
+                        批准删除
                       {:else if selectedPendingAction === 'edit'}
                         <Pencil class="h-3.5 w-3.5" />
-                        Approve Edit
+                        批准修改
                       {:else if selectedPendingAction === 'merge-source' || selectedPendingAction === 'merge-result'}
                         <GitMerge class="h-3.5 w-3.5" />
-                        Approve Merge
+                        批准合并
                       {:else}
                         <Save class="h-3.5 w-3.5" />
-                        Approve & Save
+                        批准并保存
                       {/if}
                     </Button>
                   {:else if isEmbedded && (entriesDirty || savedFeedback === 'entry')}
@@ -1136,10 +1136,10 @@
                     >
                       {#if savedFeedback === 'entry'}
                         <Check class="h-3.5 w-3.5" />
-                        Saved
+                        已保存
                       {:else}
                         <Save class="h-3.5 w-3.5" />
-                        Save All Entries
+                        保存所有条目
                       {/if}
                     </Button>
                     {#if entriesDirty}
@@ -1150,8 +1150,8 @@
                         onclick={handleRevertChanges}
                         disabled={saving}
                       >
-                        <span class="hidden sm:inline">Revert Changes</span>
-                        <span class="sm:hidden">Revert</span>
+                        <span class="hidden sm:inline">撤销修改</span>
+                        <span class="sm:hidden">撤销</span>
                       </Button>
                     {/if}
                   {/if}
@@ -1162,7 +1162,7 @@
                       onclick={() => handleDuplicateEntry(selectedIndex!)}
                       disabled={!!selectedPendingChange}
                     >
-                      <span class="hidden sm:inline">Duplicate</span>
+                      <span class="hidden sm:inline">创建副本</span>
                       <Plus class="h-4 w-4" />
                     </Button>
                     {#if confirmingDeleteIndex === selectedIndex}
@@ -1172,7 +1172,7 @@
                         onclick={() => handleDeleteEntry(selectedIndex!)}
                       >
                         <Trash2 class="h-3.5 w-3.5" />
-                        Confirm
+                        确认
                       </Button>
                     {:else}
                       <Button
@@ -1219,8 +1219,8 @@
                 <div class="bg-surface-800 mb-3 rounded-2xl p-5">
                   <Search class="h-6 w-6 opacity-40" />
                 </div>
-                <p class="text-surface-400 text-sm font-medium">Select an entry to edit</p>
-                <p class="mt-1 text-xs">Or click "Add Entry" to create one</p>
+                <p class="text-surface-400 text-sm font-medium">选择要编辑的条目</p>
+                <p class="mt-1 text-xs">也可以点击“添加条目”新建</p>
               </div>
             {/if}
           </div>
@@ -1247,7 +1247,7 @@
           disabled={saving}
         >
           <Bot class="h-3.5 w-3.5" />
-          <span class="hidden sm:inline">Ask Assistant</span>
+          <span class="hidden sm:inline">询问助手</span>
         </Button>
       {/if}
       <Button
@@ -1255,10 +1255,10 @@
         class="border-surface-600 h-8 text-xs"
         onclick={handleExport}
         disabled={saving || entries.length === 0}
-        title="Export lorebook"
+        title="导出世界书"
       >
         <Upload class="h-3.5 w-3.5" />
-        <span class="hidden sm:inline">Export</span>
+        <span class="hidden sm:inline">导出</span>
       </Button>
       <div class="flex flex-1 items-center justify-end gap-2">
         <Button
@@ -1268,7 +1268,7 @@
           disabled={saving}
         >
           <X class="h-3.5 w-3.5" />
-          <span class="hidden sm:inline">Cancel</span>
+          <span class="hidden sm:inline">取消</span>
         </Button>
         <Button
           class="h-8 flex-1 text-xs sm:flex-none"
@@ -1282,7 +1282,7 @@
           {:else}
             <Save class="h-3.5 w-3.5" />
           {/if}
-          Save Changes
+          保存修改
         </Button>
       </div>
     </div>

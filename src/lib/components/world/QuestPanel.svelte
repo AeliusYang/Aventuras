@@ -188,13 +188,13 @@
 <div class="flex flex-col gap-1 pb-12">
   <!-- Header -->
   <div class="mb-2 flex items-center justify-between">
-    <h3 class="text-foreground text-xl font-bold tracking-tight">Story Beats</h3>
+    <h3 class="text-foreground text-xl font-bold tracking-tight">剧情节点</h3>
     <Button
       variant="text"
       size="icon"
       class="text-muted-foreground hover:text-foreground h-6 w-6"
       onclick={() => (showAddForm = !showAddForm)}
-      title="Add story beat"
+      title="添加剧情节点"
     >
       <Plus class="h-6! w-6!" />
     </Button>
@@ -204,7 +204,7 @@
   {#if showAddForm}
     <div class="border-border bg-card mb-2 rounded-lg border p-3 shadow-sm">
       <div class="space-y-3">
-        <Input type="text" bind:value={newTitle} placeholder="Title" class="h-8 text-sm" />
+        <Input type="text" bind:value={newTitle} placeholder="标题" class="h-8 text-sm" />
 
         <Select.Root type="single" bind:value={newType}>
           <Select.Trigger class="h-8 w-full text-xs">
@@ -213,26 +213,26 @@
             </div>
           </Select.Trigger>
           <Select.Content>
-            <Select.Item value="quest" label="Quest" />
-            <Select.Item value="milestone" label="Milestone" />
-            <Select.Item value="revelation" label="Revelation" />
-            <Select.Item value="event" label="Event" />
-            <Select.Item value="plot_point" label="Plot Point" />
+            <Select.Item value="quest" label="任务" />
+            <Select.Item value="milestone" label="里程碑" />
+            <Select.Item value="revelation" label="信息揭示" />
+            <Select.Item value="event" label="事件" />
+            <Select.Item value="plot_point" label="剧情转折" />
           </Select.Content>
         </Select.Root>
 
         <Textarea
           bind:value={newDescription}
-          placeholder="Description (optional)"
+          placeholder="描述（选填）"
           class="min-h-15 resize-none text-sm"
           rows={2}
         />
       </div>
       <div class="mt-3 flex justify-end gap-2">
         <Button variant="text" size="sm" class="h-7" onclick={() => (showAddForm = false)}>
-          Cancel
+          取消
         </Button>
-        <Button size="sm" class="h-7" onclick={addBeat} disabled={!newTitle.trim()}>Add</Button>
+        <Button size="sm" class="h-7" onclick={addBeat} disabled={!newTitle.trim()}>添加</Button>
       </div>
     </div>
   {/if}
@@ -241,7 +241,7 @@
   {#if story.pendingQuests.length > 0}
     <div class="mb-4 flex flex-col gap-2">
       <h4 class="text-muted-foreground pl-1 text-xs font-semibold tracking-wider uppercase">
-        Active
+        活跃
       </h4>
       {#each story.pendingQuests as beat (beat.id)}
         {@const statusConfig = getStatusConfig(beat.status)}
@@ -262,7 +262,7 @@
             <div class="space-y-3">
               <div class="mb-2 flex items-center justify-between">
                 <h4 class="text-muted-foreground text-xs font-semibold tracking-wider uppercase">
-                  Editing Beat
+                  编辑剧情节点
                 </h4>
                 <Button variant="text" size="icon" class="h-6 w-6" onclick={cancelEdit}>
                   <X class="h-4 w-4" />
@@ -271,18 +271,18 @@
 
               <div class="space-y-2">
                 <div class="space-y-1">
-                  <Label class="text-xs">Title</Label>
+                  <Label class="text-xs">标题</Label>
                   <Input
                     type="text"
                     bind:value={editTitle}
-                    placeholder="Title"
+                    placeholder="标题"
                     class="h-8 text-sm"
                   />
                 </div>
 
                 <div class="grid grid-cols-2 gap-2">
                   <div class="space-y-1">
-                    <Label class="text-xs">Type</Label>
+                    <Label class="text-xs">类型</Label>
                     <Select.Root type="single" bind:value={editType}>
                       <Select.Trigger class="h-8 w-full text-xs">
                         <div class="flex items-center gap-2 overflow-hidden">
@@ -290,16 +290,16 @@
                         </div>
                       </Select.Trigger>
                       <Select.Content>
-                        <Select.Item value="quest" label="Quest" />
-                        <Select.Item value="milestone" label="Milestone" />
-                        <Select.Item value="revelation" label="Revelation" />
-                        <Select.Item value="event" label="Event" />
-                        <Select.Item value="plot_point" label="Plot Point" />
+                        <Select.Item value="quest" label="任务" />
+                        <Select.Item value="milestone" label="里程碑" />
+                        <Select.Item value="revelation" label="信息揭示" />
+                        <Select.Item value="event" label="事件" />
+                        <Select.Item value="plot_point" label="剧情转折" />
                       </Select.Content>
                     </Select.Root>
                   </div>
                   <div class="space-y-1">
-                    <Label class="text-xs">Status</Label>
+                    <Label class="text-xs">状态</Label>
                     <Select.Root type="single" bind:value={editStatus}>
                       <Select.Trigger class="h-8 w-full text-xs">
                         <div class="flex items-center gap-2 overflow-hidden">
@@ -307,20 +307,20 @@
                         </div>
                       </Select.Trigger>
                       <Select.Content>
-                        <Select.Item value="pending" label="Pending" />
-                        <Select.Item value="active" label="Active" />
-                        <Select.Item value="completed" label="Completed" />
-                        <Select.Item value="failed" label="Failed" />
+                        <Select.Item value="pending" label="待推进" />
+                        <Select.Item value="active" label="活跃" />
+                        <Select.Item value="completed" label="已完成" />
+                        <Select.Item value="failed" label="已失败" />
                       </Select.Content>
                     </Select.Root>
                   </div>
                 </div>
 
                 <div class="space-y-1">
-                  <Label class="text-xs">Description</Label>
+                  <Label class="text-xs">说明</Label>
                   <Textarea
                     bind:value={editDescription}
-                    placeholder="Description"
+                    placeholder="说明"
                     class="min-h-[60px] resize-none text-xs"
                   />
                 </div>
@@ -341,7 +341,7 @@
 
               <div class="border-border flex justify-end gap-2 border-t pt-2">
                 <Button variant="text" size="sm" class="h-7 text-xs" onclick={cancelEdit}>
-                  Cancel
+                  取消
                 </Button>
                 <Button
                   size="sm"
@@ -350,7 +350,7 @@
                   disabled={!editTitle.trim()}
                 >
                   <Save class="mr-1.5 h-3.5 w-3.5" />
-                  Save
+                  保存
                 </Button>
               </div>
             </div>
@@ -417,7 +417,7 @@
                     size="icon"
                     class="text-muted-foreground hover:text-foreground h-6 w-6"
                     onclick={() => toggleCollapse(beat.id)}
-                    title={isCollapsed ? 'Show details' : 'Hide details'}
+                    title={isCollapsed ? '展开详情' : '收起详情'}
                   >
                     <ChevronDown
                       class={cn(
@@ -435,7 +435,7 @@
                   size="icon"
                   class="text-muted-foreground hover:text-foreground h-6 w-6"
                   onclick={() => startEdit(beat)}
-                  title="Edit"
+                  title="编辑"
                 >
                   <Pencil class="h-3.5 w-3.5" />
                 </Button>
@@ -455,7 +455,7 @@
       <div class="bg-muted mb-3 rounded-full p-3">
         <Target class="text-muted-foreground h-6 w-6" />
       </div>
-      <p class="text-muted-foreground text-sm">No story beats yet</p>
+      <p class="text-muted-foreground text-sm">尚无剧情节点</p>
       <Button
         variant="text"
         size="sm"
@@ -463,7 +463,7 @@
         onclick={() => (showAddForm = true)}
       >
         <Plus class="h-3.5 w-3.5" />
-        Add your first beat
+        添加第一个剧情节点
       </Button>
     </div>
   {:else}
@@ -474,7 +474,7 @@
     {#if completedBeats.length > 0}
       <div class="flex flex-col gap-2">
         <h4 class="text-muted-foreground pl-1 text-xs font-semibold tracking-wider uppercase">
-          History
+          历史
         </h4>
         {#each completedBeats as beat (beat.id)}
           {@const statusConfig = getStatusConfig(beat.status)}
@@ -496,7 +496,7 @@
               <div class="space-y-3">
                 <div class="mb-2 flex items-center justify-between">
                   <h4 class="text-muted-foreground text-xs font-semibold tracking-wider uppercase">
-                    Editing Beat
+                    编辑剧情节点
                   </h4>
                   <Button variant="text" size="icon" class="h-6 w-6" onclick={cancelEdit}>
                     <X class="h-4 w-4" />
@@ -505,18 +505,18 @@
 
                 <div class="space-y-2">
                   <div class="space-y-1">
-                    <Label class="text-xs">Title</Label>
+                    <Label class="text-xs">标题</Label>
                     <Input
                       type="text"
                       bind:value={editTitle}
-                      placeholder="Title"
+                      placeholder="标题"
                       class="h-8 text-sm"
                     />
                   </div>
 
                   <div class="grid grid-cols-2 gap-2">
                     <div class="space-y-1">
-                      <Label class="text-xs">Type</Label>
+                      <Label class="text-xs">类型</Label>
                       <Select.Root type="single" bind:value={editType}>
                         <Select.Trigger class="h-8 w-full text-xs">
                           <div class="flex items-center gap-2 overflow-hidden">
@@ -524,16 +524,16 @@
                           </div>
                         </Select.Trigger>
                         <Select.Content>
-                          <Select.Item value="quest" label="Quest" />
-                          <Select.Item value="milestone" label="Milestone" />
-                          <Select.Item value="revelation" label="Revelation" />
-                          <Select.Item value="event" label="Event" />
-                          <Select.Item value="plot_point" label="Plot Point" />
+                          <Select.Item value="quest" label="任务" />
+                          <Select.Item value="milestone" label="里程碑" />
+                          <Select.Item value="revelation" label="信息揭示" />
+                          <Select.Item value="event" label="事件" />
+                          <Select.Item value="plot_point" label="剧情转折" />
                         </Select.Content>
                       </Select.Root>
                     </div>
                     <div class="space-y-1">
-                      <Label class="text-xs">Status</Label>
+                      <Label class="text-xs">状态</Label>
                       <Select.Root type="single" bind:value={editStatus}>
                         <Select.Trigger class="h-8 w-full text-xs">
                           <div class="flex items-center gap-2 overflow-hidden">
@@ -541,20 +541,20 @@
                           </div>
                         </Select.Trigger>
                         <Select.Content>
-                          <Select.Item value="pending" label="Pending" />
-                          <Select.Item value="active" label="Active" />
-                          <Select.Item value="completed" label="Completed" />
-                          <Select.Item value="failed" label="Failed" />
+                          <Select.Item value="pending" label="待推进" />
+                          <Select.Item value="active" label="活跃" />
+                          <Select.Item value="completed" label="已完成" />
+                          <Select.Item value="failed" label="已失败" />
                         </Select.Content>
                       </Select.Root>
                     </div>
                   </div>
 
                   <div class="space-y-1">
-                    <Label class="text-xs">Description</Label>
+                    <Label class="text-xs">说明</Label>
                     <Textarea
                       bind:value={editDescription}
-                      placeholder="Description"
+                      placeholder="说明"
                       class="min-h-[60px] resize-none text-xs"
                     />
                   </div>
@@ -575,7 +575,7 @@
 
                 <div class="border-border flex justify-end gap-2 border-t pt-2">
                   <Button variant="text" size="sm" class="h-7 text-xs" onclick={cancelEdit}>
-                    Cancel
+                    取消
                   </Button>
                   <Button
                     size="sm"
@@ -584,7 +584,7 @@
                     disabled={!editTitle.trim()}
                   >
                     <Save class="mr-1.5 h-3.5 w-3.5" />
-                    Save
+                    保存
                   </Button>
                 </div>
               </div>
@@ -657,7 +657,7 @@
                       size="icon"
                       class="text-muted-foreground hover:text-foreground h-6 w-6"
                       onclick={() => toggleCollapse(beat.id)}
-                      title={isCollapsed ? 'Show details' : 'Hide details'}
+                      title={isCollapsed ? '展开详情' : '收起详情'}
                     >
                       <ChevronDown
                         class={cn(
@@ -675,7 +675,7 @@
                     size="icon"
                     class="text-muted-foreground hover:text-foreground h-6 w-6"
                     onclick={() => startEdit(beat)}
-                    title="Edit"
+                    title="编辑"
                   >
                     <Pencil class="h-3.5 w-3.5" />
                   </Button>

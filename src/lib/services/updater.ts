@@ -30,6 +30,7 @@ import { getVersion, getBundleType, type BundleType } from '@tauri-apps/api/app'
 import { openUrl } from '@tauri-apps/plugin-opener'
 import { isAndroid } from '$lib/utils/platform'
 import { isNewerVersion } from '$lib/utils/version'
+import { UPSTREAM_UPDATES_ENABLED, LOCAL_RELEASE_UPDATE_NOTICE } from '$lib/constants/localRelease'
 
 /**
  * The repository the release workflow publishes to. Must stay in step with the `updater`
@@ -155,6 +156,8 @@ class UpdaterService {
    * caller can tell "there is no update" from "we could not find out".
    */
   checkForUpdates(): Promise<UpdateInfo> {
+    if (!UPSTREAM_UPDATES_ENABLED)
+      return Promise.reject(new UpdateError('unsupported', LOCAL_RELEASE_UPDATE_NOTICE))
     this.inFlight ??= this.runCheck().finally(() => {
       this.inFlight = null
     })
@@ -347,6 +350,7 @@ class UpdaterService {
    * Android's own package installer takes it from there.
    */
   async openDownloadPage(): Promise<void> {
+    if (!UPSTREAM_UPDATES_ENABLED) return
     await openUrl(this.lastInfo?.downloadUrl ?? RELEASES_PAGE)
   }
 
@@ -362,6 +366,7 @@ class UpdaterService {
    * binary.
    */
   async downloadAndInstall(onProgress?: (progress: UpdateProgress) => void): Promise<boolean> {
+    if (!UPSTREAM_UPDATES_ENABLED) return false
     if (!this.updateAvailable || this.downloading || !this.lastInfo?.canInstallInApp) {
       return false
     }
@@ -406,6 +411,7 @@ class UpdaterService {
 
   /** Relaunches the app after an install. */
   async relaunch(): Promise<void> {
+    if (!UPSTREAM_UPDATES_ENABLED) return
     try {
       await relaunch()
     } catch (error) {
@@ -426,11 +432,11 @@ class UpdaterService {
   }
 
   hasUpdate(): boolean {
-    return this.lastInfo?.available === true
+    return UPSTREAM_UPDATES_ENABLED && this.lastInfo?.available === true
   }
 
   getUpdateInfo(): UpdateInfo | null {
-    return this.lastInfo?.available ? this.lastInfo : null
+    return UPSTREAM_UPDATES_ENABLED && this.lastInfo?.available ? this.lastInfo : null
   }
 }
 

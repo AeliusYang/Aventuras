@@ -18,6 +18,7 @@ export interface SuggestionsRefreshInput {
   storyMode: StoryMode
   lastLorebookRetrieval: RetrievedEntry[] | null
   translationSettings: TranslationSettings
+  isCollaborative?: boolean
 }
 
 export interface SuggestionsRefreshDependencies {
@@ -62,7 +63,7 @@ export class SuggestionsRefreshService {
     } = input
 
     // Only generate suggestions in creative writing mode with entries
-    if (storyMode !== 'creative-writing' || entries.length === 0) {
+    if ((!input.isCollaborative && storyMode !== 'creative-writing') || entries.length === 0) {
       log('Skipping refresh', { storyMode, entriesCount: entries.length })
       return { suggestions: [], translated: false }
     }
@@ -82,7 +83,7 @@ export class SuggestionsRefreshService {
     let finalSuggestions = result.suggestions
     let translated = false
 
-    if (TranslationService.shouldTranslate(translationSettings)) {
+    if (!input.isCollaborative && TranslationService.shouldTranslate(translationSettings)) {
       try {
         finalSuggestions = await this.deps.translateSuggestions(
           result.suggestions,

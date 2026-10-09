@@ -518,10 +518,47 @@ describe('runImport — re-keying entity values', () => {
     data.entries[0].worldStateDelta = {
       classificationResult: {},
       previousState: {
-        characters: [{ id: 'char-1', metadata: metadata('character') }],
-        locations: [{ id: 'loc-1', metadata: metadata('location') }],
-        items: [{ id: 'item-1', location: 'inventory', metadata: metadata('item') }],
-        storyBeats: [{ id: 'beat-1', metadata: metadata('story_beat') }],
+        characters: [
+          {
+            id: 'char-1',
+            name: 'Ren',
+            status: 'active',
+            relationship: null,
+            traits: [],
+            visualDescriptors: {},
+            metadata: metadata('character'),
+          },
+        ],
+        locations: [
+          {
+            id: 'loc-1',
+            name: 'Cave',
+            visited: false,
+            current: false,
+            description: null,
+            metadata: metadata('location'),
+          },
+        ],
+        items: [
+          {
+            id: 'item-1',
+            name: 'Blade',
+            quantity: 1,
+            equipped: false,
+            location: 'inventory',
+            metadata: metadata('item'),
+          },
+        ],
+        storyBeats: [
+          {
+            id: 'beat-1',
+            title: 'Quest',
+            status: 'active',
+            description: null,
+            resolvedAt: null,
+            metadata: metadata('story_beat'),
+          },
+        ],
         currentLocationId: null,
         timeTracker: null,
       },

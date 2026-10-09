@@ -37,9 +37,9 @@
   import { defaultImageSpec, type ImageSpec } from '$lib/utils/image'
 
   const imageStyles = [
-    { value: 'image-style-soft-anime', label: 'Soft Anime' },
-    { value: 'image-style-semi-realistic', label: 'Semi-realistic Anime' },
-    { value: 'image-style-photorealistic', label: 'Photorealistic' },
+    { value: 'image-style-soft-anime', label: '柔和动漫' },
+    { value: 'image-style-semi-realistic', label: '半写实动漫' },
+    { value: 'image-style-photorealistic', label: '照片写实' },
   ] as const
 
   const providerTypes: { value: ImageProviderType; label: string }[] = [
@@ -49,15 +49,15 @@
     { value: 'chutes', label: 'Chutes' },
     { value: 'pollinations', label: 'Pollinations' },
     { value: 'google', label: 'Google AI Studio' },
-    { value: 'zhipu', label: 'Zhipu CogView' },
+    { value: 'zhipu', label: '智谱 CogView' },
     { value: 'comfyui', label: 'ComfyUI' },
     { value: 'a1111', label: 'A1111 / SD.cpp / Kobold' },
   ]
   const profileModes = [
-    { value: ComfyMode.CustomWorkflow, label: 'Custom Workflow' },
-    { value: ComfyMode.BasicTxt2Img, label: 'Basic Text to Image' },
-    { value: ComfyMode.LoraTxt2Img, label: 'LoRA Text to Image' },
-    { value: ComfyMode.UnetTxt2Img, label: 'UNet / Flux Text to Image' },
+    { value: ComfyMode.CustomWorkflow, label: '自定义工作流' },
+    { value: ComfyMode.BasicTxt2Img, label: '基础文生图' },
+    { value: ComfyMode.LoraTxt2Img, label: 'LoRA 文生图' },
+    { value: ComfyMode.UnetTxt2Img, label: 'UNet／Flux 文生图' },
   ] as const
 
   const clipTypeItems = [
@@ -716,18 +716,18 @@
   <div class="flex items-center justify-end">
     <Button variant="ghost" size="sm" onclick={() => settings.resetImageGenerationSettings()}>
       <RotateCcw class="mr-1 h-3 w-3" />
-      Reset to Defaults
+      恢复默认设置
     </Button>
   </div>
 
   <Tabs.Root value={activeTab} onValueChange={(v) => (activeTab = v as typeof activeTab)}>
     <Tabs.List class="grid w-full {settings.uiSettings.debugMode ? 'grid-cols-5' : 'grid-cols-4'}">
-      <Tabs.Trigger value="profiles">Profiles</Tabs.Trigger>
-      <Tabs.Trigger value="general">Story Images</Tabs.Trigger>
-      <Tabs.Trigger value="characters">Characters</Tabs.Trigger>
-      <Tabs.Trigger value="backgrounds">Backgrounds</Tabs.Trigger>
+      <Tabs.Trigger value="profiles">配置</Tabs.Trigger>
+      <Tabs.Trigger value="general">故事插图</Tabs.Trigger>
+      <Tabs.Trigger value="characters">角色</Tabs.Trigger>
+      <Tabs.Trigger value="backgrounds">背景</Tabs.Trigger>
       {#if settings.uiSettings.debugMode}
-        <Tabs.Trigger value="testing">Testing</Tabs.Trigger>
+        <Tabs.Trigger value="testing">测试</Tabs.Trigger>
       {/if}
     </Tabs.List>
 
@@ -735,12 +735,10 @@
       <!-- Profiles Tab -->
       <Tabs.Content value="profiles" class="space-y-4">
         <div class="flex items-center justify-between">
-          <p class="text-muted-foreground text-sm">
-            Image profiles configure which provider and API key to use for image generation.
-          </p>
+          <p class="text-muted-foreground text-sm">图片配置用于指定图片生成的服务商和 API 密钥。</p>
           <Button size="sm" onclick={startNewProfile}>
             <Plus class="mr-1 h-3 w-3" />
-            Add Profile
+            添加配置
           </Button>
         </div>
 
@@ -750,15 +748,13 @@
             <CardContent>
               {@render profileForm()}
               {#if needsWorkflow}
-                <p class="text-destructive pt-2 text-xs">
-                  Upload and confirm a workflow before saving.
-                </p>
+                <p class="text-destructive pt-2 text-xs">保存前请上传并确认工作流。</p>
               {/if}
               <div class="flex gap-2 pt-2">
-                <Button variant="outline" onclick={resetEditState} class="flex-1">Cancel</Button>
+                <Button variant="outline" onclick={resetEditState} class="flex-1">取消</Button>
                 <Button onclick={handleSaveProfile} disabled={!canSaveProfile} class="flex-1">
                   <Check class="h-4 w-4" />
-                  Create Profile
+                  创建配置
                 </Button>
               </div>
             </CardContent>
@@ -768,10 +764,9 @@
         {#if settings.imageProfiles.length === 0 && !isNewProfile}
           <Alert.Root>
             <Info class="h-4 w-4" />
-            <Alert.Title>No Image Profiles</Alert.Title>
+            <Alert.Title>暂无图片配置</Alert.Title>
             <Alert.Description class="text-xs">
-              Create an image profile to start generating images. You can have multiple profiles for
-              different providers or use cases (e.g., portraits vs backgrounds).
+              创建图片配置后即可生成图片。可以为不同服务商或用途（如肖像和背景）分别建立配置。
             </Alert.Description>
           </Alert.Root>
         {:else}
@@ -795,7 +790,7 @@
                           {providerTypes.find((p) => p.value === profile.providerType)?.label ||
                             profile.providerType}
                           {profile.model ? ` · ${profile.model}` : ''}
-                          {profile.apiKey ? ' · Key configured' : ' · No API key'}
+                          {profile.apiKey ? '· 已配置密钥' : '· 未配置密钥'}
                         </p>
                       </div>
                     </Collapsible.Trigger>
@@ -820,24 +815,26 @@
 
       <!-- General Tab -->
       <Tabs.Content value="general" class="space-y-6">
+        <p class="text-muted-foreground text-sm">
+          中文写作：在故事设置或创建时的“写作偏好”开启“手动插图”，再点击正文操作栏中的“生成插图”（移动端在更多菜单中）。每次一张，正常续写不自动配图。冒险模式在“视觉呈现”选择智能选图或内嵌插图。
+        </p>
         <section class="space-y-6">
           <div class="bg-muted/10 space-y-6 rounded-lg border p-4">
             <div class="space-y-3">
               <Alert.Root>
                 <Info class="h-4 w-4" />
-                <Alert.Title>Story Image Profile Selection</Alert.Title>
+                <Alert.Title>故事插图配置选择</Alert.Title>
                 <Alert.Description class="text-xs">
                   <ul class="mt-2 list-inside list-disc space-y-1">
                     <li>
-                      <strong>Reference Profile</strong>: Used when "Portrait Mode" is enabled in
-                      your current story. Generates images based on the character portraits.
+                      <strong>参考图配置</strong
+                      >：在故事启用“肖像模式”时使用，根据角色肖像生成图片。
                     </li>
                     <li>
-                      <strong>Regular Image Profile</strong>: Used when "Portrait Mode" is disabled
-                      in your current story.
+                      <strong>普通图片配置</strong>：在故事关闭“肖像模式”时使用。
                     </li>
                   </ul>
-                  <p class="mt-2">Models are configured in each profile on the Profiles tab.</p>
+                  <p class="mt-2">模型可在“配置”页签的各个配置中设置。</p>
                 </Alert.Description>
               </Alert.Root>
             </div>
@@ -846,7 +843,7 @@
               <!-- Standard Image Configuration -->
               <div class="space-y-4">
                 <div class="space-y-2">
-                  <Label>Regular Image Profile</Label>
+                  <Label>普通图片配置</Label>
                   <Autocomplete
                     items={settings.imageProfiles}
                     selected={getSelectedImageProfile('standard')}
@@ -854,13 +851,13 @@
                     itemLabel={(p: ImageProfile) =>
                       `${p.name} (${providerTypes.find((t) => t.value === p.providerType)?.label || p.providerType}${p.model ? ` · ${p.model}` : ''})`}
                     itemValue={(p: ImageProfile) => p.id}
-                    placeholder="Select an image profile"
+                    placeholder="选择图片配置"
                   />
                 </div>
 
                 {#if settings.systemServicesSettings.imageGeneration.profileId}
                   <ImageResolutionSelector
-                    label="Regular Image Size"
+                    label="普通图片尺寸"
                     size={settings.systemServicesSettings.imageGeneration.size}
                     onSizeChange={(v) => {
                       settings.systemServicesSettings.imageGeneration.size = v
@@ -873,7 +870,7 @@
               <!-- Reference Image Configuration -->
               <div class="space-y-4">
                 <div class="space-y-2">
-                  <Label>Reference (Img2Img) Profile</Label>
+                  <Label>参考图（图生图）配置</Label>
                   <Autocomplete
                     items={settings.imageProfiles}
                     selected={getSelectedImageProfile('reference')}
@@ -881,13 +878,13 @@
                     itemLabel={(p: ImageProfile) =>
                       `${p.name} (${providerTypes.find((t) => t.value === p.providerType)?.label || p.providerType}${p.model ? ` · ${p.model}` : ''})`}
                     itemValue={(p: ImageProfile) => p.id}
-                    placeholder="Select an image profile"
+                    placeholder="选择图片配置"
                   />
                 </div>
 
                 {#if settings.systemServicesSettings.imageGeneration.referenceProfileId || settings.systemServicesSettings.imageGeneration.profileId}
                   <ImageResolutionSelector
-                    label="Reference Image Size"
+                    label="参考图生成尺寸"
                     size={settings.systemServicesSettings.imageGeneration.referenceSize}
                     onSizeChange={(v) => {
                       settings.systemServicesSettings.imageGeneration.referenceSize = v
@@ -901,7 +898,7 @@
 
           <!-- Image Style -->
           <div class="space-y-2">
-            <Label>Story Image Style</Label>
+            <Label>故事插图风格</Label>
             <Autocomplete
               items={imageStyles}
               selected={imageStyles.find(
@@ -915,19 +912,19 @@
               }}
               itemLabel={(s: { label: string }) => s.label}
               itemValue={(s: { value: string }) => s.value}
-              placeholder="Select style"
+              placeholder="选择风格"
             />
             <p class="text-muted-foreground mt-1 text-xs">
-              Visual style for generated story images. Edit styles in the Prompts tab.
+              生成故事插图的视觉风格，可通过主页或设置中的“提示词管理”编辑。
             </p>
           </div>
 
           <!-- Max Images Per Message -->
           <div class="space-y-2">
             <Label>
-              Max Images Per Message: {settings.systemServicesSettings.imageGeneration
+              每条消息的图片上限： {settings.systemServicesSettings.imageGeneration
                 .maxImagesPerMessage === 0
-                ? 'Unlimited'
+                ? '不限'
                 : settings.systemServicesSettings.imageGeneration.maxImagesPerMessage}
             </Label>
             <Slider
@@ -947,9 +944,14 @@
 
       <!-- Characters Tab -->
       <Tabs.Content value="characters" class="space-y-6">
+        <p class="text-muted-foreground text-sm">
+          使用入口：故事侧栏“角色” → 编辑角色 → 外貌特征下的“生成肖像” → 保存修改。
+          自动读取人物资料与相关世界书，外貌框可以留空。需要在生成设置绑定“图片生成”的文本分析模型，
+          并在此选择角色肖像图片配置；不依赖普通插图配置。默认生成全身立绘，补全细节仅用于图片。
+        </p>
         <section class="space-y-4">
           <div class="space-y-2">
-            <Label>Character Portrait Profile</Label>
+            <Label>角色肖像配置</Label>
             <Autocomplete
               items={settings.imageProfiles}
               selected={getSelectedImageProfile('portrait')}
@@ -957,16 +959,16 @@
               itemLabel={(p: ImageProfile) =>
                 `${p.name} (${providerTypes.find((t) => t.value === p.providerType)?.label || p.providerType}${p.model ? ` · ${p.model}` : ''})`}
               itemValue={(p: ImageProfile) => p.id}
-              placeholder="Select an image profile"
+              placeholder="选择图片配置"
             />
             <p class="text-muted-foreground mt-1 text-xs">
-              Profile used for generating character portraits. Model is configured in the profile.
+              生成角色肖像时使用的配置，模型在该配置中设置。
             </p>
           </div>
 
           {#if settings.systemServicesSettings.imageGeneration.portraitProfileId || settings.systemServicesSettings.imageGeneration.profileId}
             <ImageResolutionSelector
-              label="Character Portrait Size"
+              label="角色肖像尺寸"
               size={settings.systemServicesSettings.imageGeneration.portraitSize}
               onSizeChange={(v) => {
                 settings.systemServicesSettings.imageGeneration.portraitSize = v
@@ -976,7 +978,7 @@
           {/if}
 
           <div class="space-y-2">
-            <Label>Character Portrait Style</Label>
+            <Label>角色肖像风格</Label>
             <Autocomplete
               items={imageStyles}
               selected={imageStyles.find(
@@ -990,10 +992,10 @@
               }}
               itemLabel={(s: { label: string }) => s.label}
               itemValue={(s: { value: string }) => s.value}
-              placeholder="Select style"
+              placeholder="选择风格"
             />
             <p class="text-muted-foreground mt-1 text-xs">
-              Visual style for character portraits. Edit styles in the Prompts tab.
+              角色肖像的视觉风格，可通过主页或设置中的“提示词管理”编辑。
             </p>
           </div>
         </section>
@@ -1001,9 +1003,12 @@
 
       <!-- Backgrounds Tab -->
       <Tabs.Content value="backgrounds" class="space-y-6">
+        <p class="text-muted-foreground text-sm">
+          在故事设置或创建时的“写作偏好”开启“自动场景背景”后，系统随故事生成判断场景是否需要更新背景。选择配置不会自动开启；无需配置普通插图服务。
+        </p>
         <section class="space-y-4">
           <div class="space-y-2">
-            <Label>Background Profile</Label>
+            <Label>背景图片配置</Label>
             <Autocomplete
               items={settings.imageProfiles}
               selected={getSelectedImageProfile('background')}
@@ -1011,15 +1016,15 @@
               itemLabel={(p: ImageProfile) =>
                 `${p.name} (${providerTypes.find((t) => t.value === p.providerType)?.label || p.providerType}${p.model ? ` · ${p.model}` : ''})`}
               itemValue={(p: ImageProfile) => p.id}
-              placeholder="Select an image profile"
+              placeholder="选择图片配置"
             />
             <p class="text-muted-foreground mt-1 text-xs">
-              Profile used for generating background scenes. Model is configured in the profile.
+              生成背景场景时使用的配置，模型在该配置中设置。
             </p>
           </div>
 
           <ImageResolutionSelector
-            label="Background Size"
+            label="背景尺寸"
             size={settings.systemServicesSettings.imageGeneration.backgroundSize}
             onSizeChange={(v) => {
               settings.systemServicesSettings.imageGeneration.backgroundSize = v
@@ -1029,7 +1034,7 @@
 
           <div class="space-y-2">
             <Label>
-              Background Blur: {settings.systemServicesSettings.imageGeneration.backgroundBlur}px
+              背景模糊程度： {settings.systemServicesSettings.imageGeneration.backgroundBlur}px
             </Label>
             <Slider
               type="multiple"
@@ -1042,7 +1047,7 @@
               max={20}
               step={1}
             />
-            <p class="text-muted-foreground mt-1 text-xs">Blur amount for the background image.</p>
+            <p class="text-muted-foreground mt-1 text-xs">背景图片的模糊程度。</p>
           </div>
         </section>
       </Tabs.Content>
@@ -1051,7 +1056,7 @@
         <Tabs.Content value="testing" class="space-y-6">
           <section class="space-y-4">
             <div class="space-y-2">
-              <Label>Test Profile</Label>
+              <Label>测试配置</Label>
               <Autocomplete
                 items={settings.imageProfiles}
                 selected={settings.imageProfiles.find((p) => p.id === testProfileId)}
@@ -1059,17 +1064,17 @@
                 itemLabel={(p: ImageProfile) =>
                   `${p.name} (${providerTypes.find((t) => t.value === p.providerType)?.label || p.providerType}${p.model ? ` · ${p.model}` : ''})`}
                 itemValue={(p: ImageProfile) => p.id}
-                placeholder="Select a profile to test"
+                placeholder="选择要测试的配置"
               />
             </div>
 
             <div class="space-y-2">
-              <Label>Prompt</Label>
-              <Textarea bind:value={testPrompt} placeholder="Enter a test prompt..." rows={4} />
+              <Label>提示词</Label>
+              <Textarea bind:value={testPrompt} placeholder="输入测试提示词…" rows={4} />
             </div>
 
             <ImageResolutionSelector
-              label="Size"
+              label="尺寸"
               size={testSize}
               onSizeChange={(v) => (testSize = v)}
             />
@@ -1081,26 +1086,26 @@
             >
               {#if isGeneratingTestImage}
                 <RotateCcw class="mr-2 h-4 w-4 animate-spin" />
-                Generating...
+                正在生成…
               {:else}
-                Generate Test Image
+                生成测试图片
               {/if}
             </Button>
 
             {#if testError}
               <Alert.Root variant="destructive">
-                <Alert.Title>Generation Error</Alert.Title>
+                <Alert.Title>生成出错</Alert.Title>
                 <Alert.Description>{testError}</Alert.Description>
               </Alert.Root>
             {/if}
 
             {#if testImageResult}
               <div class="mt-4 space-y-2">
-                <Label>Result Image</Label>
+                <Label>结果图片</Label>
                 <div class="overflow-hidden rounded-lg border bg-black/5">
                   <img
                     src="data:image/png;base64,{testImageResult}"
-                    alt="Generated test"
+                    alt="测试生成结果"
                     class="mx-auto block h-auto max-w-full"
                   />
                 </div>
@@ -1116,12 +1121,12 @@
 {#snippet profileForm()}
   <div class="space-y-4">
     <div class="space-y-2">
-      <Label>Name</Label>
-      <Input bind:value={profileName} placeholder="e.g., NanoGPT Images" />
+      <Label>名称</Label>
+      <Input bind:value={profileName} placeholder="例如：NanoGPT 图片" />
     </div>
 
     <div class="space-y-2">
-      <Label>Provider</Label>
+      <Label>服务商</Label>
       <Autocomplete
         items={providerTypes}
         selected={providerTypes.find((p) => p.value === profileProviderType)}
@@ -1130,19 +1135,19 @@
         }}
         itemLabel={(p: { label: string }) => p.label}
         itemValue={(p: { value: string }) => p.value}
-        placeholder="Select provider"
+        placeholder="选择服务商"
       />
     </div>
 
     {#if requiresApiKey(profileProviderType)}
       <div class="space-y-2">
-        <Label>API Key</Label>
+        <Label>API 密钥</Label>
         <div class="flex gap-2">
           <div class="relative flex-1">
             <Input
               type={showApiKey ? 'text' : 'password'}
               bind:value={profileApiKey}
-              placeholder="Enter API key"
+              placeholder="输入 API 密钥"
             />
             <button
               type="button"
@@ -1166,7 +1171,7 @@
               onclick={() => (showCopyDropdown = !showCopyDropdown)}
             >
               <Copy class="mr-1 h-3 w-3" />
-              Copy from API Profile
+              从 API 配置复制
             </Button>
             {#if showCopyDropdown}
               <div class="bg-popover absolute z-10 mt-1 w-64 rounded-md border shadow-md">
@@ -1189,13 +1194,13 @@
 
     {#if profileProviderType === 'comfyui' || profileProviderType === 'openai' || profileProviderType === 'zhipu' || profileProviderType === 'a1111'}
       <div class="space-y-2">
-        <Label>Base URL (optional)</Label>
-        <Input bind:value={profileBaseUrl} placeholder="Custom base URL" />
+        <Label>基础地址（可选）</Label>
+        <Input bind:value={profileBaseUrl} placeholder="自定义基础地址" />
       </div>
     {/if}
 
     {#snippet modelSelectContent()}
-      <Label>Model</Label>
+      <Label>模型</Label>
       <ImageModelSelect
         models={profileModels}
         selectedModelId={profileModel}
@@ -1213,13 +1218,10 @@
       />
       {#if referenceProfileImg2ImgWarning}
         <p class="text-warning mt-1 text-xs">
-          This profile is used for reference image generation (img2img), but the selected model does
-          not support img2img.
+          此配置用于参考图生成（图生图），但所选模型不支持图生图。
         </p>
       {:else}
-        <p class="text-muted-foreground mt-1 text-xs">
-          The image model this profile will use for generation.
-        </p>
+        <p class="text-muted-foreground mt-1 text-xs">此配置生成图片时使用的模型。</p>
       {/if}
     {/snippet}
 
@@ -1234,15 +1236,15 @@
       </div>
       <div class="grid grid-cols-2 gap-4 pt-2">
         <div class="space-y-2">
-          <Label>Steps</Label>
+          <Label>采样步数</Label>
           <Input type="number" bind:value={profileSteps} placeholder="20" min="1" />
         </div>
         <div class="space-y-2">
-          <Label>CFG Scale</Label>
+          <Label>提示词引导强度（CFG）</Label>
           <Input type="number" bind:value={profileCfg} placeholder="7" step="0.5" />
         </div>
         <div class="space-y-2">
-          <Label>Sampler</Label>
+          <Label>采样器</Label>
           <Autocomplete
             items={profileSamplers}
             selected={profileSamplers.find((s) => s.value === profileSampler)}
@@ -1255,7 +1257,7 @@
           />
         </div>
         <div class="space-y-2">
-          <Label>Scheduler</Label>
+          <Label>调度器</Label>
           <Autocomplete
             items={profileSchedulers}
             selected={profileSchedulers.find((s) => s.value === profileScheduler)}
@@ -1268,15 +1270,15 @@
           />
         </div>
         <div class="col-span-2 space-y-2">
-          <Label>Negative Prompt</Label>
-          <Textarea bind:value={profileNegativePrompt} placeholder="Negative prompt..." />
+          <Label>负面提示词</Label>
+          <Textarea bind:value={profileNegativePrompt} placeholder="负面提示词…" />
         </div>
       </div>
     {/if}
     {#if profileProviderType === 'comfyui'}
       <div class="grid grid-cols-2 gap-4 pt-2">
         <div class="col-span-2 space-y-2">
-          <Label>Mode</Label>
+          <Label>模式</Label>
           <Autocomplete
             items={profileModes}
             selected={profileModes.find((s) => s.value === profileMode)}
@@ -1285,7 +1287,7 @@
             }}
             itemLabel={(s: { label: string }) => s.label}
             itemValue={(s: { value: string }) => s.value}
-            placeholder="Select mode"
+            placeholder="选择模式"
           />
         </div>
         {#if profileMode !== ComfyMode.CustomWorkflow}
@@ -1293,7 +1295,7 @@
             {@render modelSelectContent()}
           </div>
           <div class="space-y-2">
-            <Label>Sampler</Label>
+            <Label>采样器</Label>
             <Autocomplete
               items={profileSamplers}
               selected={profileSamplers.find((s) => s.value === profileSampler)}
@@ -1302,11 +1304,11 @@
               }}
               itemLabel={(s: { label: string }) => s.label}
               itemValue={(s: { value: string }) => s.value}
-              placeholder="Select sampler"
+              placeholder="选择采样器"
             />
           </div>
           <div class="space-y-2">
-            <Label>Scheduler</Label>
+            <Label>调度器</Label>
             <Autocomplete
               items={profileSchedulers}
               selected={profileSchedulers.find((s) => s.value === profileScheduler)}
@@ -1315,40 +1317,40 @@
               }}
               itemLabel={(s: { label: string }) => s.label}
               itemValue={(s: { value: string }) => s.value}
-              placeholder="Select scheduler"
+              placeholder="选择调度器"
             />
           </div>
           <div class="space-y-2">
             <Label>CFG</Label>
-            <Input type="number" bind:value={profileCfg} placeholder="Enter CFG" step="0.1" />
+            <Input type="number" bind:value={profileCfg} placeholder="输入 CFG 强度" step="0.1" />
           </div>
           <div class="space-y-2">
-            <Label>Steps</Label>
-            <Input type="number" bind:value={profileSteps} placeholder="Enter Steps" />
+            <Label>采样步数</Label>
+            <Input type="number" bind:value={profileSteps} placeholder="输入采样步数" />
           </div>
         {/if}
         <div class="col-span-2 space-y-2">
-          <Label>Positive Prompt Base</Label>
-          <Textarea bind:value={profilePositivePrompt} placeholder="Base positive prompt..." />
+          <Label>基础正面提示词</Label>
+          <Textarea bind:value={profilePositivePrompt} placeholder="基础正面提示词…" />
         </div>
         {#if (profileMode !== ComfyMode.CustomWorkflow && profileMode !== ComfyMode.UnetTxt2Img) || profileCustomWorkflow?.negativePromptPath}
           <div class="col-span-2 space-y-2">
-            <Label>Negative Prompt</Label>
-            <Textarea bind:value={profileNegativePrompt} placeholder="Negative prompt..." />
+            <Label>负面提示词</Label>
+            <Textarea bind:value={profileNegativePrompt} placeholder="负面提示词…" />
           </div>
         {/if}
 
         {#if profileMode === ComfyMode.CustomWorkflow}
           <div class="col-span-2 space-y-3 border-t pt-3">
             <div class="flex items-center justify-between">
-              <Label>Custom Workflow (API format)</Label>
+              <Label>自定义工作流（API 格式）</Label>
               {#if profileCustomWorkflow}
                 <button
                   type="button"
                   class="text-muted-foreground hover:text-destructive text-xs underline"
                   onclick={clearCustomWorkflow}
                 >
-                  Clear
+                  清空
                 </button>
               {/if}
             </div>
@@ -1357,33 +1359,31 @@
               <!-- State B: workflow loaded and confirmed -->
               <div class="bg-muted/40 space-y-1 rounded-md border px-3 py-2 text-xs">
                 <p class="text-foreground font-medium">
-                  ✓ {workflowFileName ?? 'Workflow loaded'} ({Object.keys(
+                  ✓ {workflowFileName ?? '已加载工作流'} ({Object.keys(
                     profileCustomWorkflow.workflow,
-                  ).length} nodes)
+                  ).length} 个节点）
                 </p>
                 <p class="text-muted-foreground">
-                  Prompt → <code class="text-xs">{profileCustomWorkflow.positivePromptPath}</code>
+                  提示词 → <code class="text-xs">{profileCustomWorkflow.positivePromptPath}</code>
                 </p>
                 <p class="text-muted-foreground">
-                  Seed → <code class="text-xs">{profileCustomWorkflow.seedPath}</code>
+                  种子 → <code class="text-xs">{profileCustomWorkflow.seedPath}</code>
                 </p>
                 {#if profileCustomWorkflow.negativePromptPath}
                   <p class="text-muted-foreground">
-                    Negative → <code class="text-xs"
+                    负面提示词 → <code class="text-xs"
                       >{profileCustomWorkflow.negativePromptPath}</code
                     >
                   </p>
                 {:else}
-                  <p class="text-muted-foreground italic">
-                    No negative prompt node detected (ignored).
-                  </p>
+                  <p class="text-muted-foreground italic">未检测到负面提示词节点（将忽略）。</p>
                 {/if}
               </div>
             {:else if workflowAmbiguousNodes.length > 0}
               <!-- Picker: multiple CLIPTextEncode positive nodes found -->
               <div class="bg-muted/40 space-y-2 rounded-md border px-3 py-2">
                 <p class="text-muted-foreground text-xs">
-                  Multiple prompt nodes found. Select the one to use as the positive prompt:
+                  检测到多个提示词节点，请选择正面提示词节点：
                 </p>
                 {#each workflowAmbiguousNodes as node (node.nodeId)}
                   <label
@@ -1411,9 +1411,7 @@
                     </span>
                   </label>
                 {/each}
-                <Button size="sm" class="w-full" onclick={confirmWorkflowPicker}
-                  >Confirm selection</Button
-                >
+                <Button size="sm" class="w-full" onclick={confirmWorkflowPicker}>确认选择</Button>
               </div>
             {:else}
               <!-- State A: no workflow loaded -->
@@ -1421,38 +1419,35 @@
                 <summary
                   class="text-muted-foreground hover:text-foreground mb-2 cursor-pointer list-none select-none"
                 >
-                  <span class="underline underline-offset-2">How to get the workflow file ›</span>
+                  <span class="underline underline-offset-2">如何获取工作流文件 ›</span>
                 </summary>
                 <ol class="text-muted-foreground mt-1 space-y-1.5 pl-1">
                   <li>
-                    <span class="text-foreground font-medium"
-                      >1. Start ComfyUI with CORS enabled:</span
-                    >
+                    <span class="text-foreground font-medium">1. 启动 ComfyUI 并启用 CORS：</span>
                     <br />
                     <code class="bg-muted mt-0.5 inline-block rounded px-1.5 py-0.5 text-[11px]">
                       python main.py --enable-cors-header
                     </code>
                   </li>
                   <li>
-                    <span class="text-foreground font-medium">2. Enable Dev Mode in ComfyUI:</span>
+                    <span class="text-foreground font-medium">2. 在 ComfyUI 中启用开发模式：</span>
                     <br />
-                    Open the ComfyUI web UI → click the
-                    <strong>gear icon (⚙)</strong> → enable
-                    <strong>Dev Mode</strong>. A new
-                    <em>"Save (API Format)"</em> button will appear in the toolbar.
+                    打开 ComfyUI 网页界面 → 点击
+                    <strong>齿轮图标（⚙）</strong> → 启用
+                    <strong>Dev Mode（开发模式）</strong>。工具栏中会出现
+                    <em>“Save (API Format)”</em> 按钮。
                   </li>
                   <li>
-                    <span class="text-foreground font-medium">3. Export your workflow:</span>
+                    <span class="text-foreground font-medium">3. 导出工作流：</span>
                     <br />
-                    Build or load your workflow, then click
-                    <strong>Save (API Format)</strong>. This saves a
-                    <code class="text-[11px]">.json</code> file that this app can read.
+                    创建或加载工作流，然后点击
+                    <strong>Save (API Format)</strong>。将保存一个
+                    <code class="text-[11px]">.json</code> 文件，供本应用读取。
                   </li>
                   <li>
-                    <span class="text-foreground font-medium">4. Upload it below.</span>
+                    <span class="text-foreground font-medium">4. 在下方上传文件。</span>
                     <br />
-                    The app will automatically detect your prompt and seed nodes. If multiple prompt nodes
-                    are found, you will be asked to pick one.
+                    应用会自动检测提示词和种子节点。如果存在多个提示词节点，需要选择其中一个。
                   </li>
                 </ol>
               </details>
@@ -1465,7 +1460,7 @@
                   class="hidden"
                   onchange={handleWorkflowFileInput}
                 />
-                <span class="text-muted-foreground">Upload workflow JSON (API format)</span>
+                <span class="text-muted-foreground">上传工作流 JSON（API 格式）</span>
               </label>
             {/if}
 
@@ -1478,7 +1473,7 @@
       {#if profileMode === ComfyMode.LoraTxt2Img}
         <div class="grid grid-cols-2 gap-4 pt-2">
           <div class="col-span-2 space-y-2">
-            <Label>LoRA Model</Label>
+            <Label>LoRA 模型</Label>
             <Autocomplete
               items={loraItems}
               selected={availableLoras.includes(profileLoraName)
@@ -1489,29 +1484,27 @@
               }}
               itemLabel={(s: { label: string }) => s.label}
               itemValue={(s: { value: string }) => s.value}
-              placeholder="Select LoRA..."
+              placeholder="选择 LoRA…"
             />
-            <p class="text-muted-foreground text-xs">
-              Select a LoRA to apply style or character details.
-            </p>
+            <p class="text-muted-foreground text-xs">选择 LoRA 以应用风格或角色细节。</p>
           </div>
 
           {#if profileLoraName}
             <div class="space-y-2">
-              <Label>Model Strength</Label>
+              <Label>模型强度</Label>
               <Input
                 type="number"
                 bind:value={profileLoraStrengthModel}
-                placeholder="Model Strength"
+                placeholder="模型强度"
                 step="0.05"
               />
             </div>
             <div class="space-y-2">
-              <Label>CLIP Strength</Label>
+              <Label>CLIP 强度</Label>
               <Input
                 type="number"
                 bind:value={profileLoraStrengthClip}
-                placeholder="CLIP Strength"
+                placeholder="CLIP 强度"
                 step="0.05"
               />
             </div>
@@ -1522,14 +1515,14 @@
         <div class="grid grid-cols-2 gap-4 pt-2">
           <div class="col-span-2 space-y-2">
             <div class="flex items-center justify-between">
-              <Label>CLIP / Text Encoder</Label>
+              <Label>CLIP／文本编码器</Label>
               <button
                 type="button"
                 class="text-muted-foreground hover:text-foreground text-xs underline"
                 disabled={isLoadingUnetModels}
                 onclick={loadUnetModels}
               >
-                {isLoadingUnetModels ? 'Loading…' : '↻ Refresh'}
+                {isLoadingUnetModels ? '正在加载…' : '↻ 刷新'}
               </button>
             </div>
             <Autocomplete
@@ -1548,10 +1541,10 @@
               }}
               itemLabel={(s: { label: string }) => s.label}
               itemValue={(s: { value: string }) => s.value}
-              placeholder="Auto-detect first available"
+              placeholder="自动检测首个可用项"
             />
             <p class="text-muted-foreground text-xs">
-              Leave empty to auto-detect the first text encoder found in ComfyUI.
+              留空时自动使用 ComfyUI 中找到的首个文本编码器。
             </p>
           </div>
 
@@ -1573,15 +1566,13 @@
               }}
               itemLabel={(s: { label: string }) => s.label}
               itemValue={(s: { value: string }) => s.value}
-              placeholder="Auto-detect first available"
+              placeholder="自动检测首个可用项"
             />
-            <p class="text-muted-foreground text-xs">
-              Leave empty to auto-detect the first VAE found in ComfyUI.
-            </p>
+            <p class="text-muted-foreground text-xs">留空时自动使用 ComfyUI 中找到的首个 VAE。</p>
           </div>
 
           <div class="space-y-2">
-            <Label>CLIP Type</Label>
+            <Label>CLIP 类型</Label>
             <Autocomplete
               items={clipTypeItems}
               selected={clipTypeItems.find((s) => s.value === profileClipType)}
@@ -1590,12 +1581,12 @@
               }}
               itemLabel={(s: { label: string }) => s.label}
               itemValue={(s: { value: string }) => s.value}
-              placeholder="Select CLIP type"
+              placeholder="选择 CLIP 类型"
             />
           </div>
 
           <div class="space-y-2">
-            <Label>Weight Dtype</Label>
+            <Label>权重数据类型</Label>
             <Autocomplete
               items={weightDtypeItems}
               selected={weightDtypeItems.find((s) => s.value === profileWeightDtype)}
@@ -1604,7 +1595,7 @@
               }}
               itemLabel={(s: { label: string }) => s.label}
               itemValue={(s: { value: string }) => s.value}
-              placeholder="Select dtype"
+              placeholder="选择数据类型"
             />
           </div>
         </div>

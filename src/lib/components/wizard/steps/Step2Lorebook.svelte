@@ -67,11 +67,9 @@
     <div class="bg-primary/10 flex h-8 w-8 items-center justify-center rounded-md">
       <Archive class="text-primary h-4 w-4" />
     </div>
-    <h3 class="text-lg font-medium">Vault Lorebooks</h3>
+    <h3 class="text-lg font-medium">素材库世界书</h3>
   </div>
-  <p class="text-muted-foreground text-sm">
-    Select lorebooks from your vault to populate your world with characters, locations, and lore.
-  </p>
+  <p class="text-muted-foreground text-sm">从素材库选择世界书，为故事添加角色、地点和世界设定。</p>
 </div>
 
 <!-- Vault Browser -->
@@ -79,10 +77,10 @@
   <div class="flex items-center justify-between pb-1">
     <h4 class="text-muted-foreground flex items-center gap-2 text-sm font-medium">
       <BookOpen class="h-4 w-4" />
-      Available in Vault
+      素材库中的内容
     </h4>
     <Button variant="link" size="sm" class="h-auto p-0 text-xs" onclick={onNavigateToVault}>
-      Manage Vault
+      管理素材库
     </Button>
   </div>
 
@@ -97,7 +95,7 @@
 {#if importError}
   <Alert.Root variant="destructive">
     <AlertCircle class="h-4 w-4" />
-    <Alert.Title>Error</Alert.Title>
+    <Alert.Title>错误</Alert.Title>
     <Alert.Description>{importError}</Alert.Description>
   </Alert.Root>
 {/if}
@@ -109,14 +107,14 @@
       <div class="w-full border-t"></div>
     </div>
     <div class="relative flex justify-center text-xs uppercase">
-      <span class="bg-background text-muted-foreground px-2">Selected Items</span>
+      <span class="bg-background text-muted-foreground px-2">已选内容</span>
     </div>
   </div>
 
   <div class="space-y-4">
     <div class="flex items-center justify-between">
       <h3 class="text-foreground text-sm font-medium">
-        Imported Lorebooks ({importedLorebooks.length})
+        已导入的世界书（{importedLorebooks.length})
       </h3>
       {#if importedLorebooks.length > 1}
         <Button
@@ -125,7 +123,7 @@
           onclick={onClearAll}
           class="text-muted-foreground hover:text-destructive h-8"
         >
-          Clear All
+          全部清空
         </Button>
       {/if}
     </div>
@@ -181,7 +179,7 @@
                       variant="outline"
                       class="h-5 border-amber-500/50 px-1 py-0 text-[10px] text-amber-600 dark:text-amber-500"
                     >
-                      {lorebook.result.warnings.length} Warnings
+                      {lorebook.result.warnings.length} 提示
                     </Badge>
                   {/if}
                 </div>
@@ -189,7 +187,7 @@
                 {#if lorebook.isLoading}
                   <div class="space-y-1.5">
                     <p class="text-muted-foreground flex justify-between text-xs">
-                      <span>{lorebook.loadingMessage || 'Processing...'}</span>
+                      <span>{lorebook.loadingMessage || '正在处理…'}</span>
                       {#if lorebook.classificationProgress}
                         <span
                           >{Math.round(
@@ -211,7 +209,7 @@
                   </div>
                 {:else}
                   <div class="text-muted-foreground flex items-center gap-2 text-xs">
-                    <span>{lorebook.entries.length} entries</span>
+                    <span>{lorebook.entries.length} 条目</span>
                     {#if !lorebook.expanded}
                       <span class="text-muted-foreground/30">•</span>
                       <span class="truncate opacity-70">
@@ -232,7 +230,7 @@
                   size="icon"
                   class="text-muted-foreground hover:text-destructive h-8 w-8 opacity-0 transition-opacity group-hover:opacity-100"
                   onclick={() => onRemoveLorebook(lorebook.id)}
-                  title="Remove"
+                  title="移除"
                 >
                   <X class="h-4 w-4" />
                 </Button>
@@ -257,7 +255,7 @@
 
                 <div class="flex items-center justify-between pt-2 pb-1">
                   <h4 class="text-muted-foreground text-xs font-semibold tracking-wider uppercase">
-                    Preview
+                    预览
                   </h4>
                 </div>
 
@@ -285,7 +283,7 @@
                     {/each}
                     {#if lorebook.entries.length > 10}
                       <div class="text-muted-foreground bg-muted/20 py-2 text-center text-xs">
-                        + {lorebook.entries.length - 10} more entries
+                        + {lorebook.entries.length - 10} 个其他条目
                       </div>
                     {/if}
                   </div>
@@ -295,7 +293,7 @@
                   <Alert.Root variant="destructive" class="py-2">
                     <AlertCircle class="h-4 w-4" />
                     <Alert.Description class="text-xs">
-                      {lorebook.result.warnings.length} warning(s) occurred during import.
+                      {lorebook.result.warnings.length} 条导入提示。
                       <ul class="mt-1 list-inside list-disc">
                         {#each lorebook.result.warnings.slice(0, 3) as warning (warning)}
                           <li>{warning}</li>
@@ -318,9 +316,9 @@
           class="flex flex-col items-start justify-between gap-4 p-4 sm:flex-row sm:items-center"
         >
           <div>
-            <p class="text-foreground font-medium">Total Imported Content</p>
+            <p class="text-foreground font-medium">导入内容总计</p>
             <p class="text-muted-foreground text-xs">
-              {importSummary.total} entries across {importedLorebooks.length} lorebooks
+              {importSummary.total} 个条目，分布于 {importedLorebooks.length} 本世界书
             </p>
           </div>
           <div class="flex flex-wrap gap-2">

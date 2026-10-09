@@ -5,17 +5,21 @@
   import { Badge } from '$lib/components/ui/badge'
   import { ScrollArea } from '$lib/components/ui/scroll-area'
   import { describeTemplate } from './templateGroups'
+  import type { PackTemplate } from '$lib/services/packs/types'
+  import { packService } from '$lib/services/packs/pack-service'
+  import { templateDiff } from './templateDiff'
 
   interface Props {
     open: boolean
     packName: string
     classified: ClassifiedTemplates | null
     refreshing: boolean
+    templates: PackTemplate[]
     onConfirm: (scope: RefreshScope) => void
     onCancel: () => void
   }
 
-  let { open, packName, classified, refreshing, onConfirm, onCancel }: Props = $props()
+  let { open, packName, classified, refreshing, templates, onConfirm, onCancel }: Props = $props()
 
   function listed(templateIds: string[]) {
     return templateIds
@@ -44,10 +48,9 @@
 >
   <ResponsiveModal.Content class="p-0 sm:max-w-lg">
     <ResponsiveModal.Header class="border-b px-6 py-4">
-      <ResponsiveModal.Title>Refresh "{packName}" from the shipped prompts</ResponsiveModal.Title>
+      <ResponsiveModal.Title>使用内置提示词更新“{packName}”</ResponsiveModal.Title>
       <ResponsiveModal.Description>
-        Your version of each template you choose is replaced by the one this version of the app
-        ships. Templates you have not edited are untouched either way.
+        选中的模板将替换为当前应用的内置版本。未编辑过的模板不受影响。
       </ResponsiveModal.Description>
     </ResponsiveModal.Header>
 
@@ -56,17 +59,22 @@
         {#if behind.length > 0}
           <div class="flex flex-col gap-2">
             <div class="flex items-center gap-2">
-              <h4 class="text-sm font-medium">Behind newer shipped text</h4>
+              <h4 class="text-sm font-medium">落后于新版内置文本</h4>
               <Badge variant="secondary">{behind.length}</Badge>
             </div>
-            <p class="text-muted-foreground text-xs">
-              You edited these, and the app has changed them since.
-            </p>
+            <p class="text-muted-foreground text-xs">这些模板经你修改过，应用也发布了更新内容。</p>
             <ul class="flex flex-col gap-1 text-sm">
               {#each behind as entry (entry.templateId)}
-                <li class="flex items-baseline gap-2">
+                <li class="space-y-1">
                   <span class="text-muted-foreground shrink-0 text-xs">{entry.group}</span>
                   <span>{entry.label}</span>
+                  <details>
+                    <summary class="cursor-pointer text-xs">查看替换 diff</summary>
+                    <pre class="max-h-52 overflow-auto text-xs whitespace-pre-wrap">{templateDiff(
+                        templates.find((t) => t.templateId === entry.templateId)?.content ?? '',
+                        packService.getDefaultContent(entry.templateId) ?? '',
+                      )}</pre>
+                  </details>
                 </li>
               {/each}
             </ul>
@@ -76,18 +84,24 @@
         {#if customised.length > 0}
           <div class="flex flex-col gap-2">
             <div class="flex items-center gap-2">
-              <h4 class="text-sm font-medium">Customised</h4>
+              <h4 class="text-sm font-medium">已自定义</h4>
               <Badge variant="secondary">{customised.length}</Badge>
             </div>
             <p class="text-muted-foreground text-xs">
-              You edited these and the app ships nothing newer for them. Replacing these discards
-              your version for no change.
+              这些模板经你修改过，但应用没有更新内容。替换只会丢弃你的修改，恢复内置版本。
             </p>
             <ul class="flex flex-col gap-1 text-sm">
               {#each customised as entry (entry.templateId)}
-                <li class="flex items-baseline gap-2">
+                <li class="space-y-1">
                   <span class="text-muted-foreground shrink-0 text-xs">{entry.group}</span>
                   <span>{entry.label}</span>
+                  <details>
+                    <summary class="cursor-pointer text-xs">查看替换 diff</summary>
+                    <pre class="max-h-52 overflow-auto text-xs whitespace-pre-wrap">{templateDiff(
+                        templates.find((t) => t.templateId === entry.templateId)?.content ?? '',
+                        packService.getDefaultContent(entry.templateId) ?? '',
+                      )}</pre>
+                  </details>
                 </li>
               {/each}
             </ul>
@@ -97,14 +111,14 @@
     </ScrollArea>
 
     <ResponsiveModal.Footer class="border-t px-6 py-4">
-      <Button variant="ghost" onclick={onCancel} disabled={refreshing}>Cancel</Button>
+      <Button variant="ghost" onclick={onCancel} disabled={refreshing}>取消</Button>
       {#if behind.length > 0}
         <Button variant="outline" onclick={() => onConfirm('behind')} disabled={refreshing}>
-          Replace the {behind.length} behind
+          替换其中 {behind.length} 个待更新模板
         </Button>
       {/if}
       <Button variant="destructive" onclick={() => onConfirm('edited')} disabled={refreshing}>
-        {refreshing ? 'Replacing…' : `Replace all ${total} edited`}
+        {refreshing ? '正在替换…' : `Replace all ${total} edited`}
       </Button>
     </ResponsiveModal.Footer>
   </ResponsiveModal.Content>

@@ -40,6 +40,28 @@ export const sceneAnalysisResultSchema = z.object({
   scenes: z.array(imageableSceneSchema).describe('Array of identified imageable scenes'),
 })
 
+export const portraitPreparationSchema = z.object({
+  visualDescription: z
+    .string()
+    .trim()
+    .min(1)
+    .describe(
+      'English physical appearance, outfit, character-specific expression and full-body pose. No rendering style or names.',
+    ),
+  inferredDetails: z
+    .array(z.string())
+    .describe('中文列出仅为图片补全、并非已确认事实的细节；没有则为空数组。'),
+})
+export type PortraitPreparation = z.infer<typeof portraitPreparationSchema>
+
+export const manualSceneAnalysisSchema = z.object({
+  scenes: z.array(imageableSceneSchema),
+  inferredDetails: z
+    .array(z.string())
+    .default([])
+    .describe('中文列出仅用于绘图的视觉补全，不是故事事实。'),
+})
+
 export const backgroundImageAnalysisResultSchema = z.object({
   changeNecessary: z.boolean().describe('Whether the background image needs to be changed'),
   prompt: z.string().describe('Prompt for generating background image'),

@@ -1,4 +1,6 @@
-import { generateStructured } from '../sdk/generate'
+import { generateCollaborativeJsonText, generateStructured } from '../sdk/generate'
+import { CollaborativePromptService } from '../core/CollaborativePromptService'
+import { collaborativeServiceIds } from '../core/collaborativeAgentDefaults'
 /**
  * Classifier Service
  *
@@ -20,7 +22,7 @@ import type {
   StoryBeat,
   TimeTracker,
 } from '$lib/types'
-import type { ServiceId } from '$lib/stores/settings.svelte'
+import { settings, type ServiceId } from '$lib/stores/settings.svelte'
 import { BaseAIService } from '../BaseAIService'
 import { ContextBuilder } from '$lib/services/context'
 import { database } from '$lib/services/database'
@@ -30,6 +32,7 @@ import { stripNarratorMarkup } from '$lib/utils/text'
 import { recentContent, AS_PROSE } from '$lib/utils/recentContent'
 import {
   classificationResultSchema,
+  collaborativeClassificationResultSchema,
   clampNumber,
   type ClassificationResult,
 } from '../sdk/schemas/classifier'
@@ -40,6 +43,7 @@ import {
 import type { RuntimeVariable, RuntimeEntityType } from '$lib/services/packs/types'
 import { NoObjectGeneratedError } from 'ai'
 import { jsonrepair } from 'jsonrepair'
+import { sameEntityName } from '$lib/utils/text'
 
 const log = createLogger('Classifier')
 
@@ -87,6 +91,13 @@ export class ClassifierService extends BaseAIService {
     })
 
     const mode = context.story.mode ?? 'adventure'
+    const collaborative = mode === 'creative-writing'
+    if (
+      collaborative &&
+      context.story.settings?.collaborativeNovelWorkflow?.factStateExtractor?.enabled === false
+    ) {
+      throw new Error('正文事实与状态提取已关闭。')
+    }
 
     // Load runtime variable definitions for the story's pack (if any)
     let runtimeVars: RuntimeVariable[] = []
@@ -100,17 +111,28 @@ export class ClassifierService extends BaseAIService {
     // Build the schema: extended with inline vars if runtime variables exist, else base
     const schema =
       runtimeVars.length > 0
-        ? buildExtendedClassificationSchema(runtimeVarsByType)
-        : classificationResultSchema
+        ? buildExtendedClassificationSchema(runtimeVarsByType, collaborative)
+        : collaborative
+          ? collaborativeClassificationResultSchema
+          : classificationResultSchema
 
     // Format existing entities for the prompt
-    const existingCharacters = this.formatExistingCharacters(context.existingCharacters)
+    const existingCharacters = this.formatExistingCharacters(
+      context.existingCharacters,
+      collaborative,
+    )
     const existingLocations = this.formatExistingLocations(context.existingLocations)
-    const existingItems = this.formatExistingItems(context.existingItems)
-    const existingBeats = this.formatExistingBeats(context.existingStoryBeats)
+    const existingItems = this.formatExistingItems(context.existingItems, collaborative)
+    const existingBeats = this.formatExistingBeats(context.existingStoryBeats, collaborative)
 
     // Build chat history block if entries provided
-    const chatHistoryBlock = visibleEntries ? this.buildChatHistoryBlock(visibleEntries) : ''
+    const chatHistoryBlock = visibleEntries
+      ? this.buildChatHistoryBlock(
+          collaborative
+            ? visibleEntries.filter((entry) => entry.type === 'narration')
+            : visibleEntries,
+        )
+      : ''
 
     // Build time info
     const currentTimeInfo = currentStoryTime
@@ -122,7 +144,9 @@ export class ClassifierService extends BaseAIService {
       runtimeVars.length > 0 ? this.buildCustomVarInstructions(runtimeVarsByType) : ''
 
     // Create ContextBuilder from story -- auto-populates mode, pov, tense, genre, etc.
-    const ctx = await ContextBuilder.forStory(context.storyId)
+    const ctx = collaborative
+      ? await ContextBuilder.forStory(context.storyId, undefined, false)
+      : await ContextBuilder.forStory(context.storyId)
 
     // Add all runtime variables explicitly via ctx.add()
     ctx.add({
@@ -131,7 +155,7 @@ export class ClassifierService extends BaseAIService {
       currentTimeInfo,
       chatHistoryBlock,
       inputLabel: mode === 'creative-writing' ? 'Author Direction' : 'Player Action',
-      userAction: cleanForClassification(context.userAction),
+      userAction: collaborative ? '' : cleanForClassification(context.userAction),
       narrativeResponse: cleanForClassification(context.narrativeResponse),
       existingCharacters,
       existingLocations,
@@ -146,18 +170,35 @@ export class ClassifierService extends BaseAIService {
     })
 
     // Render through the classifier template
-    const { system, user: prompt } = await ctx.render('classifier')
+    const templateId = collaborative ? 'collaborative-fact-extractor' : 'classifier'
+    const rendered = collaborative
+      ? await CollaborativePromptService.render(
+          context.storyId,
+          'factStateExtractor',
+          { narrativeResponse: context.narrativeResponse },
+          ctx.getContext(),
+        )
+      : await ctx.render(templateId)
+    const { system, user: prompt } = rendered
 
     try {
-      const result = (await generateStructured(
-        {
-          presetId: this.presetId,
-          schema,
-          system,
-          prompt,
-        },
-        'classifier',
-      )) as ClassificationResult
+      const options = {
+        presetId: collaborative ? templateId : this.presetId,
+        presetOverride: collaborative
+          ? settings.getPresetConfig(
+              settings.getServicePresetId(collaborativeServiceIds.factStateExtractor),
+              collaborativeServiceIds.factStateExtractor,
+            )
+          : undefined,
+        schema,
+        system,
+        prompt,
+      }
+      const result = (await (collaborative
+        ? generateCollaborativeJsonText(options, templateId)
+        : generateStructured(options, templateId))) as ClassificationResult
+
+      if (collaborative) this.validateUpdateTargets(result, context)
 
       // Post-process: clamp number values to min/max constraints
       if (runtimeVars.length > 0) {
@@ -187,6 +228,51 @@ export class ClassifierService extends BaseAIService {
       log('classify failed', error)
       return this.recover(error, runtimeVars, runtimeVarsByType)
     }
+  }
+
+  private validateUpdateTargets(
+    result: ClassificationResult,
+    context: ClassificationContext,
+  ): void {
+    const groups = [
+      {
+        label: '人物',
+        updates: result.entryUpdates.characterUpdates.map((entry) => entry.name),
+        known: [...context.existingCharacters, ...result.entryUpdates.newCharacters].map(
+          (entry) => entry.name,
+        ),
+      },
+      {
+        label: '地点',
+        updates: result.entryUpdates.locationUpdates.map((entry) => entry.name),
+        known: [...context.existingLocations, ...result.entryUpdates.newLocations].map(
+          (entry) => entry.name,
+        ),
+      },
+      {
+        label: '物品',
+        updates: result.entryUpdates.itemUpdates.map((entry) => entry.name),
+        known: [...context.existingItems, ...result.entryUpdates.newItems].map(
+          (entry) => entry.name,
+        ),
+      },
+      {
+        label: '线程',
+        updates: result.entryUpdates.storyBeatUpdates.map((entry) => entry.title),
+        known: [...context.existingStoryBeats, ...result.entryUpdates.newStoryBeats].map(
+          (entry) => entry.title,
+        ),
+      },
+    ]
+    const unmatched = groups.flatMap((group) =>
+      group.updates
+        .filter((name) => !group.known.some((known) => sameEntityName(name, known)))
+        .map((name) => `${group.label}「${name}」`),
+    )
+    if (unmatched.length)
+      throw new Error(
+        `事实提取的更新目标未匹配既有实体或本次明确新建实体：${unmatched.join('、')}。未自动猜测或新建，请针对已保存正文单独重试提取。`,
+      )
   }
 
   /**
@@ -412,7 +498,7 @@ export class ClassifierService extends BaseAIService {
    * the prompt. The template forbids rewriting an appearance that is not shown, so a
    * returning character keeps the descriptors it accumulated.
    */
-  private formatExistingCharacters(characters: Character[]): string {
+  private formatExistingCharacters(characters: Character[], collaborative = false): string {
     if (characters.length === 0) return '(none)'
 
     return characters
@@ -420,6 +506,8 @@ export class ClassifierService extends BaseAIService {
         const status = c.status ?? 'active'
         let entry = `- ${c.name}`
         if (c.relationship) entry += `\n  relationship: ${c.relationship}`
+        if (collaborative && c.description) entry += `\n  description: ${c.description}`
+        if (collaborative && c.traits?.length) entry += `\n  traits: ${JSON.stringify(c.traits)}`
         // `active` is printed too, or the list is asymmetric: the model would be reminded to
         // report a return and never a departure.
         entry += `\n  status: ${status}`
@@ -484,12 +572,13 @@ export class ClassifierService extends BaseAIService {
    * State is printed only where it differs from the default, so the list stays short: an
    * unequipped single item sitting in the inventory is just its name.
    */
-  private formatExistingItems(items: Item[]): string {
+  private formatExistingItems(items: Item[], collaborative = false): string {
     if (items.length === 0) return '(none)'
 
     return items
       .map((i) => {
         let entry = `- ${i.name}`
+        if (collaborative && i.description) entry += `\n  description: ${i.description}`
         if (i.quantity > 1) entry += `\n  quantity: ${i.quantity}`
         if (i.equipped) entry += `\n  equipped: true`
         if (i.location && i.location !== 'inventory') entry += `\n  location: ${i.location}`
@@ -501,8 +590,10 @@ export class ClassifierService extends BaseAIService {
   /**
    * Format existing story beats for the prompt.
    */
-  private formatExistingBeats(beats: StoryBeat[]): string {
-    const activeBeats = beats.filter((b) => b.status === 'active' || b.status === 'pending')
+  private formatExistingBeats(beats: StoryBeat[], collaborative = false): string {
+    const activeBeats = collaborative
+      ? beats
+      : beats.filter((b) => b.status === 'active' || b.status === 'pending')
     if (activeBeats.length === 0) return '(none)'
 
     return (

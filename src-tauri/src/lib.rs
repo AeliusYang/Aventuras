@@ -244,6 +244,18 @@ pub fn run() {
             sql: include_str!("../migrations/037_kept_separate.sql"),
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 38,
+            description: "collaborative_state_history",
+            sql: include_str!("../migrations/038_collaborative_state_history.sql"),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 39,
+            description: "image_content_version",
+            sql: include_str!("../migrations/039_image_content_version.sql"),
+            kind: MigrationKind::Up,
+        },
     ];
 
     #[cfg_attr(not(all(debug_assertions, feature = "devtools")), allow(unused_mut))]
@@ -278,7 +290,6 @@ pub fn run() {
         })
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_notification::init())

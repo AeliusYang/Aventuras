@@ -1,3 +1,6 @@
+import type { ImageEvidence } from '$lib/services/image/generationContext'
+import type { ImagePromptDiagnostic } from '$lib/services/image/diagnostics'
+import { getImageAnalysisConfigurationIssue } from './image/analysisConfig'
 /**
  * AI Service - Main Orchestrator
  *
@@ -19,8 +22,20 @@
  * - translate*() - TranslationService
  */
 
+import { prepareNovelTurn, type NovelPreparation } from '$lib/services/generation/prepareNovelTurn'
+import type { NovelTurn } from '$lib/types/collaborative'
 import { createLogger } from '$lib/log'
+import { settings } from '$lib/stores/settings.svelte'
 import { database } from '$lib/services/database'
+import { generateCollaborativeJsonText } from './sdk/generate'
+import { collaborativeServiceIds } from './core/collaborativeAgentDefaults'
+import { CollaborativePromptService } from './core/CollaborativePromptService'
+import { getImageConfigurationIssue } from './image/imageUtils'
+import { imageContentVersion } from '$lib/services/image/imageScope'
+import {
+  collaborativeStateRebuildCandidateSchema,
+  type CollaborativeStateRebuildRequest,
+} from '$lib/services/CollaborativeStateRebuildService'
 import {
   emitImageAnalysisStarted,
   emitImageAnalysisComplete,
@@ -168,7 +183,22 @@ export interface ImageGenerationContext {
   imageSettings?: ImageGenerationServiceSettings
   /** Image profile lookup — supplied by caller */
   getImageProfile?: (id: string) => ImageProfile | undefined
+  evidence?: ImageEvidence
+  onDiagnostic?: (diagnostic: ImagePromptDiagnostic) => void
+  diagnostic?: ImagePromptDiagnostic
+  trigger?: 'manual'
+  contentVersion?: string
+  /** UI scope check, rechecked after analysis before spending image credits. */
+  canContinue?: () => boolean
 }
+
+export type ImageGenerationResult = {
+  status: 'queued' | 'no-scenes' | 'not-configured' | 'failed' | 'disabled' | 'busy'
+  message?: string
+  queued?: number
+}
+
+const manualImageRequests = new Set<string>()
 
 const log = createLogger('AIService')
 
@@ -227,6 +257,79 @@ class AIService {
    * Stream a narrative response.
    * This is the primary method for real-time story generation.
    */
+  async prepareCollaborative(
+    input: NovelPreparation,
+    onProgress?: import('$lib/services/generation/prepareNovelTurn').NovelProgressCallback,
+    onDirectorChunk?: import('$lib/services/generation/prepareNovelTurn').NovelDirectorChunkCallback,
+  ) {
+    const { story, abortSignal } = input.context
+    return prepareNovelTurn(
+      input,
+      {
+        scene: (data, onDiagnostic, onChunk) =>
+          serviceFactory
+            .createNovelScenePlanner()
+            .run(
+              story.id,
+              'collaborative-scene-director',
+              data,
+              abortSignal,
+              onDiagnostic,
+              onChunk,
+            ),
+      },
+      onProgress,
+      onDirectorChunk,
+    )
+  }
+
+  async generateCollaborativePlan(
+    storyId: string,
+    input: unknown,
+    signal?: AbortSignal,
+  ): Promise<string> {
+    return serviceFactory
+      .createNovelPlanner()
+      .run(storyId, 'collaborative-long-planner', input, signal)
+  }
+
+  async generateCollaborativePatternReview(
+    storyId: string,
+    input: unknown,
+    signal?: AbortSignal,
+  ): Promise<string> {
+    return serviceFactory
+      .createNovelReviewer()
+      .run(storyId, 'collaborative-pattern-reviewer', input, signal)
+  }
+
+  async generateCollaborativeStateRebuild(
+    storyId: string,
+    request: CollaborativeStateRebuildRequest,
+    signal?: AbortSignal,
+  ) {
+    const story = await database.getStory(storyId)
+    if (!story) throw new Error('中文写作故事不存在。')
+    if (story.settings?.collaborativeNovelWorkflow?.factStateExtractor?.enabled === false) {
+      throw new Error('正文事实与状态提取已关闭。')
+    }
+    const rendered = await CollaborativePromptService.render(storyId, 'factStateExtractor', request)
+    return generateCollaborativeJsonText(
+      {
+        presetId: 'collaborative-state-rebuilder',
+        presetOverride: settings.getPresetConfig(
+          settings.getServicePresetId(collaborativeServiceIds.factStateExtractor),
+          collaborativeServiceIds.factStateExtractor,
+        ),
+        schema: collaborativeStateRebuildCandidateSchema,
+        system: rendered.system,
+        prompt: rendered.user,
+        signal,
+      },
+      'collaborative-state-rebuilder',
+    )
+  }
+
   async *streamNarrative(
     entries: StoryEntry[],
     worldState: WorldState,
@@ -236,6 +339,7 @@ class AIService {
     signal?: AbortSignal,
     timelineFillResult?: TimelineFillResult | null,
     worldStateBlock?: string | null,
+    novelTurn?: NovelTurn,
   ): AsyncIterable<StreamChunk> {
     log('streamNarrative called', {
       entriesCount: entries.length,
@@ -272,6 +376,7 @@ class AIService {
       retrievedChapterContext,
       signal,
       timelineFillResult,
+      novelTurn,
     })
   }
 
@@ -368,6 +473,12 @@ class AIService {
     pov: 'first' | 'second' | 'third' | undefined,
     storyId: string | undefined,
   ): Promise<ActionChoicesResult> {
+    if (storyId) {
+      const currentStory = await database.getStory(storyId)
+      if (currentStory?.mode === 'creative-writing') {
+        throw new Error('中文写作不提供行动选项。')
+      }
+    }
     log('generateActionChoices called', {
       entriesCount: entries.length,
       narrativeLength: narrativeResponse.length,
@@ -861,7 +972,9 @@ class AIService {
    * - Inline mode: Process <pic> tags from AI response
    * - Analyzed mode: Use LLM to identify imageable scenes
    */
-  async generateImagesForNarrative(context: ImageGenerationContext): Promise<void> {
+  async generateImagesForNarrative(
+    context: ImageGenerationContext,
+  ): Promise<ImageGenerationResult> {
     log('generateImagesForNarrative called', {
       storyId: context.storyId,
       entryId: context.entryId,
@@ -870,14 +983,37 @@ class AIService {
       translationLanguage: context.translationLanguage,
     })
 
-    if (!this.isImageGenerationEnabled(undefined, 'standard')) {
-      log('Image generation not enabled or not configured')
-      return
+    if (
+      context.imageGenerationMode === 'none' ||
+      (context.imageGenerationMode === 'manual' && context.trigger !== 'manual')
+    )
+      return { status: 'disabled' }
+    context = {
+      ...context,
+      contentVersion:
+        context.contentVersion ?? imageContentVersion({ content: context.narrativeResponse }),
     }
+    const issue =
+      getImageConfigurationIssue() ||
+      (context.trigger === 'manual' ? getImageAnalysisConfigurationIssue() : null) ||
+      (context.referenceMode ? getImageConfigurationIssue('reference') : null)
+    if (issue) return { status: 'not-configured', message: issue }
+    const requestKey = `${context.storyId}:${context.entryId}`
+    const manual = context.trigger === 'manual'
+    if (manual && manualImageRequests.has(requestKey))
+      return { status: 'busy', message: '此轮插图正在生成。' }
+    if (manual) manualImageRequests.add(requestKey)
 
     // Check if inline image mode is enabled for this story
     const inlineImageMode = context.imageGenerationMode === 'inline'
     try {
+      if (manual) {
+        if (!(await this.manualImageScopeCurrent(context)))
+          return { status: 'disabled', message: '图片开关或正文已变化，请重新操作。' }
+        const existing = await database.getEmbeddedImagesForEntry(context.entryId)
+        if (existing.some((image) => image.contentVersion === context.contentVersion))
+          return { status: 'busy', message: '本版正文已有插图；可打开图片查看或单独重试。' }
+      }
       if (inlineImageMode) {
         // Use inline image generation (process <pic> tags from AI response)
         const narrativeToProcess = context.translatedNarrative || context.narrativeResponse
@@ -888,30 +1024,52 @@ class AIService {
           storyId: context.storyId,
           entryId: context.entryId,
           narrativeContent: narrativeToProcess,
+          contentVersion: context.contentVersion,
           presentCharacters: context.presentCharacters,
           referenceMode: context.referenceMode,
         }
-        await inlineImageService.processNarrativeForInlineImages(inlineContext)
+        const queued = await inlineImageService.processNarrativeForInlineImages(inlineContext)
+        return { status: queued ? 'queued' : 'no-scenes', queued }
       } else {
         // Analyzed mode: Use LLM to identify imageable scenes
         log('Using analyzed image mode')
-        await this.runAnalyzedImageGeneration(context)
+        return await this.runAnalyzedImageGeneration(context)
       }
     } catch (error) {
       log('Image generation failed (non-fatal)', error)
-      // Don't throw - image generation failure shouldn't break the main flow
+      return { status: 'failed', message: error instanceof Error ? error.message : '插图生成失败' }
+    } finally {
+      if (manual) manualImageRequests.delete(requestKey)
     }
+  }
+
+  private async manualImageScopeCurrent(context: ImageGenerationContext): Promise<boolean> {
+    if (context.canContinue?.() === false || !context.contentVersion) return false
+    const [sourceStory, entry] = await Promise.all([
+      database.getStory(context.storyId),
+      database.getStoryEntry(context.entryId),
+    ])
+    return (
+      context.canContinue?.() !== false &&
+      sourceStory?.settings?.imageGenerationMode === 'manual' &&
+      entry?.storyId === context.storyId &&
+      imageContentVersion(entry) === context.contentVersion &&
+      !getImageConfigurationIssue() &&
+      (!context.referenceMode || !getImageConfigurationIssue('reference'))
+    )
   }
 
   /**
    * Run analyzed image generation mode.
    * Uses LLM to identify visually striking moments in narrative text.
    */
-  private async runAnalyzedImageGeneration(context: ImageGenerationContext): Promise<void> {
+  private async runAnalyzedImageGeneration(
+    context: ImageGenerationContext,
+  ): Promise<ImageGenerationResult> {
     const imageSettings = context.imageSettings
     if (!imageSettings) {
       log('No image settings in context, skipping analyzed image generation')
-      return
+      return { status: 'not-configured', message: '尚未配置故事插图。' }
     }
     const referenceMode = context.referenceMode ?? false
     const allCharacters = context.allCharacters ?? []
@@ -940,7 +1098,13 @@ class AIService {
       })),
       currentLocation: context.currentLocation,
       stylePrompt,
-      maxImages: imageSettings.maxImagesPerMessage ?? 3,
+      maxImages: context.trigger === 'manual' ? 1 : (imageSettings.maxImagesPerMessage ?? 3),
+      manual: context.trigger === 'manual',
+      evidence: context.evidence,
+      onDiagnostic: (value) => {
+        context.diagnostic = value
+        context.onDiagnostic?.(value)
+      },
       chatHistory: context.chatHistory,
       lorebookContext: context.lorebookContext,
       charactersWithPortraits,
@@ -949,6 +1113,8 @@ class AIService {
       translatedNarrative: context.translatedNarrative,
       translationLanguage: context.translationLanguage,
     }
+
+    if (context.canContinue?.() === false) return { status: 'disabled' }
 
     // Emit analysis started
     emitImageAnalysisStarted(context.entryId)
@@ -963,12 +1129,22 @@ class AIService {
       // Create service and identify scenes
       const analysisService = serviceFactory.createImageAnalysisService()
       scenes = await analysisService.identifyScenes(analysisContext)
+      if (context.trigger === 'manual')
+        scenes = scenes
+          .filter(
+            (scene) =>
+              !scene.generatePortrait &&
+              scene.prompt.trim() &&
+              scene.sourceText.trim() &&
+              context.narrativeResponse.includes(scene.sourceText),
+          )
+          .slice(0, 1)
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error'
       log('Scene analysis failed', error)
       emitImageAnalysisComplete(context.entryId, 0, 0)
-      emitImageAnalysisFailed(context.entryId, errorMessage)
-      return
+      if (context.trigger !== 'manual') emitImageAnalysisFailed(context.entryId, errorMessage)
+      return { status: 'failed', message: `画面分析失败：${errorMessage}` }
     }
 
     // Count portrait generations
@@ -985,12 +1161,16 @@ class AIService {
       })
     }
     emitImageAnalysisComplete(context.entryId, sceneCount, portraitCount)
+    if (!scenes.length) return { status: 'no-scenes', message: '未选出适合的画面，可以再次尝试。' }
 
     try {
+      if (context.trigger === 'manual' && !(await this.manualImageScopeCurrent(context)))
+        return { status: 'disabled', message: '图片开关或正文已变化，本次未继续生图。' }
       // Queue image generation for each scene
       const getImageProfile = context.getImageProfile ?? (() => undefined)
+      let queued = 0
       for (const scene of scenes) {
-        await this.queueAnalyzedImageGeneration(
+        const started = await this.queueAnalyzedImageGeneration(
           context.storyId,
           context.entryId,
           scene,
@@ -998,12 +1178,16 @@ class AIService {
           context.presentCharacters,
           referenceMode,
           getImageProfile,
+          context,
         )
+        if (started) queued++
       }
+      return { status: queued ? 'queued' : 'disabled', queued }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error'
       log('Queueing analyzed image generation failed', error)
-      emitImageAnalysisFailed(context.entryId, errorMessage)
+      if (context.trigger !== 'manual') emitImageAnalysisFailed(context.entryId, errorMessage)
+      return { status: 'failed', message: `插图排队失败：${errorMessage}` }
     }
   }
 
@@ -1018,7 +1202,8 @@ class AIService {
     presentCharacters: Character[],
     referenceMode: boolean,
     getImageProfile: (id: string) => ImageProfile | undefined,
-  ): Promise<void> {
+    context: ImageGenerationContext,
+  ): Promise<boolean> {
     const imageId = crypto.randomUUID()
 
     // Determine profile and model
@@ -1045,7 +1230,7 @@ class AIService {
       if (portraitUrls.length > 0) {
         if (!this.isImageGenerationEnabled(undefined, 'reference')) {
           log('Reference image generation not configured')
-          return
+          return false
         }
         // Use reference profile and model for img2img
         profileId = imageSettings.referenceProfileId
@@ -1064,7 +1249,7 @@ class AIService {
     if (scene.generatePortrait) {
       if (!this.isImageGenerationEnabled(undefined, 'portrait')) {
         log('Portrait image generation not configured')
-        return
+        return false
       }
       profileId = imageSettings.portraitProfileId
       modelToUse = getImageProfile(profileId ?? '')?.model ?? ''
@@ -1074,12 +1259,13 @@ class AIService {
 
     if (!profileId) {
       log('No image profile configured, skipping scene')
-      return
+      return false
     }
 
     // Build full prompt with style
     const stylePrompt = await resolveStylePrompt(storyId, styleId)
     const fullPrompt = `${scene.prompt}. ${stylePrompt}`
+    if (context.trigger === 'manual' && !(await this.manualImageScopeCurrent(context))) return false
 
     const { width, height } = expectedPixels(sizeToUse)
     // Create pending record in database
@@ -1088,6 +1274,7 @@ class AIService {
       storyId,
       entryId,
       sourceText: scene.sourceText,
+      contentVersion: context.contentVersion,
       prompt: fullPrompt,
       styleId: styleId,
       model: modelToUse,
@@ -1099,12 +1286,24 @@ class AIService {
     }
 
     await database.createEmbeddedImage(embeddedImage)
+    if (context.trigger === 'manual' && !(await this.manualImageScopeCurrent(context))) {
+      await database.deleteEmbeddedImage(imageId)
+      return false
+    }
     log('Created pending analyzed image record', {
       imageId,
       sceneType: scene.sceneType,
       priority: scene.priority,
       isPortrait: scene.generatePortrait,
     })
+
+    if (context.diagnostic)
+      context.onDiagnostic?.({
+        ...context.diagnostic,
+        finalPrompt: fullPrompt,
+        imageModel: modelToUse,
+        imageProfile: getImageProfile(profileId)?.name,
+      })
 
     // Emit queued event
     emitImageQueued(imageId, entryId)
@@ -1120,9 +1319,11 @@ class AIService {
       scene,
       presentCharacters,
       referenceImageUrls,
+      context.trigger === 'manual',
     ).catch((error) => {
       log('Async analyzed image generation failed', { imageId, error })
     })
+    return true
   }
 
   /**
@@ -1138,6 +1339,7 @@ class AIService {
     scene: ImageableScene,
     presentCharacters: Character[],
     referenceImageUrls?: string[],
+    notifyFailure = false,
   ): Promise<void> {
     try {
       log('Generating analyzed image', {
@@ -1156,6 +1358,7 @@ class AIService {
         model,
         size,
         referenceImages: referenceImageUrls,
+        notifyFailure,
       })
 
       if (!base64) return
@@ -1191,6 +1394,17 @@ class AIService {
     visibleEntries: StoryEntry[],
     onBackgroundImageUpdate: (image: string) => void,
   ): Promise<void> {
+    const sourceStory = await database.getStory(storyId).catch(() => null)
+    if (!sourceStory?.settings?.backgroundImagesEnabled || getImageConfigurationIssue('background'))
+      return
+    const backgroundStillEnabled = async () => {
+      const current = await database.getStory(storyId).catch(() => null)
+      return (
+        current?.settings?.backgroundImagesEnabled === true &&
+        current.currentBranchId === sourceStory.currentBranchId &&
+        !getImageConfigurationIssue('background')
+      )
+    }
     // Two phases, two separate pairs, each closed in a `finally`: the progress counters
     // read `Started`/`Complete` and `Queued`/`Ready`, and a single try/catch around both
     // left them open. A throw while generating reported an analysis failure for a phase
@@ -1213,14 +1427,14 @@ class AIService {
     }
 
     // Ai returns empty string or short response if no change, otherwise the image prompt
-    if (!service || !result?.changeNecessary) return
+    if (!service || !result?.changeNecessary || !(await backgroundStillEnabled())) return
 
     log('Background change detected, prompt:', result.prompt)
     emitBackgroundImageQueued()
     try {
       const image = await service.generateBackgroundImage(result.prompt)
 
-      if (image) {
+      if (image && (await backgroundStillEnabled())) {
         log('Background image generated successfully', { image })
         onBackgroundImageUpdate(image)
       } else {

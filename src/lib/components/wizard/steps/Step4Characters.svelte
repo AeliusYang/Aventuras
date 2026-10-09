@@ -174,10 +174,8 @@
   {#if !expandedSetting}
     <Alert.Root>
       <AlertCircle class="h-4 w-4" />
-      <Alert.Title>Missing World Setting</Alert.Title>
-      <Alert.Description>
-        Go back to Step 3 and expand your setting first. This helps create a more fitting character.
-      </Alert.Description>
+      <Alert.Title>尚未填写世界设定</Alert.Title>
+      <Alert.Description>请先返回第 3 步完善世界设定，以便创建更符合背景的角色。</Alert.Description>
     </Alert.Root>
   {:else}
     <!-- Load from Vault Section -->
@@ -185,7 +183,7 @@
       <div class="flex items-center justify-between pb-1">
         <h4 class="text-muted-foreground flex items-center gap-2 text-sm font-medium">
           <Archive class="h-4 w-4" />
-          Load from Vault
+          从素材库载入
         </h4>
         <Button
           variant="link"
@@ -193,7 +191,7 @@
           class="h-auto p-0 text-xs"
           onclick={() => onNavigateToVault?.()}
         >
-          Manage Vault
+          管理素材库
         </Button>
       </div>
 
@@ -213,12 +211,10 @@
                 </div>
                 <div class="text-left">
                   <div class="text-sm font-medium">
-                    {loadedVaultCharacterId ? 'Character Selected' : 'Select a Character'}
+                    {loadedVaultCharacterId ? '已选择角色' : '选择角色'}
                   </div>
                   <div class="text-muted-foreground text-xs">
-                    {loadedVaultCharacterId
-                      ? 'Click to change selection'
-                      : 'Browse your saved protagonists'}
+                    {loadedVaultCharacterId ? '点击更换' : '浏览已保存的主角'}
                   </div>
                 </div>
               </div>
@@ -257,12 +253,12 @@
         <div class="space-y-1">
           <h4 class="text-foreground flex items-center gap-2 text-sm font-medium">
             <User class="h-4 w-4" />
-            {isEditingProtagonist ? 'Edit Character' : 'Create Character'}
+            {isEditingProtagonist ? '编辑角色' : '创建角色'}
           </h4>
           <p class="text-muted-foreground text-xs">
             {selectedMode === 'adventure'
-              ? 'Create or describe your character for this adventure.'
-              : 'Define the main character for your story.'}
+              ? '为这次冒险创建或描述你的角色。'
+              : '设定故事的主要角色。'}
           </p>
         </div>
 
@@ -275,29 +271,29 @@
 
         <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Input
-            label="Name"
+            label="名称"
             id="char-name"
             value={isEditingProtagonist ? editName : manualCharacterName}
             oninput={(e) =>
               isEditingProtagonist
                 ? (editName = e.currentTarget.value)
                 : onManualNameChange(e.currentTarget.value)}
-            placeholder="e.g., Alex, Jordan..."
+            placeholder="例如：林舟、沈清…"
           />
           <Input
-            label="Motivation"
+            label="动机"
             id="char-motivation"
             value={isEditingProtagonist ? editMotivation : manualCharacterMotivation}
             oninput={(e) =>
               isEditingProtagonist
                 ? (editMotivation = e.currentTarget.value)
                 : onManualMotivationChange(e.currentTarget.value)}
-            placeholder="What drives them?"
+            placeholder="什么在驱使这个角色？"
           />
         </div>
 
         <div class="space-y-2">
-          <Label for="char-desc">Description</Label>
+          <Label for="char-desc">说明</Label>
           <Textarea
             id="char-desc"
             value={isEditingProtagonist ? editDescription : manualCharacterDescription}
@@ -305,14 +301,14 @@
               isEditingProtagonist
                 ? (editDescription = e.currentTarget.value)
                 : onManualDescriptionChange(e.currentTarget.value)}
-            placeholder="Physical appearance, demeanor..."
+            placeholder="外貌、举止、气质…"
             class="min-h-20"
           />
         </div>
 
         <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div class="space-y-2">
-            <Label for="char-bg">Background</Label>
+            <Label for="char-bg">背景</Label>
             <Textarea
               id="char-bg"
               value={isEditingProtagonist ? editBackground : manualCharacterBackground}
@@ -320,12 +316,12 @@
                 isEditingProtagonist
                   ? (editBackground = e.currentTarget.value)
                   : onManualBackgroundChange(e.currentTarget.value)}
-              placeholder="Where they come from..."
+              placeholder="出身与过往经历…"
               class="min-h-20 resize-none"
             />
           </div>
           <div class="space-y-2">
-            <Label for="char-traits">Traits (comma-separated)</Label>
+            <Label for="char-traits">性格特征（用英文逗号分隔）</Label>
             <Textarea
               id="char-traits"
               value={isEditingProtagonist ? editTraits : manualCharacterTraits}
@@ -333,7 +329,7 @@
                 isEditingProtagonist
                   ? (editTraits = e.currentTarget.value)
                   : onManualTraitsChange(e.currentTarget.value)}
-              placeholder="e.g., brave, curious..."
+              placeholder="例如：勇敢, 好奇…"
               class="min-h-20 resize-none"
             />
           </div>
@@ -354,7 +350,7 @@
                   onclick={() => (showAdjustWithAI = !showAdjustWithAI)}
                 >
                   <Sparkles class="h-3.5 w-3.5" />
-                  {showAdjustWithAI ? 'Hide AI Options' : 'Expand with AI'}
+                  {showAdjustWithAI ? '收起 AI 选项' : '用 AI 扩写'}
                   <ChevronDown
                     class="h-3 w-3 transition-transform {showAdjustWithAI ? 'rotate-180' : ''}"
                   />
@@ -367,7 +363,7 @@
                   class="gap-2"
                 >
                   <Check class="h-3.5 w-3.5" />
-                  Use Character
+                  使用此角色
                 </Button>
               </div>
 
@@ -376,12 +372,12 @@
                   class="bg-card text-card-foreground mt-3 space-y-4 rounded-lg border p-4 shadow-sm"
                 >
                   <div class="space-y-2">
-                    <Label for="ai-guidance" class="text-xs">AI Guidance (Optional)</Label>
+                    <Label for="ai-guidance" class="text-xs">AI 创作要求（选填）</Label>
                     <Textarea
                       id="ai-guidance"
                       value={characterElaborationGuidance}
                       oninput={(e) => onCharacterGuidanceChange(e.currentTarget.value)}
-                      placeholder="e.g., Make them more cynical, add a tragic backstory..."
+                      placeholder="例如：让角色更愤世嫉俗，补充一段悲剧性的往事…"
                       class="h-20 resize-none text-sm"
                     />
                   </div>
@@ -397,10 +393,10 @@
                     >
                       {#if isExpandingCharacter && activeElaborationSource === 'expand'}
                         <Loader2 class="h-3.5 w-3.5 animate-spin" />
-                        Expanding...
+                        正在扩写…
                       {:else}
                         <Sparkles class="h-3.5 w-3.5" />
-                        Expand Details
+                        扩写细节
                       {/if}
                     </Button>
 
@@ -413,10 +409,10 @@
                     >
                       {#if isGeneratingProtagonist}
                         <RefreshCw class="h-3.5 w-3.5 animate-spin" />
-                        Generating...
+                        正在生成…
                       {:else}
                         <RefreshCw class="h-3.5 w-3.5" />
-                        Generate New
+                        重新生成
                       {/if}
                     </Button>
                   </div>
@@ -426,8 +422,8 @@
           {:else}
             <!-- Edit Actions -->
             <div class="flex items-center justify-end gap-2">
-              <Button variant="ghost" size="sm" onclick={handleCancelEdit}>Cancel</Button>
-              <Button size="sm" onclick={handleSaveEdit}>Save Changes</Button>
+              <Button variant="ghost" size="sm" onclick={handleCancelEdit}>取消</Button>
+              <Button size="sm" onclick={handleSaveEdit}>保存修改</Button>
             </div>
           {/if}
         </div>
@@ -446,7 +442,7 @@
                 </div>
                 <div>
                   <Card.Title class="text-base leading-none">{protagonist.name}</Card.Title>
-                  <Card.Description class="mt-0.5 text-xs">Protagonist</Card.Description>
+                  <Card.Description class="mt-0.5 text-xs">主角</Card.Description>
                 </div>
               </div>
 
@@ -456,7 +452,7 @@
                   size="icon"
                   class="text-muted-foreground hover:text-foreground h-7 w-7"
                   onclick={handleStartEdit}
-                  title="Edit"
+                  title="编辑"
                 >
                   <PenTool class="h-3.5 w-3.5" />
                 </Button>
@@ -468,7 +464,7 @@
                     : 'text-muted-foreground hover:text-foreground'}"
                   onclick={onSaveToVault}
                   disabled={savedToVaultConfirm}
-                  title="Save to Vault"
+                  title="保存到素材库"
                 >
                   {#if savedToVaultConfirm}
                     <Check class="h-3.5 w-3.5" />
@@ -491,7 +487,7 @@
               <div class="grid grid-cols-1 gap-3 text-xs sm:grid-cols-2">
                 {#if protagonist.background}
                   <div class="space-y-0.5">
-                    <span class="text-foreground font-medium">Background</span>
+                    <span class="text-foreground font-medium">背景</span>
                     <p class="text-muted-foreground leading-tight">
                       {protagonist.background}
                     </p>
@@ -499,7 +495,7 @@
                 {/if}
                 {#if protagonist.motivation}
                   <div class="space-y-0.5">
-                    <span class="text-foreground font-medium">Motivation</span>
+                    <span class="text-foreground font-medium">动机</span>
                     <p class="text-muted-foreground leading-tight">
                       {protagonist.motivation}
                     </p>
@@ -529,7 +525,7 @@
               <Input
                 value={characterElaborationGuidance}
                 oninput={(e) => onCharacterGuidanceChange(e.currentTarget.value)}
-                placeholder="Refinement notes..."
+                placeholder="输入修改要求…"
                 class="h-7 text-xs"
               />
               <Button
@@ -538,7 +534,7 @@
                 class="h-7 w-7 p-0"
                 onclick={handleRefine}
                 disabled={isRefiningCharacter}
-                title="Refine with AI"
+                title="用 AI 润色"
               >
                 {#if isRefiningCharacter && activeElaborationSource === 'refine'}
                   <Loader2 class="h-3 w-3 animate-spin" />

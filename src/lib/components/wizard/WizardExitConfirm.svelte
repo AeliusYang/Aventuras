@@ -43,14 +43,14 @@
         <div class="min-w-0">
           <h2 id="{uid}-title" class="font-semibold">{title}</h2>
           <p id="{uid}-description" class="text-muted-foreground mt-1 text-sm">
-            Everything you have filled in so far will be lost.
+            目前填写的内容将不会保留。
           </p>
         </div>
       </div>
 
       <div class="mt-5 flex justify-end gap-2">
-        <Button bind:ref={cancelButton} variant="outline" onclick={onCancel}>Keep Editing</Button>
-        <Button variant="destructive" onclick={onDiscard}>Discard</Button>
+        <Button bind:ref={cancelButton} variant="outline" onclick={onCancel}>继续编辑</Button>
+        <Button variant="destructive" onclick={onDiscard}>放弃</Button>
       </div>
     </div>
   </div>

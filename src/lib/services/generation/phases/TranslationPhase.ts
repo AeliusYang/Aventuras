@@ -17,6 +17,7 @@ import type {
   AbortedEvent,
   ErrorEvent,
 } from '../types'
+import { asError } from '$lib/utils/error'
 import type { TranslationSettings } from '$lib/types'
 import type { TranslationResult } from '$lib/services/ai/utils/TranslationService'
 import { TranslationService } from '$lib/services/ai/utils/TranslationService'
@@ -135,7 +136,7 @@ export class TranslationPhase {
       yield {
         type: 'error',
         phase: 'translation',
-        error: error instanceof Error ? error : new Error(String(error)),
+        error: asError(error, '翻译阶段返回了无法识别的错误。'),
         fatal: false,
       } satisfies ErrorEvent
 

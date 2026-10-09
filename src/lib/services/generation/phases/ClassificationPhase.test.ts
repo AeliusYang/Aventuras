@@ -30,6 +30,20 @@ function makeInput(overrides: Partial<ClassificationInput> = {}): Classification
 }
 
 describe('ClassificationPhase', () => {
+  it('does not classify author wishes or discarded retry text as novel facts', async () => {
+    const classifyResponse = vi.fn().mockResolvedValue(classification)
+    const input = makeInput({
+      story: { id: 'novel', mode: 'creative-writing', settings: {} } as any,
+      visibleEntries: [
+        entry('n0', '她尚未答应。'),
+        { ...entry('a1', '下一幕让她答应'), type: 'user_action' },
+        { ...entry('r1', '被否决的版本'), type: 'retry' },
+      ],
+    })
+    await drain(new ClassificationPhase({ classifyResponse }).execute(input))
+    expect(classifyResponse.mock.calls[0][1]).toContain('不是事实')
+    expect(classifyResponse.mock.calls[0][4].map((e: StoryEntry) => e.id)).toEqual(['n0'])
+  })
   it('emits classification_complete and phase_complete on success', async () => {
     const phase = new ClassificationPhase({ classifyResponse: async () => classification })
 

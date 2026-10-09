@@ -29,16 +29,16 @@
   const spec = $derived(parseImageSpec(size))
 
   const ORIENTATION_META: Record<ImageOrientation, { label: string; icon: typeof Square }> = {
-    square: { label: 'Square', icon: Square },
-    landscape: { label: 'Landscape', icon: RectangleHorizontal },
-    portrait: { label: 'Portrait', icon: RectangleVertical },
+    square: { label: '方形', icon: Square },
+    landscape: { label: '横向', icon: RectangleHorizontal },
+    portrait: { label: '肖像', icon: RectangleVertical },
   }
 
   const SIZE_META: Record<ImageSizeTier, { label: string; hint: string; icon: string }> = {
-    tiny: { label: 'Tiny', hint: 'Fastest and cheapest', icon: 'h-2.5 w-2.5' },
-    small: { label: 'Small', hint: 'Quick', icon: 'h-3 w-3' },
-    medium: { label: 'Medium', hint: 'Balanced', icon: 'h-4 w-4' },
-    large: { label: 'Large', hint: 'Slowest, most detail', icon: 'h-5 w-5' },
+    tiny: { label: '极小', hint: 'Fastest and cheapest', icon: 'h-2.5 w-2.5' },
+    small: { label: '小', hint: 'Quick', icon: 'h-3 w-3' },
+    medium: { label: '中', hint: 'Balanced', icon: 'h-4 w-4' },
+    large: { label: '大', hint: 'Slowest, most detail', icon: 'h-5 w-5' },
   }
 
   // Labelled with the dimensions rather than with Small/Medium/Large, and they follow the
@@ -103,6 +103,6 @@
   </div>
 
   <p class="text-muted-foreground/75 text-[10px] font-medium">
-    Approximate — providers that only accept an aspect ratio are sent the shape, not the pixels.
+    此尺寸为近似值；若服务商仅接受宽高比，将发送比例而非像素尺寸。
   </p>
 </div>

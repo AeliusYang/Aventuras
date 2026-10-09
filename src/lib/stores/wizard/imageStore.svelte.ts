@@ -65,7 +65,7 @@ export class ImageStore {
       styleId: imageSettings.portraitStyleId,
     })
 
-    if (!hasRequiredCredentials()) {
+    if (!hasRequiredCredentials('portrait')) {
       const providerName = getProviderDisplayName()
       log('Missing credentials for provider', { provider: providerName })
       this.portraitError = `${providerName} API key required for portrait generation`
@@ -130,7 +130,7 @@ export class ImageStore {
       styleId: imageSettings.portraitStyleId,
     })
 
-    if (!hasRequiredCredentials()) {
+    if (!hasRequiredCredentials('portrait')) {
       const providerName = getProviderDisplayName()
       log('Missing credentials for provider', { provider: providerName })
       this.portraitError = `${providerName} API key required for portrait generation`

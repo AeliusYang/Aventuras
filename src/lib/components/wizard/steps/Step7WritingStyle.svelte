@@ -56,10 +56,8 @@
 <div class="flex h-full flex-col gap-4 p-1">
   <div class="flex items-center justify-between">
     <div>
-      <h3 class="text-lg font-bold tracking-tight">Writing Style</h3>
-      <p class="text-muted-foreground">
-        Choose a narrative voice and configure the AI's writing style.
-      </p>
+      <h3 class="text-lg font-bold tracking-tight">写作风格</h3>
+      <p class="text-muted-foreground">选择叙述方式，设置 AI 的写作风格。</p>
     </div>
   </div>
 

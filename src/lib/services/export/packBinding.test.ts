@@ -49,6 +49,7 @@ vi.mock('$lib/services/database', () => ({
     getEmbeddedImageMetaForStory: vi.fn(async () => []),
     getCheckpoints: vi.fn(async () => []),
     getBranches: vi.fn(async () => []),
+    getWorldStateSnapshots: vi.fn(async () => []),
     getChapters: vi.fn(async () => []),
     getStoryPackId: vi.fn(async () => db.storyPackId),
     getPack: vi.fn(async () => db.pack),

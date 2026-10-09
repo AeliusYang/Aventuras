@@ -273,8 +273,17 @@ const imagePortraitGenerationTemplate: PromptTemplate = {
   name: 'Portrait Generation',
   category: 'service',
   description: 'Direct image prompt template for character portraits',
-  content: `Full body portrait of a character: {{ visualDescriptors }}. Standing in a relaxed natural pose, facing the viewer, full body visible from head to feet. Neutral expression or slight smile. Plain solid color gradient background only, no objects, no environment, no scenery. Portrait composition, centered framing, professional lighting. {{ imageStylePrompt }}`,
+  content: `Full body character illustration: {{ visualDescriptors }}. Entire figure visible from head to feet, clear readable silhouette. Expression and pose follow the character description; do not impose a smile or relaxed stance. Simple unobtrusive background; retain defining clothing and personal accessories. {{ imageStylePrompt }}`,
   userContent: '',
+}
+
+const portraitPreparationTemplate: PromptTemplate = {
+  id: 'image-portrait-preparation',
+  name: '肖像资料整理',
+  category: 'service',
+  description: '按需读取人物设定与已接受正文，整理全身肖像描述；补全不写回故事。',
+  content: `你为角色肖像整理绘图描述。读取按来源标记的资料，保留人物身份、时代、种族、体型、发型、面部、服饰与标志性特征。优先人物完整设定；简略事实简介是补充，不是替代。全身立绘，表情与姿态表达已有性格和气质，不固定微笑。只输出所需 JSON。visualDescription 用具体英文绘图描述，不添加画风词。inferredDetails 用中文说明必要的视觉补全。`,
+  userContent: `目标人物：{{ characterName }}\n故事模式：{{ mode }}\n所选画风（只用于理解，不重复写入描述）：{{ imageStylePrompt }}\n{{ imageEvidence }}`,
 }
 
 const backgroundImagePromptAnalysisTemplate: PromptTemplate = {
@@ -322,5 +331,6 @@ export const imageTemplates: PromptTemplate[] = [
   imagePromptAnalysisTemplate,
   imagePromptAnalysisReferenceTemplate,
   imagePortraitGenerationTemplate,
+  portraitPreparationTemplate,
   backgroundImagePromptAnalysisTemplate,
 ]

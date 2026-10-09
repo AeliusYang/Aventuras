@@ -52,7 +52,7 @@
       bind:value={inputValue}
       bind:ref={textareaRef}
       onkeydown={handleKeyDown}
-      placeholder="Ask me to create characters, organize lorebooks, set up scenarios..."
+      placeholder="可以让我创建角色、整理世界书、准备故事场景…"
       rows={2}
       class="border-surface-700 bg-surface-800 placeholder:text-surface-500 min-h-[2.5rem] resize-none rounded-xl text-sm"
       disabled={disabled || isGenerating}
@@ -62,7 +62,7 @@
       class="bg-accent-600 hover:bg-accent-500 h-10 w-10 shrink-0 rounded-xl"
       onclick={() => (isGenerating ? onAbort?.() : handleSend())}
       disabled={disabled || (!isGenerating && !inputValue.trim())}
-      title={isGenerating ? 'Stop generating' : 'Send message'}
+      title={isGenerating ? '停止生成' : '发送消息'}
     >
       {#if isGenerating}
         <Square class="h-4 w-4 fill-current" />
@@ -72,8 +72,6 @@
     </Button>
   </div>
   <div class="text-surface-500 mt-1.5 hidden text-center text-[10px] md:block">
-    {isTouchDevice()
-      ? 'Shift+Enter to send, Enter for new line'
-      : 'Enter to send, Shift+Enter for new line'}
+    {isTouchDevice() ? 'Shift+Enter 发送，Enter 换行' : 'Enter 发送，Shift+Enter 换行'}
   </div>
 </div>

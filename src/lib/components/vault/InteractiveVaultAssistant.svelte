@@ -215,10 +215,10 @@
     lorebook: { text: 'text-blue-400', bg: 'bg-blue-500/10', border: 'border-l-blue-500/60' },
   }
   const actionStyles = {
-    create: { label: 'Create', text: 'text-emerald-400', bg: 'bg-emerald-500/15' },
-    update: { label: 'Update', text: 'text-blue-400', bg: 'bg-blue-500/15' },
-    delete: { label: 'Delete', text: 'text-red-400', bg: 'bg-red-500/15' },
-    merge: { label: 'Merge', text: 'text-purple-400', bg: 'bg-purple-500/15' },
+    create: { label: '创建', text: 'text-emerald-400', bg: 'bg-emerald-500/15' },
+    update: { label: '更新', text: 'text-blue-400', bg: 'bg-blue-500/15' },
+    delete: { label: '删除', text: 'text-red-400', bg: 'bg-red-500/15' },
+    merge: { label: '合并', text: 'text-purple-400', bg: 'bg-purple-500/15' },
   }
 
   function getChangeName(change: VaultPendingChange): string {
@@ -827,7 +827,7 @@
 </script>
 
 {#snippet assistantContent()}
-  <Dialog.Title class="sr-only">Vault Assistant</Dialog.Title>
+  <Dialog.Title class="sr-only">素材库助手</Dialog.Title>
   <div class="flex flex-col overflow-hidden" style="height: 100%">
     <!-- Top Bar -->
     <div
@@ -839,7 +839,7 @@
           size="icon"
           class="text-surface-400 hover:text-foreground hover:bg-foreground/5 h-8 w-8"
           onclick={onClose}
-          title="Back to Vault"
+          title="返回素材库"
         >
           <ChevronLeft class="h-4 w-4" />
         </Button>
@@ -847,7 +847,7 @@
           <div class="bg-accent-500/15 flex h-7 w-7 items-center justify-center rounded-lg">
             <Bot class="text-accent-400 h-4 w-4" />
           </div>
-          <h2 class="text-surface-100 text-sm font-semibold tracking-tight">Vault Assistant</h2>
+          <h2 class="text-surface-100 text-sm font-semibold tracking-tight">素材库助手</h2>
         </div>
       </div>
       {#if vaultEditor.pendingCount > 0}
@@ -860,7 +860,7 @@
             disabled={isGenerating}
           >
             <CheckCheck class="h-3.5 w-3.5" />
-            Approve All
+            全部批准
             <span
               class="rounded-full bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-bold text-emerald-300"
             >
@@ -909,7 +909,7 @@
             <span class="font-medium">
               {conversations.length > 0
                 ? `${conversations.length} conversation${conversations.length !== 1 ? 's' : ''}`
-                : 'No history'}
+                : '暂无历史记录'}
             </span>
             {#if conversationSelectorOpen}
               <ChevronUp class="ml-auto h-3 w-3" />
@@ -945,7 +945,7 @@
                   >
                     <Plus class="text-accent-400 h-3.5 w-3.5" />
                   </div>
-                  <span class="font-medium">New Conversation</span>
+                  <span class="font-medium">新建对话</span>
                 </button>
 
                 {#if conversations.length > 0}
@@ -994,7 +994,7 @@
                           </div>
                           <div class="min-w-0 flex-1">
                             <div class="text-surface-200 truncate text-xs font-medium">
-                              {conv.title || 'Untitled'}
+                              {conv.title || '未命名'}
                             </div>
                             <div class="text-surface-500 mt-0.5 text-[10px]">
                               {new Date(conv.updatedAt).toLocaleString(undefined, {
@@ -1004,7 +1004,7 @@
                                 minute: '2-digit',
                               })}
                               {#if i === conversations.length - 1 && conversations.length >= MAX_CONVERSATIONS}
-                                <span class="text-surface-600 ml-1">· oldest</span>
+                                <span class="text-surface-600 ml-1">· 最早</span>
                               {/if}
                             </div>
                           </div>
@@ -1015,7 +1015,7 @@
                             e.stopPropagation()
                             startRename(conv)
                           }}
-                          title="Rename conversation"
+                          title="重命名对话"
                         >
                           <Pencil class="h-3 w-3" />
                         </button>
@@ -1025,7 +1025,7 @@
                             e.stopPropagation()
                             handleDeleteConversation(conv.id)
                           }}
-                          title="Delete conversation"
+                          title="删除对话"
                         >
                           <Trash2 class="h-3 w-3" />
                         </button>
@@ -1046,7 +1046,7 @@
               onclick={() => (pendingListOpen = !pendingListOpen)}
             >
               <ListChecks class="h-3.5 w-3.5" />
-              <span class="font-medium">{pendingOnly.length} pending</span>
+              <span class="font-medium">{pendingOnly.length} 待处理</span>
               {#if pendingListOpen}
                 <ChevronUp class="ml-auto h-3 w-3" />
               {:else}
@@ -1097,7 +1097,7 @@
                             {aStyle.label}
                           </span>
                           <span class="text-surface-500 text-[10px]">
-                            {change.entityType === 'lorebook-entry' ? 'entry' : change.entityType}
+                            {change.entityType === 'lorebook-entry' ? '条目' : change.entityType}
                           </span>
                         </div>
                       </div>
@@ -1111,14 +1111,14 @@
                         <button
                           class="flex h-6 w-6 items-center justify-center rounded-md text-red-400/70 transition-colors hover:bg-red-500/20 hover:text-red-400"
                           onclick={() => handleReject(change)}
-                          title="Reject"
+                          title="拒绝"
                         >
                           <X class="h-3.5 w-3.5" />
                         </button>
                         <button
                           class="flex h-6 w-6 items-center justify-center rounded-md text-emerald-400/70 transition-colors hover:bg-emerald-500/20 hover:text-emerald-400"
                           onclick={() => handleApprove(change)}
-                          title="Approve"
+                          title="批准"
                         >
                           <Check class="h-3.5 w-3.5" />
                         </button>
@@ -1146,7 +1146,7 @@
               )}
               onclick={() => (activeTab = 'chat')}
             >
-              Chat
+              对话
             </button>
             <button
               type="button"
@@ -1225,7 +1225,7 @@
                           {:else if isStreaming && isThinking && !message.reasoning}
                             <div class="text-surface-400 flex items-center gap-2 text-sm">
                               <Loader2 class="text-accent-400 h-3.5 w-3.5 animate-spin" />
-                              <span>Thinking...</span>
+                              <span>思考中…</span>
                             </div>
                           {/if}
 
@@ -1262,7 +1262,7 @@
                             onclick={() => toggleReasoning(message.id)}
                           >
                             <Brain class="h-3 w-3" />
-                            <span>Reasoning</span>
+                            <span>推理</span>
                             {#if expandedReasoning.has(message.id)}
                               <ChevronUp class="h-3 w-3" />
                             {:else}
@@ -1304,11 +1304,11 @@
                               <button
                                 class="border-surface-700 block cursor-pointer overflow-hidden rounded-lg border transition-transform hover:scale-[1.02]"
                                 onclick={() => (enlargedImageUrl = toolCall.imageUrl!)}
-                                title="Click to enlarge"
+                                title="点击放大"
                               >
                                 <img
                                   src={toolCall.imageUrl}
-                                  alt="AI generated result"
+                                  alt="AI 生成结果"
                                   class="h-auto max-h-52 w-auto max-w-full object-contain"
                                 />
                               </button>
@@ -1319,10 +1319,10 @@
                                     e.stopPropagation()
                                     handleReferenceImage(toolCall.imageId!)
                                   }}
-                                  title="Add image reference to message"
+                                  title="向消息添加参考图片"
                                 >
                                   <CornerDownLeft class="h-2.5 w-2.5" />
-                                  Use
+                                  使用
                                 </button>
                                 {#if activeCharacterEntity}
                                   <button
@@ -1331,10 +1331,10 @@
                                       e.stopPropagation()
                                       handleSetPortrait(toolCall.imageId!)
                                     }}
-                                    title="Set as portrait for {activeCharacterEntity.entityName}"
+                                    title="将肖像用于 {activeCharacterEntity.entityName}"
                                   >
                                     <CircleUser class="h-2.5 w-2.5" />
-                                    Set Portrait
+                                    设为肖像
                                   </button>
                                 {/if}
                               {/if}
@@ -1463,12 +1463,12 @@
   <Dialog.Content
     class="z-[60] max-h-[90vh] max-w-[90vw] overflow-hidden border-none bg-transparent p-0 shadow-none"
   >
-    <Dialog.Title class="sr-only">Generated Image</Dialog.Title>
+    <Dialog.Title class="sr-only">生成的图片</Dialog.Title>
     <button class="flex items-center justify-center" onclick={() => (enlargedImageUrl = null)}>
       {#if enlargedImageUrl}
         <img
           src={enlargedImageUrl}
-          alt="Enlarged view"
+          alt="放大预览"
           class="max-h-[85vh] max-w-full rounded-lg object-contain"
         />
       {/if}

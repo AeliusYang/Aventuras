@@ -289,23 +289,21 @@
   <ResponsiveModal.Content class="p-0 sm:max-w-2xl">
     <ResponsiveModal.Header class="border-b px-6 py-4">
       <ResponsiveModal.Title class="flex items-center gap-2">
-        Test Variables
+        测试变量
         {#if overrideCount > 0}
           <Badge variant="default" class="text-[10px]"
-            >{overrideCount} override{overrideCount === 1 ? '' : 's'}</Badge
+            >{overrideCount} 覆盖值{overrideCount === 1 ? '' : 's'}</Badge
           >
         {/if}
       </ResponsiveModal.Title>
-      <ResponsiveModal.Description>
-        Override variable values to preview how templates render.
-      </ResponsiveModal.Description>
+      <ResponsiveModal.Description>临时覆盖变量值，预览模板渲染结果。</ResponsiveModal.Description>
     </ResponsiveModal.Header>
 
     <!-- Search bar -->
     <div class="border-b px-6 py-2.5">
       <Input
         leftIcon={Search}
-        placeholder="Filter variables..."
+        placeholder="筛选变量…"
         class="h-8 text-xs"
         bind:value={searchQuery}
       />
@@ -324,7 +322,7 @@
                     ? ''
                     : '-rotate-90'}"
                 />
-                <span class="text-sm font-medium">System</span>
+                <span class="text-sm font-medium">系统</span>
                 <Badge variant="default" class="text-[10px]">{filteredSystem.length}</Badge>
               </div>
             </Collapsible.Trigger>
@@ -348,7 +346,7 @@
                     ? ''
                     : '-rotate-90'}"
                 />
-                <span class="text-sm font-medium">Custom</span>
+                <span class="text-sm font-medium">自定义</span>
                 <Badge variant="default" class="text-[10px]">{filteredCustom.length}</Badge>
               </div>
             </Collapsible.Trigger>
@@ -400,11 +398,11 @@
       <div class="flex w-full items-center justify-between gap-2">
         <Button variant="outline" size="sm" class="gap-1.5" onclick={() => (draft = {})}>
           <RotateCcw class="h-3.5 w-3.5" />
-          Clear All
+          全部清空
         </Button>
         <div class="flex gap-2">
-          <Button variant="outline" size="sm" onclick={() => onOpenChange(false)}>Cancel</Button>
-          <Button size="sm" onclick={handleApply}>Apply</Button>
+          <Button variant="outline" size="sm" onclick={() => onOpenChange(false)}>取消</Button>
+          <Button size="sm" onclick={handleApply}>应用</Button>
         </div>
       </div>
     </ResponsiveModal.Footer>

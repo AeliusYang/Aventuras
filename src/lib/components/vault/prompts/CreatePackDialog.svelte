@@ -59,42 +59,42 @@
 <ResponsiveModal.Root {open} onOpenChange={handleOpenChange}>
   <ResponsiveModal.Content class="p-0 sm:max-w-md">
     <ResponsiveModal.Header class="border-b px-6 py-4">
-      <ResponsiveModal.Title>Create Prompt Pack</ResponsiveModal.Title>
+      <ResponsiveModal.Title>创建提示词包</ResponsiveModal.Title>
       <ResponsiveModal.Description>
-        New packs start as a copy of the default templates. You can customize them after creation.
+        新提示词包会复制默认模板，创建后可以编辑。
       </ResponsiveModal.Description>
     </ResponsiveModal.Header>
 
     <div class="flex flex-col gap-4 px-6 py-4">
       <div class="flex flex-col gap-2">
-        <Label for="pack-name">Name <span class="text-destructive">*</span></Label>
-        <Input id="pack-name" bind:value={name} placeholder="My Custom Pack" />
+        <Label for="pack-name">名称 <span class="text-destructive">*</span></Label>
+        <Input id="pack-name" bind:value={name} placeholder="我的提示词包" />
       </div>
 
       <div class="flex flex-col gap-2">
-        <Label for="pack-description">Description</Label>
-        <p class="text-muted-foreground text-xs">Supports Markdown and HTML</p>
+        <Label for="pack-description">说明</Label>
+        <p class="text-muted-foreground text-xs">支持 Markdown 和 HTML</p>
         <Textarea
           id="pack-description"
           bind:value={description}
-          placeholder="A brief description of this pack..."
+          placeholder="简要介绍这个提示词包…"
           rows={3}
         />
       </div>
 
       <div class="flex flex-col gap-2">
-        <Label for="pack-author">Author</Label>
-        <Input id="pack-author" bind:value={author} placeholder="Your name" />
+        <Label for="pack-author">作者</Label>
+        <Input id="pack-author" bind:value={author} placeholder="你的名字" />
       </div>
     </div>
 
     <ResponsiveModal.Footer class="border-t px-6 py-4">
-      <Button variant="outline" onclick={() => handleOpenChange(false)}>Cancel</Button>
+      <Button variant="outline" onclick={() => handleOpenChange(false)}>取消</Button>
       <Button onclick={handleCreate} disabled={!canCreate}>
         {#if creating}
-          Creating...
+          正在创建…
         {:else}
-          Create
+          创建
         {/if}
       </Button>
     </ResponsiveModal.Footer>

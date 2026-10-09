@@ -14,20 +14,20 @@
   let ctaLabel = $derived(
     healthReason
       ? healthReason === 'auth'
-        ? 'Fix API Key'
-        : 'Change Model'
+        ? '检查 API 密钥'
+        : '更换模型'
       : isProfileInvalid
-        ? 'Fix API Profiles'
-        : 'Configure Models',
+        ? '检查模型连接'
+        : '配置模型',
   )
   let message = $derived(
     healthReason === 'auth'
-      ? 'Authentication failed — use a valid API key or select another model.'
+      ? '认证失败，请检查 API 密钥或选择其他模型。'
       : healthReason === 'down'
-        ? 'Selected model is unreachable — change model or wait for recovery.'
+        ? '所选模型暂不可用，请更换模型或等待恢复。'
         : isProfileInvalid
-          ? 'Some API profiles need to be reconfigured before you can use AI features.'
-          : 'Some AI services are missing a model. Story generation is blocked until all are configured.',
+          ? '部分模型连接需要重新配置，完成后才能使用 AI 功能。'
+          : '部分 AI 任务尚未配置模型，完成配置后才能生成故事。',
   )
 
   function handleFix() {
@@ -55,7 +55,7 @@
     >
       <Settings class="h-4 w-4" />
       <span class="hidden sm:inline">{ctaLabel}</span>
-      <span class="sm:hidden">Fix</span>
+      <span class="sm:hidden">配置</span>
     </Button>
   </div>
 {/if}

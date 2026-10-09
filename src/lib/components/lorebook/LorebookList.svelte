@@ -57,9 +57,9 @@
     value: 'name' | 'type' | 'updated'
     label: string
   }> = [
-    { value: 'name', label: 'Name' },
-    { value: 'type', label: 'Type' },
-    { value: 'updated', label: 'Recently Updated' },
+    { value: 'name', label: '名称' },
+    { value: 'type', label: '类型' },
+    { value: 'updated', label: '最近更新' },
   ]
 
   // Lore management active state - disable editing actions
@@ -178,7 +178,7 @@
     <div class="relative">
       <Input
         type="text"
-        placeholder="Search entries..."
+        placeholder="搜索条目…"
         value={ui.lorebookSearchQuery}
         oninput={handleSearchInput}
         class="w-full pr-8 pl-9"
@@ -203,13 +203,13 @@
             <Button {...props} variant="outline" class="w-full justify-between font-normal">
               <span class="flex items-center gap-2 capitalize">
                 <Filter class="text-muted-foreground h-4 w-4" />
-                {ui.lorebookTypeFilter === 'all' ? 'All Types' : ui.lorebookTypeFilter}
+                {ui.lorebookTypeFilter === 'all' ? '所有类型' : ui.lorebookTypeFilter}
               </span>
             </Button>
           {/snippet}
         </DropdownMenuTrigger>
         <DropdownMenuContent class="w-50" align="start">
-          <DropdownMenuLabel>Filter by Type</DropdownMenuLabel>
+          <DropdownMenuLabel>按类型筛选</DropdownMenuLabel>
           <DropdownMenuSeparator />
           <DropdownMenuRadioGroup
             value={ui.lorebookTypeFilter}
@@ -217,7 +217,7 @@
           >
             {#each entryTypes as entryType (entryType)}
               <DropdownMenuRadioItem value={entryType} class="capitalize">
-                <span>{entryType === 'all' ? 'All Types' : entryType}</span>
+                <span>{entryType === 'all' ? '所有类型' : entryType}</span>
               </DropdownMenuRadioItem>
             {/each}
           </DropdownMenuRadioGroup>
@@ -238,7 +238,7 @@
             {/snippet}
           </DropdownMenuTrigger>
           <DropdownMenuContent class="w-[200px]" align="start">
-            <DropdownMenuLabel>Sort Entries</DropdownMenuLabel>
+            <DropdownMenuLabel>条目排序</DropdownMenuLabel>
             <DropdownMenuSeparator />
             <DropdownMenuRadioGroup
               value={ui.lorebookSortBy}
@@ -262,10 +262,10 @@
       class="flex-1 gap-2"
       onclick={onNewEntry}
       disabled={isLoreManagementActive}
-      title={isLoreManagementActive ? 'Editing disabled during lore management' : undefined}
+      title={isLoreManagementActive ? '世界书管理运行期间暂不可编辑' : undefined}
     >
       <Plus class="h-4 w-4" />
-      <span class="xs:inline hidden">New Entry</span>
+      <span class="xs:inline hidden">新建条目</span>
     </Button>
     <DropdownMenu>
       <DropdownMenuTrigger>
@@ -275,22 +275,22 @@
             variant="outline"
             size="icon"
             disabled={isLoreManagementActive}
-            title="Vault"
+            title="素材库"
           >
             <Archive class="h-4 w-4" />
           </Button>
         {/snippet}
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start">
-        <DropdownMenuLabel>Vault</DropdownMenuLabel>
+        <DropdownMenuLabel>素材库</DropdownMenuLabel>
         <DropdownMenuSeparator />
         <DropdownMenuItem onclick={onImportFromVault}>
           <Download class="mr-2 h-4 w-4" />
-          Import from Vault
+          从素材库导入
         </DropdownMenuItem>
         <DropdownMenuItem onclick={onSaveToVault} disabled={story.lorebookEntries.length === 0}>
           <Upload class="mr-2 h-4 w-4" />
-          Save to Vault
+          保存到素材库
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
@@ -299,11 +299,11 @@
       size="icon"
       onclick={() => ui.openLorebookImport()}
       disabled={isLoreManagementActive}
-      title={isLoreManagementActive ? 'Import disabled during lore management' : 'Import from file'}
+      title={isLoreManagementActive ? '世界书管理运行期间暂不可导入' : '从文件导入'}
     >
       <Download class="h-4 w-4" />
     </Button>
-    <Button variant="outline" size="icon" onclick={() => ui.openLorebookExport()} title="Export">
+    <Button variant="outline" size="icon" onclick={() => ui.openLorebookExport()} title="导出">
       <Upload class="h-4 w-4" />
     </Button>
     {#if story.lorebookEntries.length > 0 && !isLoreManagementActive}
@@ -315,7 +315,7 @@
               variant="outline"
               size="icon"
               class="border-destructive/50 text-destructive hover:bg-destructive hover:text-destructive-foreground"
-              title="Delete all entries"
+              title="删除所有条目"
             >
               <Trash2 class="h-4 w-4" />
             </Button>
@@ -325,18 +325,15 @@
           <Dialog.Overlay />
           <Dialog.Content>
             <Dialog.Header>
-              <Dialog.Title>Delete all lorebook entries?</Dialog.Title>
+              <Dialog.Title>删除世界书中的所有条目？</Dialog.Title>
               <Dialog.Description>
-                This will permanently delete all {story.lorebookEntries.length} entr{story
-                  .lorebookEntries.length === 1
-                  ? 'y'
-                  : 'ies'} from this story's lorebook. This action cannot be undone.
+                这将永久删除全部 {story.lorebookEntries.length} 个条目 （来自本故事的世界书）。此操作无法撤销。
               </Dialog.Description>
             </Dialog.Header>
             <Dialog.Footer>
               <Dialog.Close>
                 {#snippet child({ props })}
-                  <Button {...props} variant="outline">Cancel</Button>
+                  <Button {...props} variant="outline">取消</Button>
                 {/snippet}
               </Dialog.Close>
               <Button
@@ -345,7 +342,7 @@
                 disabled={isDeleting}
               >
                 <Trash2 class="mr-2 h-4 w-4" />
-                Delete all entries
+                删除所有条目
               </Button>
             </Dialog.Footer>
           </Dialog.Content>
@@ -359,7 +356,7 @@
     <div class="bg-muted/30 flex items-center justify-between gap-2 border-b p-3">
       <div class="flex items-center gap-2">
         <Checkbox checked={allSelected} onCheckedChange={toggleSelectAll} />
-        <span class="text-muted-foreground text-sm">{ui.lorebookBulkSelection.size} selected</span>
+        <span class="text-muted-foreground text-sm">{ui.lorebookBulkSelection.size} 已选</span>
       </div>
       <div class="flex items-center gap-2">
         {#if confirmingBulkDelete}
@@ -370,7 +367,7 @@
             onclick={handleCancelBulkDelete}
             disabled={isDeleting}
           >
-            Cancel
+            取消
           </Button>
           <Button
             variant="destructive"
@@ -379,7 +376,7 @@
             onclick={handleBulkDelete}
             disabled={isDeleting}
           >
-            Confirm Delete
+            确认删除
           </Button>
         {:else}
           <Button
@@ -389,10 +386,10 @@
             onclick={handleConfirmBulkDelete}
           >
             <Trash2 class="h-3.5 w-3.5" />
-            <span class="xs:inline hidden">Delete</span>
+            <span class="xs:inline hidden">删除</span>
           </Button>
           <Button variant="ghost" size="sm" class="h-7 px-2 text-xs" onclick={handleClearSelection}>
-            Cancel
+            取消
           </Button>
         {/if}
       </div>
@@ -401,10 +398,10 @@
 
   <!-- Entry count -->
   <div class="text-muted-foreground bg-muted/10 border-b px-3 py-2 text-xs">
-    {filteredEntries.length} entr{filteredEntries.length === 1 ? 'y' : 'ies'}
+    {filteredEntries.length} 个条目
     {#if ui.lorebookTypeFilter !== 'all' || ui.lorebookSearchQuery}
       <span class="opacity-70">
-        (filtered from {story.lorebookEntries.length})
+        （筛选前共 {story.lorebookEntries.length} 个）
       </span>
     {/if}
   </div>
@@ -415,8 +412,8 @@
       {#if filteredEntries.length === 0}
         {#if story.lorebookEntries.length === 0}
           <div class="text-muted-foreground py-8 text-center">
-            <p>No lorebook entries yet.</p>
-            <p class="mt-1 text-sm">Create one or import a lorebook to get started.</p>
+            <p>尚无世界书条目。</p>
+            <p class="mt-1 text-sm">创建条目，或导入已有世界书。</p>
             {#if onImportFromVault}
               <Button
                 variant="outline"
@@ -425,13 +422,13 @@
                 disabled={isLoreManagementActive}
               >
                 <Archive class="h-4 w-4" />
-                Import from Vault
+                从素材库导入
               </Button>
             {/if}
           </div>
         {:else}
           <div class="text-muted-foreground py-8 text-center">
-            <p>No entries match your filters.</p>
+            <p>没有符合筛选条件的条目。</p>
             <Button
               variant="link"
               class="mt-1 h-auto p-0 text-sm"
@@ -440,7 +437,7 @@
                 ui.setLorebookTypeFilter('all')
               }}
             >
-              Clear filters
+              清除筛选
             </Button>
           </div>
         {/if}

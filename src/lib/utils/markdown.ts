@@ -68,6 +68,81 @@ const storyMarked = new Marked({ breaks: true, gfm: true }).use({
 })
 
 /**
+ * Mark dialogue in raw HTML returned by a writer without inspecting tag attributes.
+ *
+ * Some saved narrations contain a writer-owned `<maintext>`/`<p>` HTML wrapper. Marked
+ * treats that wrapper as one HTML token, so inline extensions never see the quoted
+ * text inside it. Scan only text nodes and send them through the same inline parser;
+ * tags, comments, and attributes remain byte-for-byte unchanged.
+ */
+function renderStoryHtml(raw: string): string {
+  let output = ''
+  let cursor = 0
+  let insideStatusBlock = false
+
+  while (cursor < raw.length) {
+    const tagStart = raw.indexOf('<', cursor)
+    if (tagStart === -1) {
+      output += storyMarked.parseInline(raw.slice(cursor))
+      break
+    }
+
+    if (tagStart > cursor) {
+      output += storyMarked.parseInline(raw.slice(cursor, tagStart))
+    }
+
+    const commentEnd = raw.indexOf('-->', tagStart + 4)
+    if (raw.startsWith('<!--', tagStart) && commentEnd !== -1) {
+      output += raw.slice(tagStart, commentEnd + 3)
+      cursor = commentEnd + 3
+      continue
+    }
+
+    let quote: string | null = null
+    let tagEnd = tagStart + 1
+    for (; tagEnd < raw.length; tagEnd++) {
+      const ch = raw[tagEnd]
+      if (quote) {
+        if (ch === quote) quote = null
+      } else if (ch === '"' || ch === "'") {
+        quote = ch
+      } else if (ch === '>') {
+        tagEnd++
+        break
+      }
+    }
+
+    // An incomplete tag is safest as literal text, using marked's normal escaping.
+    if (tagEnd > raw.length || raw[tagEnd - 1] !== '>') {
+      output += storyMarked.parseInline(raw.slice(tagStart))
+      break
+    }
+
+    const tag = raw.slice(tagStart, tagEnd)
+    output += tag
+    cursor = tagEnd
+
+    // Status blocks contain quoted state labels, not spoken dialogue. Keep the entire
+    // block opaque, including nested details/code tags, so its quotes never become
+    // dialogue spans while the surrounding maintext remains parseable.
+    if (/^<Status_block\b/i.test(tag)) {
+      insideStatusBlock = true
+      const closeTag = raw.toLowerCase().indexOf('</status_block>', cursor)
+      if (closeTag !== -1) {
+        output += raw.slice(cursor, closeTag)
+        output += raw.slice(closeTag, closeTag + '</status_block>'.length)
+        cursor = closeTag + '</status_block>'.length
+        insideStatusBlock = false
+      }
+    } else if (insideStatusBlock && /^<\/Status_block\b/i.test(tag)) {
+      insideStatusBlock = false
+    }
+  }
+
+  return output
+}
+
+/**
  * Parse story prose (narration and player actions) to HTML, marking up dialogue.
  *
  * Used by both the saved-entry renderer and the streaming one, so a line does not
@@ -77,7 +152,9 @@ export function parseStoryMarkdown(text: string): string {
   if (!text) return ''
 
   try {
-    const result = storyMarked.parse(text)
+    const result = text.trimStart().startsWith('<')
+      ? renderStoryHtml(text)
+      : storyMarked.parse(text)
     return typeof result === 'string' ? result : ''
   } catch (error) {
     console.error('[Markdown] Story parse error:', error)

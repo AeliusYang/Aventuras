@@ -29,8 +29,9 @@ export function createModelFromProfile(options: {
   structuredOutputs?: boolean
   manualBody?: string
   serviceId?: string
+  timeoutMs?: number
 }): LanguageModelV4 {
-  const { profile, modelId, presetId, debugId, structuredOutputs, manualBody, serviceId } = options
+  const { profile, modelId, presetId, debugId, structuredOutputs, manualBody, serviceId, timeoutMs } = options
   const provider = createProviderFromProfile({
     profile,
     presetId,
@@ -38,6 +39,7 @@ export function createModelFromProfile(options: {
     structuredOutputs,
     manualBody,
     serviceId,
+    timeoutMs,
   })
 
   return provider(modelId) as LanguageModelV4
@@ -50,10 +52,11 @@ function createProviderFromProfile(options: {
   structuredOutputs?: boolean
   manualBody?: string
   serviceId?: string
+  timeoutMs?: number
 }) {
-  const { profile, presetId, debugId, structuredOutputs, manualBody, serviceId } = options
+  const { profile, presetId, debugId, structuredOutputs, manualBody, serviceId, timeoutMs } = options
   const fetch = createTimeoutFetch(
-    settings.apiSettings.llmTimeoutMs,
+    timeoutMs ?? settings.apiSettings.llmTimeoutMs,
     serviceId ?? presetId,
     manualBody,
     debugId,

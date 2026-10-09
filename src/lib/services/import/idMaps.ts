@@ -50,6 +50,9 @@ export function buildIdMaps(data: AventuraExport): IdMaps {
   for (const checkpoint of data.checkpoints ?? []) {
     checkpointIdMap.set(checkpoint.id, crypto.randomUUID())
   }
+  for (const snapshot of data.worldStateSnapshots ?? []) {
+    oldToNewId.set(snapshot.id, crypto.randomUUID())
+  }
 
   return { newStoryId, oldToNewId, branchIdMap, checkpointIdMap }
 }

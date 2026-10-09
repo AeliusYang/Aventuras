@@ -165,7 +165,7 @@
 
 <div class="space-y-3">
   <!-- Profile Name -->
-  <Input label="Profile Name" placeholder="e.g., OpenRouter, My Local LLM" bind:value={name} />
+  <Input label="配置名称" placeholder="例如：OpenRouter、本地模型" bind:value={name} />
 
   <!-- Provider Type -->
   <ProviderTypeSelector value={providerType} onchange={handleProviderTypeChange} />
@@ -175,8 +175,7 @@
     <Alert class="border-yellow-500/50 bg-yellow-500/10">
       <AlertCircle class="h-4 w-4 text-yellow-500" />
       <AlertDescription class="text-xs">
-        This provider requires manual model configuration. Go to the <strong>Generation</strong> tab to
-        set models for each service.
+        此服务商需要手动配置模型，请前往 <strong>生成设置</strong> 页面，为各项任务设置模型。
       </AlertDescription>
     </Alert>
   {/if}
@@ -185,7 +184,7 @@
   {#if providerType === 'openai-compatible'}
     <div class="space-y-2">
       <Label>
-        Base URL <span class="text-muted-foreground">(required)</span>
+        API 地址 <span class="text-muted-foreground">（必填）</span>
       </Label>
       <Input
         placeholder="https://api.example.com/v1"
@@ -204,8 +203,8 @@
             ? 'rotate-90'
             : ''}"
         />
-        Custom Base URL
-        <span class="text-muted-foreground">(optional)</span>
+        自定义 API 地址
+        <span class="text-muted-foreground">（选填）</span>
       </button>
       {#if showBaseUrlCollapsible || baseUrl}
         <Input
@@ -213,14 +212,14 @@
           bind:value={baseUrl}
           class="font-mono text-xs"
         />
-        <p class="text-muted-foreground text-xs">Leave empty for default endpoint.</p>
+        <p class="text-muted-foreground text-xs">留空则使用默认 API 地址。</p>
       {/if}
     </div>
   {/if}
 
   <!-- API Key -->
   <Input
-    label={isSelfHostedUrl(baseUrl) ? 'API Key (optional)' : 'API Key'}
+    label={isSelfHostedUrl(baseUrl) ? 'API 密钥（选填）' : 'API 密钥'}
     type="password"
     placeholder="sk-..."
     bind:value={apiKey}
@@ -232,7 +231,7 @@
     <div class="flex items-center justify-between">
       <Label class="flex items-center gap-2">
         <Box class="h-4 w-4" />
-        Models
+        模型
       </Label>
       <div class="flex gap-2">
         <Button
@@ -244,7 +243,7 @@
           }}
         >
           <Plus class="h-3 w-3" />
-          {isMobileDevice() ? '' : 'Custom'}
+          {isMobileDevice() ? '' : '自定义'}
         </Button>
         <Button
           variant="outline"
@@ -254,10 +253,10 @@
         >
           {#if isFetchingModels}
             <RefreshCw class="h-3 w-3 animate-spin" />
-            Fetching...
+            正在获取…
           {:else}
             <RefreshCw class="h-3 w-3" />
-            {isMobileDevice() ? 'Fetch' : 'Fetch Models'}
+            {isMobileDevice() ? '获取' : '获取模型'}
           {/if}
         </Button>
       </div>
@@ -269,12 +268,12 @@
         <Label
           for="ping-enabled-{providerType}"
           class="cursor-pointer text-xs leading-snug font-normal"
-          title="Pings models to verify which ones respond and how fast. Shows a status icon next to each model and blocks sending if the selected model is unreachable. Consumes one API request per model every 30 minutes."
+          title="测试模型是否可用及其响应速度，在模型旁显示状态；所选模型不可用时阻止发送。每个模型每 30 分钟消耗一次 API 请求。"
         >
-          <span class="font-medium">Test model availability</span>
+          <span class="font-medium">测试模型可用性</span>
           <span class="text-muted-foreground block">
-            Pings{providerType === 'openrouter' ? ' :free' : ''} models for latency and status. 1 request/model
-            per 30 min.
+            检测{providerType === 'openrouter' ? ' :free ' : ''}模型的延迟和状态。每个模型每 30
+            分钟请求一次。
           </span>
         </Label>
       </div>
@@ -290,7 +289,7 @@
     <!-- Model filter (shown when there are enough models) -->
     {#if visibleFetchedModels.length + visibleCustomModels.length > 10}
       <Input
-        placeholder="Filter models..."
+        placeholder="筛选模型…"
         bind:value={modelFilterInput}
         leftIcon={Search}
         class="text-xs"
@@ -301,7 +300,7 @@
     {#if visibleFetchedModels.length > 0}
       <div class="space-y-1">
         <p class="text-muted-foreground text-xs font-medium">
-          Fetched Models ({visibleFetchedModels.length})
+          已获取的模型（{visibleFetchedModels.length})
         </p>
         <ScrollArea class="h-32 w-full rounded-md border">
           <div class="flex flex-wrap gap-1 p-2">
@@ -313,7 +312,7 @@
                     ? 'text-yellow-500'
                     : 'text-muted-foreground'}"
                   onclick={() => onToggleFavorite(model.id)}
-                  title={isFav ? 'Remove from favorites' : 'Add to favorites'}
+                  title={isFav ? '取消收藏' : '加入收藏'}
                 >
                   <Star class="h-3 w-3" fill={isFav ? 'currentColor' : 'none'} />
                 </button>
@@ -322,7 +321,7 @@
                   <button
                     class="hover:text-destructive text-muted-foreground p-0 transition-colors"
                     onclick={() => onRemoveFetchedModel(model.id)}
-                    title="Hide model"
+                    title="隐藏模型"
                   >
                     <X class="h-3 w-3" />
                   </button>
@@ -338,7 +337,7 @@
     {#if visibleCustomModels.length > 0}
       <div class="space-y-1">
         <p class="text-muted-foreground text-xs font-medium">
-          Custom Models ({visibleCustomModels.length})
+          自定义模型（{visibleCustomModels.length})
         </p>
         <ScrollArea class="h-24 w-full rounded-md border">
           <div class="flex flex-wrap gap-1 p-2">
@@ -350,7 +349,7 @@
                     ? 'text-yellow-500'
                     : 'text-muted-foreground'}"
                   onclick={() => onToggleFavorite(model.id)}
-                  title={isFav ? 'Remove from favorites' : 'Add to favorites'}
+                  title={isFav ? '取消收藏' : '加入收藏'}
                 >
                   <Star class="h-3 w-3" fill={isFav ? 'currentColor' : 'none'} />
                 </button>
@@ -359,7 +358,7 @@
                   <button
                     class="hover:text-destructive text-muted-foreground p-0 transition-colors"
                     onclick={() => onRemoveCustomModel(model.id)}
-                    title="Delete model"
+                    title="删除模型"
                   >
                     <X class="h-3 w-3" />
                   </button>
@@ -381,7 +380,7 @@
           <ChevronRight
             class="h-3 w-3 transition-transform {showHiddenModels ? 'rotate-90' : ''}"
           />
-          Hidden Models ({hiddenModels.length})
+          已隐藏的模型（{hiddenModels.length})
         </button>
         {#if showHiddenModels}
           <ScrollArea class="h-24 w-full rounded-md border border-dashed">
@@ -392,7 +391,7 @@
                   <button
                     class="hover:text-primary text-muted-foreground p-0 transition-colors"
                     onclick={() => onRestoreHiddenModel(model.id)}
-                    title="Restore model"
+                    title="恢复模型"
                   >
                     <RotateCcw class="h-3 w-3" />
                   </button>
@@ -424,14 +423,13 @@
 >
   <Dialog.Content class="sm:max-w-md">
     <Dialog.Header>
-      <Dialog.Title>Add Custom Model</Dialog.Title>
-      <Dialog.Description>Enter the model identifier (e.g., provider/model-name)</Dialog.Description
-      >
+      <Dialog.Title>添加自定义模型</Dialog.Title>
+      <Dialog.Description>输入模型标识，例如 provider/model-name</Dialog.Description>
     </Dialog.Header>
     <div class="flex flex-col gap-2 py-4">
       <div class="flex gap-2">
         <Input
-          placeholder="model-name or provider/model"
+          placeholder="model-name 或 provider/model"
           bind:value={customModelDialogInput}
           class="flex-1"
           onkeydown={(e) => {
@@ -447,9 +445,9 @@
       {/if}
     </div>
     <Dialog.Footer>
-      <Button variant="outline" onclick={() => (showCustomModelDialog = false)}>Cancel</Button>
+      <Button variant="outline" onclick={() => (showCustomModelDialog = false)}>取消</Button>
       <Button onclick={handleAddCustomModelFromDialog} disabled={!customModelDialogInput.trim()}>
-        Add
+        添加
       </Button>
     </Dialog.Footer>
   </Dialog.Content>

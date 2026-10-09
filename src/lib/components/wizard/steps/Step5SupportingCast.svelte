@@ -127,10 +127,8 @@
 <div class="space-y-4">
   <!-- Header / Description -->
   <div class="space-y-1">
-    <h3 class="text-lg font-medium">Supporting Cast</h3>
-    <p class="text-muted-foreground text-sm">
-      Add side characters, allies, or antagonists to enrich your story. This step is optional.
-    </p>
+    <h3 class="text-lg font-medium">配角生成</h3>
+    <p class="text-muted-foreground text-sm">添加配角、盟友或对手来丰富故事。此步骤可跳过。</p>
   </div>
 
   <!-- Load from Vault Section -->
@@ -138,7 +136,7 @@
     <div class="flex items-center justify-between pb-1">
       <h4 class="text-muted-foreground flex items-center gap-2 text-sm font-medium">
         <Archive class="h-4 w-4" />
-        Load from Vault
+        从素材库载入
       </h4>
       <Button
         variant="link"
@@ -146,7 +144,7 @@
         class="h-auto p-0 text-xs"
         onclick={() => onNavigateToVault?.()}
       >
-        Manage Vault
+        管理素材库
       </Button>
     </div>
 
@@ -168,10 +166,10 @@
                 <div class="text-sm font-medium">
                   {supportingCharacters.length > 0
                     ? `${supportingCharacters.length} Character${supportingCharacters.length === 1 ? '' : 's'} Added`
-                    : 'Add from Vault'}
+                    : '从素材库添加'}
                 </div>
                 <div class="text-muted-foreground text-xs">
-                  {hasVaultCharacters ? 'Browse your saved characters' : 'Vault is empty'}
+                  {hasVaultCharacters ? '浏览已保存的角色' : '素材库暂无内容'}
                 </div>
               </div>
             </div>
@@ -213,7 +211,7 @@
         <div class="bg-primary/10 flex h-6 w-6 items-center justify-center rounded-full">
           <Plus class="text-primary h-4 w-4" />
         </div>
-        <span class="text-sm">Create New Character</span>
+        <span class="text-sm">创建新角色</span>
       </Button>
 
       <Button
@@ -221,7 +219,7 @@
         class="hover:border-primary/50 h-12 justify-start gap-3 border-dashed hover:border-solid"
         onclick={onGenerateCharacters}
         disabled={isGeneratingCharacters || !protagonist}
-        title={!protagonist ? 'Create a protagonist first' : 'Generate 3 AI characters'}
+        title={!protagonist ? '请先创建主角' : '用 AI 生成 3 名角色'}
       >
         <div class="bg-accent/10 flex h-6 w-6 items-center justify-center rounded-full">
           {#if isGeneratingCharacters}
@@ -230,7 +228,7 @@
             <Sparkles class="text-accent-foreground h-4 w-4" />
           {/if}
         </div>
-        <span class="text-sm">Generate Cast with AI</span>
+        <span class="text-sm">用 AI 生成配角</span>
       </Button>
     </div>
   {:else}
@@ -239,7 +237,7 @@
       <div class="mb-2 flex items-center justify-between">
         <h4 class="flex items-center gap-2 text-sm font-medium">
           <User class="h-4 w-4" />
-          {editingSupportingCharacterIndex !== null ? 'Edit Character' : 'New Character'}
+          {editingSupportingCharacterIndex !== null ? '编辑角色' : '新角色'}
         </h4>
         <Button variant="ghost" size="icon" class="h-8 w-8" onclick={onCancelSupportingForm}>
           <X class="h-4 w-4" />
@@ -249,46 +247,46 @@
       <div class="space-y-2.5">
         <div class="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
           <Input
-            label="Name"
+            label="名称"
             id="supp-name"
             value={supportingCharacterName}
             oninput={(e) => onSupportingNameChange(e.currentTarget.value)}
-            placeholder="e.g., Lady Vivienne"
+            placeholder="例如：薇薇安夫人"
           />
           <Input
-            label="Role"
+            label="角色定位"
             id="supp-role"
             value={supportingCharacterRole}
             oninput={(e) => onSupportingRoleChange(e.currentTarget.value)}
-            placeholder="e.g., ally, antagonist..."
+            placeholder="例如：盟友、对手…"
           />
         </div>
 
         <div class="space-y-1.5">
-          <Label for="supp-desc" class="text-xs">Description</Label>
+          <Label for="supp-desc" class="text-xs">说明</Label>
           <Textarea
             id="supp-desc"
             value={supportingCharacterDescription}
             oninput={(e) => onSupportingDescriptionChange(e.currentTarget.value)}
-            placeholder="Appearance, personality..."
+            placeholder="外貌、性格…"
             class="min-h-20 resize-none text-sm"
           />
         </div>
 
         <div class="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
           <Input
-            label="Relationship"
+            label="关系"
             id="supp-rel"
             value={supportingCharacterRelationship}
             oninput={(e) => onSupportingRelationshipChange(e.currentTarget.value)}
-            placeholder="e.g., Childhood friend..."
+            placeholder="例如：儿时好友…"
           />
           <Input
-            label="Traits"
+            label="性格特征"
             id="supp-traits"
             value={supportingCharacterTraits}
             oninput={(e) => onSupportingTraitsChange(e.currentTarget.value)}
-            placeholder="e.g., cunning, loyal..."
+            placeholder="例如：狡黠, 忠诚…"
           />
         </div>
 
@@ -306,7 +304,7 @@
               onclick={() => (showAdjustWithAI = !showAdjustWithAI)}
             >
               <Sparkles class="h-3.5 w-3.5" />
-              {showAdjustWithAI ? 'Hide AI Options' : 'Adjust with AI'}
+              {showAdjustWithAI ? '收起 AI 选项' : '用 AI 调整'}
               <ChevronDown
                 class="h-3 w-3 transition-transform {showAdjustWithAI ? 'rotate-180' : ''}"
               />
@@ -317,13 +315,13 @@
             <div class="space-y-1.5">
               <Label
                 for="ai-guidance-supp"
-                class="text-muted-foreground text-[10px] tracking-wider uppercase">Guidance</Label
+                class="text-muted-foreground text-[10px] tracking-wider uppercase">修改要求</Label
               >
               <Textarea
                 id="ai-guidance-supp"
                 value={supportingCharacterGuidance}
                 oninput={(e) => onSupportingGuidanceChange(e.currentTarget.value)}
-                placeholder="e.g., Make them more sinister..."
+                placeholder="例如：让这个角色更阴沉些…"
                 class="h-16 resize-none text-xs"
               />
             </div>
@@ -336,10 +334,10 @@
             >
               {#if isElaboratingSupportingCharacter}
                 <Loader2 class="h-3.5 w-3.5 animate-spin" />
-                Expanding...
+                正在扩写…
               {:else}
                 <Sparkles class="h-3.5 w-3.5" />
-                Expand Details
+                扩写细节
               {/if}
             </Button>
           </Collapsible.Content>
@@ -348,14 +346,14 @@
         <Separator class="my-2" />
 
         <div class="flex justify-end gap-2">
-          <Button variant="ghost" onclick={onCancelSupportingForm}>Cancel</Button>
+          <Button variant="ghost" onclick={onCancelSupportingForm}>取消</Button>
           <Button
             class="gap-2"
             onclick={onUseSupportingAsIs}
             disabled={!supportingCharacterName.trim()}
           >
             <Check class="h-4 w-4" />
-            {editingSupportingCharacterIndex !== null ? 'Update' : 'Add Character'}
+            {editingSupportingCharacterIndex !== null ? '更新' : '添加角色'}
           </Button>
         </div>
       </div>
@@ -366,7 +364,7 @@
   {#if supportingCharacters.length > 0}
     <div class="grid grid-cols-1 gap-3 pt-2">
       <h4 class="text-muted-foreground mb-1 text-sm font-medium">
-        Cast Members ({supportingCharacters.length})
+        已有角色（{supportingCharacters.length})
       </h4>
       {#each supportingCharacters as char, index (index)}
         <Card.Root class="group hover:border-primary/30 transition-all">
@@ -398,7 +396,7 @@
                     size="icon"
                     class="text-muted-foreground hover:text-foreground h-6 w-6"
                     onclick={() => onEditSupportingCharacter(index)}
-                    title="Edit"
+                    title="编辑"
                   >
                     <PenTool class="h-3 w-3" />
                   </Button>
@@ -407,7 +405,7 @@
                     size="icon"
                     class="text-muted-foreground hover:text-destructive h-6 w-6"
                     onclick={() => onDeleteSupportingCharacter(index)}
-                    title="Delete"
+                    title="删除"
                   >
                     <Trash2 class="h-3 w-3" />
                   </Button>
@@ -425,7 +423,7 @@
                   title={char.relationship}
                   tabindex={0}
                   role="region"
-                  aria-label="Character relationship"
+                  aria-label="角色关系"
                 >
                   {char.relationship}
                 </p>

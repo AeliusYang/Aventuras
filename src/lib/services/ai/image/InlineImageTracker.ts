@@ -27,6 +27,7 @@ import { normalizeImageDataUrl, expectedPixels, type ImageSpec } from '$lib/util
 import { resolveStylePrompt } from './stylePrompt'
 import { createLogger } from '$lib/log'
 import type { Character, EmbeddedImage } from '$lib/types'
+import { imageContentVersion } from '$lib/services/image/imageScope'
 
 const log = createLogger('InlineImageTracker')
 
@@ -56,6 +57,7 @@ export class InlineImageTracker {
    * unrecorded image is deleted from the narration at render time.
    */
   private starting = new Set<Promise<void>>()
+  private accumulatedContent = ''
 
   constructor(
     private storyId: string,
@@ -70,6 +72,7 @@ export class InlineImageTracker {
    * Called on each streaming chunk with the full accumulated content.
    */
   processChunk(accumulatedContent: string, referenceMode: boolean): void {
+    this.accumulatedContent = accumulatedContent
     const tags = extractPicTags(accumulatedContent)
     // 0 means unlimited, matching the non-streaming path in InlineImageService.
     const maxImages = settings.systemServicesSettings.imageGeneration.maxImagesPerMessage ?? 3
@@ -218,7 +221,8 @@ export class InlineImageTracker {
    * Creates records immediately with 'generating' status, then updates when done.
    * Call this AFTER the story entry has been created.
    */
-  async flushToDatabase(): Promise<void> {
+  async flushToDatabase(savedContent = this.accumulatedContent): Promise<void> {
+    const contentVersion = imageContentVersion({ content: savedContent })
     // A tag that arrives while we wait joins the set, so drain it rather than snapshot it.
     while (this.starting.size > 0) {
       await Promise.all(this.starting)
@@ -243,6 +247,7 @@ export class InlineImageTracker {
         storyId: this.storyId,
         entryId: this.entryId,
         sourceText: pending.tag.originalTag,
+        contentVersion,
         prompt: pending.prompt,
         styleId: imageSettings.styleId,
         model: pending.model,

@@ -16,6 +16,7 @@ import type {
   ClassificationCompleteEvent,
   WorldState,
 } from '../types'
+import { asError } from '$lib/utils/error'
 import type { Story, StoryEntry, TimeTracker } from '$lib/types'
 import type { ClassificationResult } from '$lib/services/ai/sdk/schemas/classifier'
 
@@ -79,11 +80,17 @@ export class ClassificationPhase {
     try {
       // Filter out the current narration entry to avoid sending it twice
       // (once in chatHistory, once as narrativeResponse)
-      const chatHistoryEntries = visibleEntries.filter((e) => e.id !== narrativeEntryId)
+      const chatHistoryEntries = visibleEntries.filter(
+        (e) =>
+          e.id !== narrativeEntryId &&
+          (story?.mode !== 'creative-writing' || e.type === 'narration'),
+      )
 
       const classificationResult = await this.deps.classifyResponse(
         narrativeContent,
-        userActionContent,
+        story?.mode === 'creative-writing'
+          ? '只从已生成正文提取实际发生的事实。作者意图、未来规划和被否决版本不是事实。'
+          : userActionContent,
         worldState,
         story,
         chatHistoryEntries,
@@ -123,7 +130,7 @@ export class ClassificationPhase {
       yield {
         type: 'error',
         phase: 'classification',
-        error: error instanceof Error ? error : new Error(String(error)),
+        error: asError(error, '事实提取返回了无法识别的错误。'),
         fatal: false,
       } satisfies ErrorEvent
 

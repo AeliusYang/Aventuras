@@ -110,7 +110,7 @@
   async function handleDeleteBranch(branchId: string) {
     const confirmed = await ask(
       'Are you sure you want to delete this branch? This will delete all entries in the branch.',
-      { title: 'Delete Branch', kind: 'warning' },
+      { title: '删除分支', kind: 'warning' },
     )
     if (!confirmed) return
     try {
@@ -277,7 +277,7 @@
 <div class="space-y-3">
   <!-- Header -->
   <div class="flex items-center justify-between">
-    <h3 class="text-surface-200 font-medium">Branches</h3>
+    <h3 class="text-surface-200 font-medium">分支</h3>
     <div class="flex items-center">
       <button
         class="btn-ghost flex min-h-[40px] min-w-[40px] items-center justify-center rounded p-2 sm:min-h-0 sm:min-w-0 sm:p-1.5 {canGoToForkPoint
@@ -306,12 +306,12 @@
   {#if showCreateForm && latestCheckpoint}
     <div class="card space-y-2 p-3">
       <p class="text-surface-400 text-xs">
-        Branch from: <span class="text-surface-300">{latestCheckpoint.name}</span>
+        分支起点： <span class="text-surface-300">{latestCheckpoint.name}</span>
       </p>
       <input
         type="text"
         class="input w-full"
-        placeholder="Branch name..."
+        placeholder="分支名称…"
         bind:value={newBranchName}
         onkeydown={(e) => e.key === 'Enter' && handleCreateBranch()}
       />
@@ -323,14 +323,14 @@
             newBranchName = ''
           }}
         >
-          Cancel
+          取消
         </button>
         <button
           class="btn-primary min-h-[40px] rounded px-3 py-2 text-sm sm:min-h-0 sm:px-2 sm:py-1 sm:text-xs"
           onclick={handleCreateBranch}
           disabled={!newBranchName.trim()}
         >
-          Create
+          创建
         </button>
       </div>
     </div>
@@ -404,7 +404,7 @@
           <span class="text-surface-200 flex-1 truncate text-sm">{branch.name}</span>
           <span class="text-surface-500 text-xs">{getBranchEntryCount(branch.id)}</span>
           {#if isCurrent(branch.id)}
-            <span class="bg-accent-500 h-2 w-2 rounded-full" title="Current branch"></span>
+            <span class="bg-accent-500 h-2 w-2 rounded-full" title="当前分支"></span>
           {/if}
           <button
             class="text-surface-500 hover:text-surface-200 flex min-h-[32px] min-w-[32px] items-center justify-center p-1 transition-opacity sm:min-h-0 sm:min-w-0 sm:p-0.5 sm:opacity-0 sm:group-hover:opacity-100"
@@ -412,7 +412,7 @@
               e.stopPropagation()
               startRename(branch)
             }}
-            title="Rename"
+            title="重命名"
           >
             <Edit2 class="h-4 w-4 sm:h-3 sm:w-3" />
           </button>
@@ -427,7 +427,7 @@
                 handleDeleteBranch(branch.id)
               }}
               disabled={children.length > 0}
-              title={children.length > 0 ? 'Cannot delete: has child branches' : 'Delete'}
+              title={children.length > 0 ? '存在子分支，无法删除' : '删除'}
             >
               <Trash2 class="h-4 w-4 sm:h-3 sm:w-3" />
             </button>
@@ -472,10 +472,10 @@
         {/if}
       </button>
       <GitBranch class="text-surface-400 h-4 w-4" />
-      <span class="text-surface-200 flex-1 text-sm">Main</span>
+      <span class="text-surface-200 flex-1 text-sm">主线</span>
       <span class="text-surface-500 text-xs">{getBranchEntryCount(null)}</span>
       {#if isCurrent(null)}
-        <span class="bg-accent-500 h-2 w-2 rounded-full" title="Current branch"></span>
+        <span class="bg-accent-500 h-2 w-2 rounded-full" title="当前分支"></span>
       {/if}
     </div>
 
@@ -491,10 +491,9 @@
   {#if story.branches.length === 0}
     <p class="text-surface-400 py-4 text-center text-sm">
       {#if canCreateBranch}
-        No branches yet. Create one to explore alternate storylines.
+        尚无分支。创建分支以探索其他故事走向。
       {:else}
-        Branches can be created from checkpoints. Checkpoints are automatically saved at chapter
-        boundaries.
+        可从检查点创建分支。章节边界会自动保存检查点。
       {/if}
     </p>
   {/if}

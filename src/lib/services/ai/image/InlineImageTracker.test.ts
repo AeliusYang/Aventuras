@@ -58,6 +58,7 @@ describe('InlineImageTracker', () => {
       entryId: 'entry',
       sourceText: TAG,
       generationMode: 'inline',
+      contentVersion: JSON.stringify(['prose-v1', `The room fell silent. ${TAG}`]),
     })
   })
 

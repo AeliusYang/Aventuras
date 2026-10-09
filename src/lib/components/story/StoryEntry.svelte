@@ -1,4 +1,9 @@
 <script lang="ts">
+  import { buildImageEvidence, ImageIdentityConflict } from '$lib/services/image/generationContext'
+  import type { ImagePromptDiagnostic } from '$lib/services/image/diagnostics'
+  import ImagePromptDetails from '$lib/components/shared/ImagePromptDetails.svelte'
+  import ImageIdentityChoice from '$lib/components/shared/ImageIdentityChoice.svelte'
+  import { getImageAnalysisConfigurationIssue } from '$lib/services/ai/image/analysisConfig'
   import type { StoryEntry, EmbeddedImage, TimeTracker } from '$lib/types'
   import { story } from '$lib/stores/story.svelte'
   import { ui } from '$lib/stores/ui.svelte'
@@ -20,6 +25,8 @@
     Image as ImageIcon,
     Copy,
     MoreVertical,
+    ChevronLeft,
+    ChevronRight,
   } from '@lucide/svelte'
   import { aiService } from '$lib/services/ai'
   import { aiTTSService } from '$lib/services/ai/utils/TTSService'
@@ -50,7 +57,7 @@
     retryImageGeneration,
   } from '$lib/services/ai/image'
   import { database } from '$lib/services/database'
-  import { onMount } from 'svelte'
+  import { onMount, untrack } from 'svelte'
   import ReasoningBlock from './ReasoningBlock.svelte'
   import { countTokens } from '$lib/services/tokenizer'
   import { errMessage } from '$lib/utils/error'
@@ -61,14 +68,29 @@
   import { Input } from '$lib/components/ui/input'
   import * as ResponsiveModal from '$lib/components/ui/responsive-modal'
   import { SvelteMap, SvelteSet } from 'svelte/reactivity'
-  import { escapeHtml } from '$lib/utils/inlineImageParser'
+  import { escapeHtml, stripPicTags } from '$lib/utils/inlineImageParser'
+  import { imageContentVersion, imageMatchesEntry } from '$lib/services/image/imageScope'
+  import { getImageConfigurationIssue } from '$lib/services/ai/image/imageUtils'
   import { extractSentenceAt, expandRangeBidirectional } from '$lib/utils/text'
+  import { historyKey } from '$lib/services/generation/collaborative'
+  import type { CollaborativeStateRebuildDraft } from '$lib/services/CollaborativeStateRebuildService'
+  import { listStateMaintenanceGaps } from '$lib/services/collaborativeStateMaintenance'
 
   let { entry }: { entry: StoryEntry } = $props()
+  const novelMetadata = $derived(
+    entry.type === 'narration' && entry.metadata?.novelTurn?.outputKey === historyKey([entry])
+      ? entry.metadata.novelTurn
+      : null,
+  )
 
   // Separate token counts for content and reasoning
   const contentTokens = $derived(entry.metadata?.tokenCount ?? 0)
   const reasoningTokens = $derived(entry.reasoning ? countTokens(entry.reasoning) : 0)
+  const proseCharacterCount = $derived(
+    Array.from(
+      (entry.translatedContent ?? entry.content).replace(/<[^>]*>/g, ' ').replace(/\s/gu, ''),
+    ).length,
+  )
 
   // Check if reasoning is enabled in API settings
   const isReasoningEnabled = $derived(settings.apiSettings.reasoningEffort !== 'none')
@@ -140,6 +162,7 @@
       profileName: m?.profileName,
       reasoningEffort: m?.reasoningEffort,
       temperature: m?.temperature,
+      maxTokens: m?.maxTokens,
       duration:
         typeof m?.generationTime === 'number' ? `${(m.generationTime / 1000).toFixed(1)}s` : null,
       storyTime,
@@ -180,7 +203,7 @@
   const isLastEntry = $derived(story.entries[story.entries.length - 1]?.id === entry.id)
   const canSimpleRegenerate = $derived(
     isLatestNarration &&
-      isLastEntry &&
+      story.entries[story.entries.length - 1]?.id === entry.id &&
       !canRetry &&
       !ui.isGenerating &&
       !ui.lastGenerationError &&
@@ -189,6 +212,46 @@
 
   // A retry restore rewrites the same entries a generation does, and the store refuses both.
   const entriesLocked = $derived(ui.isGenerating || story.isRetryInProgress)
+  const canRetryWriter = $derived(
+    isLatestNarration &&
+      story.currentStory?.mode === 'creative-writing' &&
+      !!entry.metadata?.novelTurn?.sceneDirectorOutput?.trim() &&
+      !entry.metadata?.novelTurn?.directorDiagnostics?.directorFallback &&
+      story.entries.findLast((e) => e.type === 'narration' || e.type === 'user_action')?.id ===
+        entry.id,
+  )
+
+  const variantSet = $derived(
+    entry.type === 'narration' ? (entry.metadata?.variantSet ?? null) : null,
+  )
+  const variantIndex = $derived(
+    variantSet
+      ? Math.max(
+          0,
+          variantSet.variants.findIndex((v) => v.id === variantSet.activeVariantId),
+        )
+      : 0,
+  )
+  const canSwipeVariants = $derived(
+    story.storyMode === 'creative-writing' &&
+      entry.type === 'narration' &&
+      !!variantSet &&
+      variantSet.variants.length > 1 &&
+      isLastEntry &&
+      !entriesLocked,
+  )
+
+  async function switchVariantBy(delta: number) {
+    if (!canSwipeVariants || !variantSet) return
+    const count = variantSet.variants.length
+    const target = variantSet.variants[(variantIndex + delta + count) % count]
+    if (!target) return
+    try {
+      await story.switchNarrationVariant(entry.id, target.id)
+    } catch (error) {
+      ui.showToast(errMessage(error), 'error')
+    }
+  }
 
   /**
    * Dismiss/delete this error entry from the story.
@@ -263,17 +326,42 @@
   let isDeleting = $state(false)
 
   // Embedded images state
-  let embeddedImages = $state<EmbeddedImage[]>([])
+  let allEmbeddedImages = $state<EmbeddedImage[]>([])
+  const storyImagesVisible = $derived(
+    story.currentStory?.mode !== 'creative-writing' ||
+      story.currentStory?.settings?.imageGenerationMode === 'manual',
+  )
+  const embeddedImages = $derived(
+    storyImagesVisible ? allEmbeddedImages.filter((image) => imageMatchesEntry(image, entry)) : [],
+  )
   let expandedImageId = $state<string | null>(null)
   let clickedElement = $state<HTMLElement | null>(null)
 
   const hasEmbeddedImages = $derived(embeddedImages.length > 0)
   const canGenerateStoryImages = $derived(
-    entry.type === 'narration' && story.currentStory?.settings?.imageGenerationMode === 'agentic',
+    entry.type === 'narration' &&
+      ['agentic', 'manual'].includes(story.currentStory?.settings?.imageGenerationMode ?? ''),
   )
   const storyImagesLabel = $derived(
-    hasEmbeddedImages ? 'Images already generated' : 'Generate story images',
+    hasEmbeddedImages ? '本版正文已有插图，可打开图片查看或重试' : '生成插图',
   )
+  const imageConfigurationIssue = $derived(
+    getImageConfigurationIssue() ||
+      (story.currentStory?.settings?.imageGenerationMode === 'manual'
+        ? getImageAnalysisConfigurationIssue()
+        : null) ||
+      (story.currentStory?.settings?.referenceMode
+        ? getImageConfigurationIssue('reference')
+        : null),
+  )
+  function openImageSettings() {
+    ui.setSettingsTab(
+      !getImageConfigurationIssue() && getImageAnalysisConfigurationIssue()
+        ? 'generation'
+        : 'images',
+    )
+    ui.openSettings()
+  }
   const ttsLabel = $derived(isPlayingTTS ? 'Stop narration' : 'Narrate')
   const copyLabel = $derived(isCopied ? 'Copied!' : 'Copy message text')
 
@@ -304,6 +392,45 @@
     ),
   )
   const canBranch = $derived(!!entryCheckpoint)
+  const isCollaborative = $derived(story.currentStory?.mode === 'creative-writing')
+  const canBranchFromNarration = $derived(isCollaborative && entry.type === 'narration')
+  const maintenance = $derived(entry.metadata?.collaborativeStateMaintenance)
+  const factStateExtractorEnabled = $derived(
+    story.currentStory?.settings?.collaborativeNovelWorkflow?.factStateExtractor?.enabled !== false,
+  )
+  const canRetryStateExtraction = $derived(
+    isCollaborative &&
+      factStateExtractorEnabled &&
+      entry.type === 'narration' &&
+      maintenance?.status === 'failed' &&
+      !entry.worldStateDelta &&
+      (entry.branchId ?? null) === currentBranchId &&
+      story.entries.filter((candidate) => candidate.type === 'narration').at(-1)?.id === entry.id,
+  )
+  let isRetryingState = $state(false)
+  let rebuildDraft = $state<CollaborativeStateRebuildDraft | null>(null)
+  let isRebuildingState = $state(false)
+  let deleteAfterRebuild = $state(false)
+  $effect(() => {
+    if (!factStateExtractorEnabled) rebuildDraft = null
+  })
+  const deletionEntries = $derived(
+    story.entries.filter((candidate) => candidate.position >= entry.position),
+  )
+  const deletionEntryIds = $derived(new Set(deletionEntries.map((candidate) => candidate.id)))
+  const deletionChapterCount = $derived(
+    story.chapters.filter(
+      (chapter) =>
+        deletionEntryIds.has(chapter.startEntryId) || deletionEntryIds.has(chapter.endEntryId),
+    ).length,
+  )
+  const deletionGaps = $derived(isCollaborative ? listStateMaintenanceGaps(deletionEntries) : [])
+  const rebuildAnchor = $derived(
+    [...story.entries]
+      .reverse()
+      .find((candidate) => candidate.type === 'narration' && candidate.position < entry.position) ??
+      null,
+  )
 
   // Fork point marker: the entry the ACTIVE branch diverged from its parent at.
   // Independent of entryCheckpoint above — that checkpoint belongs to the parent
@@ -317,17 +444,60 @@
   // Handle creating a branch from this entry
   async function handleCreateBranch() {
     if (!branchName.trim()) return
-    if (!entryCheckpoint) {
+    if (!entryCheckpoint && !canBranchFromNarration) {
       alert('Cannot branch from this entry - no checkpoint available')
       return
     }
     try {
-      await story.createBranchFromCheckpoint(branchName.trim(), entry.id, entryCheckpoint.id)
+      if (canBranchFromNarration) {
+        await story.createCollaborativeBranchFromEntry(entry.id, branchName.trim())
+      } else {
+        await story.createBranchFromCheckpoint(branchName.trim(), entry.id, entryCheckpoint!.id)
+      }
       isBranching = false
       branchName = ''
     } catch (error) {
       console.error('[StoryEntry] Failed to create branch:', error)
       alert(error instanceof Error ? error.message : 'Failed to create branch')
+    }
+  }
+
+  async function retryStateExtraction() {
+    isRetryingState = true
+    try {
+      await story.retryCollaborativeStateExtraction(entry.id)
+    } catch (error) {
+      alert(error instanceof Error ? error.message : '事实与状态提取重试失败')
+    } finally {
+      isRetryingState = false
+    }
+  }
+
+  async function createStateRebuildDraft() {
+    isRebuildingState = true
+    try {
+      rebuildDraft = await story.createCollaborativeStateRebuildDraft(entry.id)
+    } catch (error) {
+      alert(error instanceof Error ? error.message : '状态重建失败')
+    } finally {
+      isRebuildingState = false
+    }
+  }
+
+  async function confirmStateRebuild() {
+    if (!rebuildDraft) return
+    isRebuildingState = true
+    try {
+      await story.confirmCollaborativeStateRebuild(rebuildDraft)
+      rebuildDraft = null
+      if (deleteAfterRebuild) {
+        deleteAfterRebuild = false
+        await story.deleteEntry(entry.id)
+      }
+    } catch (error) {
+      alert(error instanceof Error ? error.message : '状态重建确认失败')
+    } finally {
+      isRebuildingState = false
     }
   }
 
@@ -407,7 +577,7 @@
       for (const [id, row] of refreshedRows) {
         if (!loadedIds.has(id)) merged.push(row.image)
       }
-      embeddedImages = merged
+      allEmbeddedImages = merged
     } catch (err) {
       console.error('[StoryEntry] Failed to load embedded images:', err)
     } finally {
@@ -433,11 +603,11 @@
       // Only a load that is still out needs to be told about this row; with none in
       // flight the map would just hold a second copy of every payload.
       if (loadsInFlight > 0) refreshedRows.set(imageId, { ticket, image })
-      const index = embeddedImages.findIndex((img) => img.id === imageId)
-      embeddedImages =
+      const index = allEmbeddedImages.findIndex((img) => img.id === imageId)
+      allEmbeddedImages =
         index === -1
-          ? [...embeddedImages, image]
-          : embeddedImages.map((img) => (img.id === imageId ? image : img))
+          ? [...allEmbeddedImages, image]
+          : allEmbeddedImages.map((img) => (img.id === imageId ? image : img))
     } catch (err) {
       console.error('[StoryEntry] Failed to refresh embedded image:', err)
     }
@@ -445,7 +615,12 @@
 
   // Handle creating missing inline images (stuck/lost records)
   async function handleCreateMissingImage() {
-    if (!story.currentStory) return
+    if (
+      !story.currentStory ||
+      !storyImagesVisible ||
+      story.currentStory.settings?.imageGenerationMode !== 'inline'
+    )
+      return
 
     // Trigger scanning of this entry
     // We pass the full content, the service will find tags and create missing records
@@ -453,6 +628,7 @@
       storyId: story.currentStory.id,
       entryId: entry.id,
       narrativeContent: entry.translatedContent ?? entry.content,
+      contentVersion: imageContentVersion(entry),
       presentCharacters: story.characters, // Use all story characters for lookup
       referenceMode: story.currentStory.settings?.referenceMode ?? false,
     }
@@ -474,6 +650,13 @@
   let viewingImage = $state<(typeof embeddedImages)[0] | null>(null)
   let viewingImagePrompt = $state('')
   let viewingImagePromptMode = $state<'chat' | 'custom'>('chat')
+  $effect(() => {
+    if (!storyImagesVisible || (viewingImage && !imageMatchesEntry(viewingImage, entry))) {
+      isViewingImage = false
+      viewingImage = null
+      expandedImageId = null
+    }
+  })
 
   // Track images currently being regenerated (for loading overlay)
   let regeneratingImageIds = $state<Set<string>>(new Set())
@@ -897,6 +1080,8 @@
 
       // Reload images to show updated state
       await loadEmbeddedImages()
+    } catch (error) {
+      ui.showToast(errMessage(error), 'error')
     } finally {
       // Remove from regenerating set
       const newSet = new SvelteSet(regeneratingImageIds)
@@ -948,22 +1133,22 @@
       const isStuck = now - expandedImage.createdAt >= stuckThresholdMs
       innerHtml += `<div class="inline-image-placeholder generating">
         <div class="placeholder-spinner"></div>
-        <span class="placeholder-status">Generating...</span>
-        ${isStuck ? `<button class="inline-image-retry" data-image-id="${expandedImage.id}">Force Retry</button>` : ''}
+        <span class="placeholder-status">正在生成…</span>
+        ${isStuck ? `<button class="inline-image-retry" data-image-id="${expandedImage.id}">重新尝试</button>` : ''}
       </div>`
     } else if (expandedImage.status === 'pending') {
       const isStuck = now - expandedImage.createdAt >= stuckThresholdMs
       innerHtml += `<div class="inline-image-placeholder pending">
         <div class="placeholder-icon">⏳</div>
-        <span class="placeholder-status">Queued...</span>
-        ${isStuck ? `<button class="inline-image-retry" data-image-id="${expandedImage.id}">Force Retry</button>` : ''}
+        <span class="placeholder-status">已排队…</span>
+        ${isStuck ? `<button class="inline-image-retry" data-image-id="${expandedImage.id}">重新尝试</button>` : ''}
       </div>`
     } else if (expandedImage.status === 'failed') {
       innerHtml += `<div class="inline-image-placeholder failed">
         <div class="placeholder-icon">⚠️</div>
-        <span class="placeholder-status">Generation Failed</span>
+        <span class="placeholder-status">插图生成失败</span>
         ${expandedImage.errorMessage ? `<span class="placeholder-text">${expandedImage.errorMessage}</span>` : ''}
-        <button class="inline-image-retry" data-image-id="${expandedImage.id}">Retry Generation</button>
+        <button class="inline-image-retry" data-image-id="${expandedImage.id}">重试插图</button>
       </div>`
     }
 
@@ -1065,7 +1250,10 @@
 
   const picOptions = $derived({
     stuckIds: stuckImageIds,
-    offerMissingRecovery: now - entry.createdAt >= MISSING_RECORD_GRACE_MS,
+    offerMissingRecovery:
+      storyImagesVisible &&
+      story.currentStory?.settings?.imageGenerationMode === 'inline' &&
+      now - entry.createdAt >= MISSING_RECORD_GRACE_MS,
     overBudget: overImageBudget,
   })
 
@@ -1110,8 +1298,8 @@
     const unsubImageAnalysisFailed = eventBus.subscribe<ImageAnalysisFailedEvent>(
       'ImageAnalysisFailed',
       (event) => {
-        if (event.entryId === entry.id) {
-          ui.showToast(`Image generation failed: ${event.error}`, 'error', 10000)
+        if (event.entryId === entry.id && storyImagesVisible) {
+          ui.showToast(`图片生成失败：${event.error}`, 'error', 10000)
         }
       },
     )
@@ -1148,18 +1336,22 @@
   }
 
   const styles = $derived({
-    user_action: story.currentBgImage
-      ? 'border-l-primary bg-primary/10 backdrop-blur-md'
-      : 'border-l-primary bg-primary/5',
-    narration: story.currentBgImage
-      ? 'border-l-muted-foreground/40 bg-card/60 backdrop-blur-md'
-      : 'border-l-muted-foreground/40 bg-card',
-    system: story.currentBgImage
-      ? 'border-l-muted bg-muted/20 backdrop-blur-md italic text-muted-foreground'
-      : 'border-l-muted bg-muted/30 italic text-muted-foreground',
-    retry: story.currentBgImage
-      ? 'border-l-amber-500 bg-amber-500/20 backdrop-blur-md'
-      : 'border-l-amber-500 bg-amber-500/10',
+    user_action:
+      story.currentBgImage && story.currentStory?.settings?.backgroundImagesEnabled
+        ? 'border-l-primary bg-primary/10 backdrop-blur-md'
+        : 'border-l-primary bg-primary/5',
+    narration:
+      story.currentBgImage && story.currentStory?.settings?.backgroundImagesEnabled
+        ? 'border-l-muted-foreground/40 bg-card/60 backdrop-blur-md'
+        : 'border-l-muted-foreground/40 bg-card',
+    system:
+      story.currentBgImage && story.currentStory?.settings?.backgroundImagesEnabled
+        ? 'border-l-muted bg-muted/20 backdrop-blur-md italic text-muted-foreground'
+        : 'border-l-muted bg-muted/30 italic text-muted-foreground',
+    retry:
+      story.currentBgImage && story.currentStory?.settings?.backgroundImagesEnabled
+        ? 'border-l-amber-500 bg-amber-500/20 backdrop-blur-md'
+        : 'border-l-amber-500 bg-amber-500/10',
   })
 
   const Icon = $derived(icons[entry.type])
@@ -1257,28 +1449,110 @@
   }
 
   let isGeneratingStoryImages = $state(false)
+  let imageDiagnostic = $state<ImagePromptDiagnostic | null>(null)
+  let imageConflict = $state<ImageIdentityConflict | null>(null)
+  let selectedImageLore = $state<Record<string, string>>({})
+  const imageScope = $derived(
+    JSON.stringify([
+      story.currentStory?.id,
+      story.currentStory?.currentBranchId,
+      entry.id,
+      imageContentVersion(entry),
+      storyImagesVisible,
+    ]),
+  )
+  let imageScopeEpoch = 0
+  $effect(() => {
+    void imageScope
+    imageScopeEpoch++
+    imageDiagnostic = null
+    imageConflict = null
+    selectedImageLore = {}
+    if (untrack(() => isGeneratingStoryImages))
+      ui.showToast('故事、分支或正文版本已变化，本次插图请求不再继续。', 'info')
+  })
 
   async function handleGenerateStoryImages() {
-    if (!story.currentStory || isGeneratingStoryImages) return
+    if (
+      !story.currentStory ||
+      !canGenerateStoryImages ||
+      ui.isGenerating ||
+      isGeneratingStoryImages ||
+      hasEmbeddedImages
+    )
+      return
+    if (imageConfigurationIssue) {
+      ui.showToast(imageConfigurationIssue, 'warning')
+      return
+    }
     isGeneratingStoryImages = true
+    const sourceStoryId = story.currentStory.id
+    const sourceBranchId = story.currentStory.currentBranchId
+    const sourceEntryId = entry.id
+    const sourceVersion = imageContentVersion(entry)
+    const manual = story.currentStory.settings?.imageGenerationMode === 'manual'
+    const epoch = imageScopeEpoch
+    const snapshot = JSON.parse(
+      JSON.stringify({
+        story: story.currentStory,
+        characters: story.characters,
+        lore: story.lorebookEntries,
+        entries: story.entries,
+        entryId: sourceEntryId,
+        selectedLoreIds: selectedImageLore,
+      }),
+    )
+    const canContinue = () =>
+      epoch === imageScopeEpoch &&
+      story.currentStory?.id === sourceStoryId &&
+      story.currentStory.currentBranchId === sourceBranchId &&
+      entry.id === sourceEntryId &&
+      imageContentVersion(entry) === sourceVersion &&
+      (!manual || story.currentStory.settings?.imageGenerationMode === 'manual')
     try {
+      imageConflict = null
+      const evidence = manual ? await buildImageEvidence(snapshot) : undefined
+      if (!canContinue()) return
       const context = {
-        storyId: story.currentStory.id,
-        entryId: entry.id,
+        evidence,
+        onDiagnostic: (value: ImagePromptDiagnostic) => {
+          if (canContinue()) imageDiagnostic = value
+        },
+        storyId: sourceStoryId,
+        entryId: sourceEntryId,
+        trigger: manual ? ('manual' as const) : undefined,
+        contentVersion: sourceVersion,
+        canContinue,
         narrativeResponse: entry.content,
         userAction: '',
-        presentCharacters: story.characters,
+        presentCharacters: evidence?.characters ?? snapshot.characters,
         referenceMode: story.currentStory.settings?.referenceMode ?? false,
         translatedNarrative: entry.translatedContent ?? undefined,
         imageGenerationMode: story.currentStory.settings?.imageGenerationMode,
-        allCharacters: story.characters,
+        allCharacters: evidence?.characters ?? snapshot.characters,
         imageSettings: settings.systemServicesSettings.imageGeneration,
         getImageProfile: (id: string) => settings.getImageProfile(id),
       }
-      await aiService.generateImagesForNarrative(context)
+      const result = await aiService.generateImagesForNarrative(context)
+      if (canContinue()) {
+        if (result.status === 'queued') {
+          await loadEmbeddedImages()
+          ui.showToast('插图已开始生成。', 'info')
+        } else
+          ui.showToast(
+            result.message ?? '本次未生成插图，请检查图片配置后重试。',
+            result.status === 'failed' ? 'error' : 'warning',
+          )
+      }
     } catch (error) {
       console.error('[StoryEntry] Image generation failed:', error)
-      ui.showToast('Image generation failed', 'error')
+      if (canContinue()) {
+        if (error instanceof ImageIdentityConflict) imageConflict = error
+        ui.showToast(
+          error instanceof Error ? error.message : '插图资料准备失败，可再次尝试。',
+          'error',
+        )
+      }
     } finally {
       isGeneratingStoryImages = false
     }
@@ -1324,11 +1598,11 @@
   <div class="mb-2 flex items-center gap-2">
     <!-- Left side: Entry type indicator + reasoning toggle -->
     {#if entry.type === 'user_action'}
-      <span class="user-action text-primary text-sm font-semibold tracking-wide">You</span>
+      <span class="user-action text-primary text-sm font-semibold tracking-wide">你</span>
     {:else if entry.type === 'system'}
       <div class="text-muted-foreground flex items-center gap-1.5">
         <Icon class="h-4 w-4 shrink-0 translate-y-px" />
-        <span class="text-xs font-medium tracking-wider uppercase">System</span>
+        <span class="text-xs font-medium tracking-wider uppercase">系统</span>
       </div>
     {:else}
       <Icon class="text-muted-foreground h-4 w-4 shrink-0 translate-y-px" />
@@ -1348,6 +1622,11 @@
          needs the width. Narration entries keep it under "Response info" in the overflow menu;
          on any other entry type it is not shown there at all. -->
     <span class="bg-muted hidden rounded px-1.5 py-0.5 text-[11px] tabular-nums sm:inline">
+      {#if entry.type === 'narration'}
+        <span class="text-muted-foreground">{proseCharacterCount}</span>
+        <span class="text-muted-foreground ml-0.5">正文字符</span>
+        <span class="text-muted-foreground/50 mx-0.5">·</span>
+      {/if}
       {#if isReasoningEnabled && reasoningTokens > 0}
         <span class="text-muted-foreground">{reasoningTokens}r</span>
         <span class="text-muted-foreground/50 mx-0.5">+</span>
@@ -1368,7 +1647,7 @@
     {#if isForkPoint}
       <span
         class="flex h-7 w-7 shrink-0 items-center justify-center"
-        title="Branch &quot;{activeBranch?.name}&quot; starts here"
+        title="分支“{activeBranch?.name}”从这里开始"
       >
         <GitBranch class="text-muted-foreground h-4 w-4" />
       </span>
@@ -1386,60 +1665,68 @@
         {/snippet}
         {#snippet responseInfoRows()}
           <dl class="space-y-1.5">
+            {#if generationInfo.maxTokens !== undefined}
+              <div class="flex justify-between gap-3">
+                <dt class="text-muted-foreground shrink-0">输出 Token 上限</dt>
+                <dd class="text-right">{generationInfo.maxTokens}</dd>
+              </div>
+            {/if}
             {#if isReasoningEnabled && reasoningTokens > 0}
               <div class="flex justify-between gap-3">
-                <dt class="text-muted-foreground shrink-0">Reasoning tokens</dt>
+                <dt class="text-muted-foreground shrink-0">推理 Token 数</dt>
                 <dd class="text-right">{reasoningTokens}</dd>
               </div>
             {/if}
             <div class="flex justify-between gap-3">
-              <dt class="text-muted-foreground shrink-0">Content tokens</dt>
+              <dt class="text-muted-foreground shrink-0">本条正文字符</dt>
+              <dd class="text-right">{proseCharacterCount}</dd>
+            </div>
+            <div class="flex justify-between gap-3">
+              <dt class="text-muted-foreground shrink-0">正文 Token 数</dt>
               <dd class="text-right">{contentTokens}</dd>
             </div>
             {#if generationInfo.storyTime}
               <div class="flex justify-between gap-3">
-                <dt class="text-muted-foreground shrink-0">Story time</dt>
+                <dt class="text-muted-foreground shrink-0">故事时间</dt>
                 <dd class="text-right">{generationInfo.storyTime}</dd>
               </div>
             {/if}
             {#if generationInfo.model}
               <div class="flex justify-between gap-3">
-                <dt class="text-muted-foreground shrink-0">Model</dt>
+                <dt class="text-muted-foreground shrink-0">模型</dt>
                 <dd class="text-right break-all">{generationInfo.model}</dd>
               </div>
             {/if}
             {#if generationInfo.profileName}
               <div class="flex justify-between gap-3">
-                <dt class="text-muted-foreground shrink-0">Profile</dt>
+                <dt class="text-muted-foreground shrink-0">配置</dt>
                 <dd class="text-right break-all">{generationInfo.profileName}</dd>
               </div>
             {/if}
             {#if generationInfo.reasoningEffort}
               <div class="flex justify-between gap-3">
-                <dt class="text-muted-foreground shrink-0">Thinking</dt>
+                <dt class="text-muted-foreground shrink-0">推理强度</dt>
                 <dd class="text-right">{generationInfo.reasoningEffort}</dd>
               </div>
             {/if}
             {#if generationInfo.temperature !== undefined}
               <div class="flex justify-between gap-3">
-                <dt class="text-muted-foreground shrink-0">Temperature</dt>
+                <dt class="text-muted-foreground shrink-0">温度</dt>
                 <dd class="text-right">{generationInfo.temperature}</dd>
               </div>
             {/if}
             {#if generationInfo.duration}
               <div class="flex justify-between gap-3">
-                <dt class="text-muted-foreground shrink-0">Duration</dt>
+                <dt class="text-muted-foreground shrink-0">耗时</dt>
                 <dd class="text-right">{generationInfo.duration}</dd>
               </div>
             {/if}
             <div class="flex justify-between gap-3">
-              <dt class="text-muted-foreground shrink-0">Generated at</dt>
+              <dt class="text-muted-foreground shrink-0">生成时间</dt>
               <dd class="text-right">{generationInfo.timestamp}</dd>
             </div>
             {#if !generationInfo.model}
-              <p class="text-muted-foreground pt-1">
-                Model details were not recorded for this response.
-              </p>
+              <p class="text-muted-foreground pt-1">此回复未记录模型详情。</p>
             {/if}
           </dl>
         {/snippet}
@@ -1447,7 +1734,7 @@
           <!-- Where the entry sits in the story, not how it was generated — so it stays outside
                the Response info block at both sizes rather than becoming a row in it. -->
           <div class="flex justify-between gap-3">
-            <span class="text-muted-foreground shrink-0">Entry number</span>
+            <span class="text-muted-foreground shrink-0">段落编号</span>
             <span class="text-foreground text-right font-medium tabular-nums"
               >{entryNumber(entry)}</span
             >
@@ -1461,7 +1748,7 @@
                   variant="text"
                   size="icon"
                   class="text-muted-foreground hover:text-foreground hidden h-7 w-7 sm:flex"
-                  title="Response info"
+                  title="回复信息"
                   {...props}
                 >
                   <Info class="h-4 w-4" />
@@ -1472,10 +1759,47 @@
               <div class="border-border mb-2 border-b pb-2">
                 {@render entryNumberRow()}
               </div>
-              <p class="text-foreground mb-2 text-sm font-medium">Response info</p>
+              <p class="text-foreground mb-2 text-sm font-medium">回复信息</p>
               {@render responseInfoRows()}
             </Popover.Content>
           </Popover.Root>
+        {/if}
+        {#if variantSet && variantSet.variants.length > 1 && story.storyMode === 'creative-writing' && story.entries[story.entries.length - 1]?.id === entry.id}
+          <Button
+            variant="text"
+            size="icon"
+            onclick={() => switchVariantBy(-1)}
+            disabled={!canSwipeVariants}
+            class="text-muted-foreground hover:text-foreground h-7 w-7"
+            title="上一个正文版本"
+            aria-label="上一个正文版本"
+          >
+            <ChevronLeft class="h-4 w-4" />
+          </Button>
+          <span class="text-muted-foreground min-w-[3.5rem] text-center text-xs tabular-nums">
+            {variantIndex + 1} / {variantSet.variants.length}
+          </span>
+          <Button
+            variant="text"
+            size="icon"
+            onclick={() => switchVariantBy(1)}
+            disabled={!canSwipeVariants}
+            class="text-muted-foreground hover:text-foreground h-7 w-7"
+            title="下一个正文版本"
+            aria-label="下一个正文版本"
+          >
+            <ChevronRight class="h-4 w-4" />
+          </Button>
+        {/if}
+        {#if canRetryWriter}
+          <Button
+            variant="text"
+            size="sm"
+            class="h-7 px-2 text-amber-500"
+            disabled={entriesLocked || !!ui.submissionScope}
+            onclick={() => ui.triggerRetryWriter(entry.id)}
+            title="沿用本轮 Director 安排，仅重新生成正文；保留原版本">仅重试 Writer</Button
+          >
         {/if}
         {#if canRetry}
           <Button
@@ -1483,7 +1807,7 @@
             size="icon"
             onclick={() => ui.triggerRetryLastMessage()}
             class="h-7 w-7 text-amber-500 hover:text-amber-600"
-            title="Generate a different response"
+            title={isCollaborative ? '重新展开（Director + Writer）' : '生成另一版回复'}
           >
             <RotateCcw class="h-4 w-4" />
           </Button>
@@ -1493,18 +1817,18 @@
             size="icon"
             onclick={() => ui.triggerRegenerateNarration(entry.id)}
             class="h-7 w-7 text-amber-500 hover:text-amber-600"
-            title="Generate a different response"
+            title={isCollaborative ? '重新展开（Director + Writer）' : '生成另一版回复'}
           >
             <RotateCcw class="h-4 w-4" />
           </Button>
         {/if}
-        {#if canBranch}
+        {#if canBranch || canBranchFromNarration}
           <Button
             variant="text"
             size="icon"
             onclick={() => (isBranching = true)}
             class="hidden h-7 w-7 text-amber-500 hover:text-amber-600 sm:flex"
-            title="Branch from here"
+            title="从这里创建分支"
           >
             <GitBranch class="h-4 w-4" />
           </Button>
@@ -1515,7 +1839,7 @@
             size="icon"
             onclick={() => (isCreatingCheckpoint = true)}
             class="hidden h-7 w-7 text-blue-500 hover:text-blue-600 sm:flex"
-            title="Create checkpoint"
+            title="创建检查点"
           >
             <Bookmark class="h-4 w-4" />
           </Button>
@@ -1541,7 +1865,10 @@
             variant="text"
             size="icon"
             onclick={handleGenerateStoryImages}
-            disabled={ui.isGenerating || isGeneratingStoryImages || hasEmbeddedImages}
+            disabled={ui.isGenerating ||
+              isGeneratingStoryImages ||
+              hasEmbeddedImages ||
+              !!imageConfigurationIssue}
             class="text-muted-foreground hover:text-foreground hidden h-7 w-7 sm:flex"
             title={storyImagesLabel}
           >
@@ -1558,7 +1885,7 @@
           onclick={handleCopyContent}
           class="text-muted-foreground hover:text-foreground hidden h-7 w-7 sm:flex"
           title={copyLabel}
-          aria-label={isCopied ? 'Message copied' : copyLabel}
+          aria-label={isCopied ? '已复制内容' : copyLabel}
         >
           {@render copyIcon()}
         </Button>
@@ -1568,7 +1895,7 @@
           onclick={startEdit}
           disabled={entriesLocked}
           class="text-muted-foreground hover:text-foreground h-7 w-7"
-          title={entriesLocked ? 'Cannot edit during generation or retry' : 'Edit'}
+          title={entriesLocked ? '生成或重试期间暂不可编辑' : '编辑'}
         >
           <Pencil class="h-4 w-4" />
         </Button>
@@ -1578,7 +1905,7 @@
           onclick={() => (isDeleting = true)}
           disabled={entriesLocked}
           class="text-muted-foreground h-7 w-7 hover:text-red-500"
-          title={entriesLocked ? 'Cannot delete during generation or retry' : 'Delete'}
+          title={entriesLocked ? '生成或重试期间暂不可删除' : '删除'}
         >
           <Trash2 class="h-4 w-4" />
         </Button>
@@ -1589,8 +1916,8 @@
                 variant="text"
                 size="icon"
                 class="text-muted-foreground hover:text-foreground h-7 w-7 sm:hidden"
-                title="More actions"
-                aria-label="More actions"
+                title="更多操作"
+                aria-label="更多操作"
                 {...props}
               >
                 <MoreVertical class="h-4 w-4" />
@@ -1598,28 +1925,31 @@
             {/snippet}
           </DropdownMenu.Trigger>
           <DropdownMenu.Content align="end" class="max-h-[70vh] overflow-y-auto">
-            {#if canBranch}
+            {#if canBranch || canBranchFromNarration}
               <DropdownMenu.Item onclick={() => (isBranching = true)}>
                 <GitBranch class="h-4 w-4" />
-                Branch from here
+                从这里创建分支
               </DropdownMenu.Item>
             {/if}
             {#if canCreateCheckpoint}
               <DropdownMenu.Item onclick={() => (isCreatingCheckpoint = true)}>
                 <Bookmark class="h-4 w-4" />
-                Create checkpoint
+                创建检查点
               </DropdownMenu.Item>
             {/if}
             <!-- Static label and icon: selecting an item closes the menu, so the "Copied!"
                  state would never be on screen. The toast is the feedback here. -->
             <DropdownMenu.Item onclick={handleCopyContent}>
               <Copy class="h-4 w-4" />
-              Copy message text
+              复制正文
             </DropdownMenu.Item>
             {#if canGenerateStoryImages}
               <DropdownMenu.Item
                 onclick={handleGenerateStoryImages}
-                disabled={ui.isGenerating || isGeneratingStoryImages || hasEmbeddedImages}
+                disabled={ui.isGenerating ||
+                  isGeneratingStoryImages ||
+                  hasEmbeddedImages ||
+                  !!imageConfigurationIssue}
               >
                 {#if isGeneratingStoryImages}
                   <Loader2 class="h-4 w-4 animate-spin" />
@@ -1638,7 +1968,7 @@
               </div>
               <DropdownMenu.Group>
                 <DropdownMenu.GroupHeading class="px-2 py-1.5 text-sm font-medium">
-                  Response info
+                  回复信息
                 </DropdownMenu.GroupHeading>
                 <div class="w-56 px-2 pb-1.5 text-xs">
                   {@render responseInfoRows()}
@@ -1664,31 +1994,69 @@
         <div class="flex gap-2">
           <Button size="sm" onclick={saveEdit} class="h-9 px-3">
             <Check class="mr-1.5 h-4 w-4" />
-            Save
+            保存
           </Button>
           <Button variant="secondary" size="sm" onclick={cancelEdit} class="h-9 px-3">
             <X class="mr-1.5 h-4 w-4" />
-            Cancel
+            取消
           </Button>
         </div>
-        <p class="text-muted-foreground hidden text-xs sm:block">
-          Ctrl+Enter to save, Esc to cancel
-        </p>
+        <p class="text-muted-foreground hidden text-xs sm:block">Ctrl+Enter 保存，Esc 取消</p>
         {#if canSaveAndRegenerate}
           <p class="hidden items-center gap-1 text-xs text-amber-500/80 sm:flex">
-            Regenerate narration after significant changes
+            修改较大时重新生成正文
             <RotateCcw class="h-3 w-3" />
           </p>
         {/if}
       </div>
     {:else if isDeleting}
       <div class="space-y-2">
-        <p class="text-muted-foreground text-sm">Delete this entry?</p>
+        <p class="text-muted-foreground text-sm">
+          {#if isCollaborative}
+            删除此消息及当前分支后续内容，并回滚相应人物、地点、物品、剧情节点和故事时间状态。
+          {:else}
+            删除这一段内容？
+          {/if}
+        </p>
+        {#if isCollaborative}
+          <p class="text-muted-foreground text-xs">
+            将删除 {deletionEntries.length} 条消息、{deletionChapterCount} 个派生章节；状态记录：{deletionGaps.length ===
+            0
+              ? '完整'
+              : `缺少 ${deletionGaps.length} 条`}。
+          </p>
+        {/if}
         <div class="flex gap-2">
-          <Button variant="destructive" size="sm" onclick={confirmDelete} class="h-9 px-3">
+          <Button
+            variant="destructive"
+            size="sm"
+            onclick={confirmDelete}
+            disabled={isCollaborative && deletionGaps.length > 0}
+            class="h-9 px-3"
+          >
             <Trash2 class="mr-1.5 h-4 w-4" />
-            Delete
+            删除
           </Button>
+          {#if isCollaborative && deletionGaps.length > 0 && rebuildAnchor}
+            <Button
+              variant="secondary"
+              size="sm"
+              disabled={isRebuildingState}
+              onclick={async () => {
+                isRebuildingState = true
+                try {
+                  rebuildDraft = await story.createCollaborativeStateRebuildDraft(rebuildAnchor!.id)
+                  deleteAfterRebuild = true
+                  isDeleting = false
+                } finally {
+                  isRebuildingState = false
+                }
+              }}
+              class="h-9 px-3"
+            >
+              重建删除前状态
+            </Button>
+          {/if}
           <Button
             variant="secondary"
             size="sm"
@@ -1696,17 +2064,17 @@
             class="h-9 px-3"
           >
             <X class="mr-1.5 h-4 w-4" />
-            Cancel
+            取消
           </Button>
         </div>
       </div>
     {:else if isBranching}
       <div class="space-y-2">
-        <p class="text-muted-foreground text-sm">Create a branch from this point:</p>
+        <p class="text-muted-foreground text-sm">从此处创建分支：</p>
         <Input
           type="text"
           class="h-9 text-sm"
-          placeholder="Branch name..."
+          placeholder="分支名称…"
           bind:value={branchName}
           onkeydown={(e) => {
             if (e.key === 'Enter') handleCreateBranch()
@@ -1721,24 +2089,22 @@
             class="h-9 bg-amber-500 px-3 text-white hover:bg-amber-600"
           >
             <GitBranch class="mr-1.5 h-4 w-4" />
-            Create Branch
+            创建分支
           </Button>
           <Button variant="secondary" size="sm" onclick={cancelBranch} class="h-9 px-3">
             <X class="mr-1.5 h-4 w-4" />
-            Cancel
+            取消
           </Button>
         </div>
-        <p class="text-muted-foreground text-xs">
-          This will create a new timeline from this checkpoint.
-        </p>
+        <p class="text-muted-foreground text-xs">新分支将继承此正文结束时的故事状态。</p>
       </div>
     {:else if isCreatingCheckpoint}
       <div class="space-y-2">
-        <p class="text-muted-foreground text-sm">Create a checkpoint at this point:</p>
+        <p class="text-muted-foreground text-sm">在此处创建检查点：</p>
         <Input
           type="text"
           class="h-9 text-sm"
-          placeholder="Checkpoint name..."
+          placeholder="检查点名称…"
           bind:value={checkpointName}
           onkeydown={(e) => {
             if (e.key === 'Enter') handleCreateCheckpoint()
@@ -1753,18 +2119,180 @@
             class="h-9 bg-blue-500 px-3 text-white hover:bg-blue-600"
           >
             <Bookmark class="mr-1.5 h-4 w-4" />
-            Create Checkpoint
+            创建检查点
           </Button>
           <Button variant="secondary" size="sm" onclick={cancelCheckpoint} class="h-9 px-3">
             <X class="mr-1.5 h-4 w-4" />
-            Cancel
+            取消
           </Button>
         </div>
         <p class="text-muted-foreground text-xs">
-          Checkpoints save the current story state and allow branching from this point.
+          检查点保存当前故事状态，便于以后从此处创建分支。
         </p>
       </div>
     {:else}
+      {#if novelMetadata?.directorDiagnostics?.directorFallback}
+        <details class="mb-3 rounded-md border border-red-500/40 bg-red-500/5 px-3 py-2" open>
+          <summary class="cursor-pointer text-sm text-red-600 dark:text-red-400">
+            Director 调用失败（Writer 已继续）
+          </summary>
+          <div class="text-muted-foreground mt-2 space-y-1 text-sm">
+            <p class="whitespace-pre-wrap">
+              {novelMetadata.directorDiagnostics.errorMessage ??
+                novelMetadata.directorDiagnostics.reason ??
+                'Director 未返回内容'}
+            </p>
+            <p class="text-xs">
+              Profile：{novelMetadata.directorDiagnostics.profileName ??
+                novelMetadata.directorDiagnostics.profileId ??
+                '未知'} · 模型：{novelMetadata.directorDiagnostics.model ?? '未知'} · 耗时：{novelMetadata
+                .directorDiagnostics.elapsedMs ?? 0} ms
+            </p>
+            {#if novelMetadata.directorDiagnostics.partialResponse}
+              <div class="bg-background/60 mt-2 rounded border border-red-500/20 p-2">
+                <div class="mb-1 text-xs font-medium">失败前收到的 Director 原文</div>
+                <p class="whitespace-pre-wrap">
+                  {novelMetadata.directorDiagnostics.partialResponse}
+                </p>
+              </div>
+            {/if}
+          </div>
+        </details>
+      {:else if novelMetadata && entry.metadata?.novelUserSummary}
+        <details class="border-border bg-muted/20 mb-3 rounded-md border px-3 py-2">
+          <summary class="text-muted-foreground cursor-pointer text-sm">本轮 Director 原文</summary>
+          <p class="text-muted-foreground mt-2 text-sm whitespace-pre-wrap">
+            {entry.metadata.novelUserSummary}
+          </p>
+        </details>
+      {/if}
+      {#if novelMetadata}
+        <div class="text-muted-foreground mb-3 text-xs" aria-live="polite">
+          <span>篇幅目标：{novelMetadata.requestedLength}</span>
+          {#if novelMetadata.actualChineseCharacters !== undefined}
+            <span> · 实际中文字符：{novelMetadata.actualChineseCharacters}</span>
+          {/if}
+          <span>
+            · 输出截断：{novelMetadata.outputTruncated === undefined
+              ? '未知'
+              : novelMetadata.outputTruncated
+                ? '是'
+                : '否（模型正常结束）'}</span
+          >
+          {#if novelMetadata.shortStopReason}
+            <p class="mt-1 text-amber-600 dark:text-amber-400">{novelMetadata.shortStopReason}</p>
+          {/if}
+          {#if novelMetadata.outputMetricsWarning}
+            <p class="mt-1 text-amber-600 dark:text-amber-400">
+              {novelMetadata.outputMetricsWarning}
+            </p>
+          {/if}
+        </div>
+      {/if}
+      {#if isCollaborative && maintenance}
+        <div
+          class="mb-3 flex items-center justify-between gap-3 rounded border px-3 py-2 text-xs {maintenance.status ===
+          'failed'
+            ? 'border-red-500/40 bg-red-500/5'
+            : 'border-border'}"
+          aria-live="polite"
+        >
+          <span class="text-muted-foreground">
+            事实维护：{maintenance.status === 'applied'
+              ? '成功'
+              : maintenance.status === 'no_changes'
+                ? '无变化'
+                : maintenance.status === 'disabled'
+                  ? '已关闭'
+                  : canRetryStateExtraction
+                    ? '失败，可单独重试'
+                    : '失败，需要重建'}
+            {#if maintenance.error}
+              · {maintenance.error}{/if}
+            {#if maintenance.warning}
+              · {maintenance.warning}{/if}
+          </span>
+          {#if canRetryStateExtraction}
+            <Button
+              size="sm"
+              variant="secondary"
+              class="h-7 shrink-0 px-2"
+              disabled={isRetryingState}
+              onclick={retryStateExtraction}
+            >
+              {#if isRetryingState}<Loader2 class="mr-1 h-3 w-3 animate-spin" />{/if}
+              重试提取
+            </Button>
+          {/if}
+          {#if maintenance.status === 'failed' && factStateExtractorEnabled && !canRetryStateExtraction}
+            <Button
+              size="sm"
+              variant="secondary"
+              class="h-7 shrink-0 px-2"
+              disabled={isRebuildingState}
+              onclick={createStateRebuildDraft}
+            >
+              {#if isRebuildingState}<Loader2 class="mr-1 h-3 w-3 animate-spin" />{/if}
+              重建到此处
+            </Button>
+          {/if}
+        </div>
+      {/if}
+      {#if rebuildDraft}
+        <div class="border-border bg-muted/20 mb-3 rounded border p-3 text-sm">
+          <p class="font-medium">AI 状态重建预览</p>
+          <p class="text-muted-foreground mt-1 text-xs">
+            AI 推断，不是精确历史还原。范围截至当前正文，确认前不会修改数据库。
+          </p>
+          <div class="mt-3 grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
+            <span>新增 {rebuildDraft.diff.create.length}</span>
+            <span>修改 {rebuildDraft.diff.update.length}</span>
+            <span>删除 {rebuildDraft.diff.delete.length}</span>
+            <span>不确定 {rebuildDraft.diff.uncertain.length}</span>
+          </div>
+          {#if rebuildDraft.diff.uncertain.length > 0}
+            <p class="mt-2 text-xs text-red-600 dark:text-red-400">
+              存在不确定实体，必须重新生成无歧义草稿后才能确认。
+            </p>
+          {/if}
+          <details class="mt-2">
+            <summary class="text-muted-foreground cursor-pointer text-xs">查看完整差异</summary>
+            <pre
+              class="bg-background mt-2 max-h-64 overflow-auto rounded p-2 text-xs whitespace-pre-wrap">{JSON.stringify(
+                rebuildDraft.diff,
+                null,
+                2,
+              )}</pre>
+          </details>
+          <div class="mt-3 flex gap-2">
+            <Button
+              size="sm"
+              disabled={isRebuildingState || rebuildDraft.diff.uncertain.length > 0}
+              onclick={confirmStateRebuild}>确认重建快照</Button
+            >
+            <Button size="sm" variant="secondary" onclick={() => (rebuildDraft = null)}>取消</Button
+            >
+          </div>
+        </div>
+      {/if}
+      {#if canGenerateStoryImages}
+        <ImageIdentityChoice
+          conflict={imageConflict}
+          onselect={(name, id) => {
+            selectedImageLore = { ...selectedImageLore, [name]: id }
+            imageConflict = null
+            handleGenerateStoryImages()
+          }}
+        />
+        <ImagePromptDetails diagnostic={imageDiagnostic} />
+      {/if}
+      {#if canGenerateStoryImages && imageConfigurationIssue}
+        <div class="mb-2 flex flex-wrap items-center gap-2 text-xs text-amber-600" role="status">
+          <span>{imageConfigurationIssue}</span>
+          <Button size="sm" variant="outline" onclick={openImageSettings}>前往对应设置</Button>
+        </div>
+      {/if}
+
       <!-- Reasoning content panel (between header and story text) -->
       {#if entry.reasoning}
         <ReasoningBlock
@@ -1779,7 +2307,8 @@
         bind:this={storyTextContainer}
         class="story-text prose-content relative"
         class:visual-prose-container={visualProseMode && entry.type === 'narration'}
-        class:dialogue-highlight={!visualProseMode}
+        class:dialogue-highlight={settings.uiSettings.highlightDialogue}
+        style:--dialogue-color={settings.uiSettings.dialogueColor || 'var(--text-accent)'}
         class:linking-mode={!!selectedOrphanId || !!draggingImageId}
         onclick={handleContentClick}
         ondragover={handleDragOver}
@@ -1790,7 +2319,7 @@
         }}
         tabindex="0"
         role="button"
-        aria-label="Expand embedded image or interact with story content"
+        aria-label="展开内嵌图片或与故事内容交互"
       >
         {#if sentenceHighlightRects.length > 0 && containerRect}
           {#each sentenceHighlightRects as rect, i (i)}
@@ -1807,7 +2336,9 @@
         {/if}
 
         {#if entry.type === 'narration'}
-          {@const displayContent = entry.translatedContent ?? entry.content}
+          {@const displayContent = storyImagesVisible
+            ? (entry.translatedContent ?? entry.content)
+            : stripPicTags(entry.translatedContent ?? entry.content)}
           {#if visualProseMode}
             <!-- Visual Prose mode (handles both agentic and inline images) -->
             {@html processVisualProseStoryContent(
@@ -1816,6 +2347,7 @@
               entry.id,
               regeneratingImageIds,
               picOptions,
+              settings.uiSettings.highlightDialogue,
             )}
           {:else}
             <!-- Standard mode (handles both agentic and inline images) -->
@@ -1842,7 +2374,7 @@
             <div
               class="bg-primary/90 animate-bounce rounded-full px-3 py-1.5 text-xs font-medium text-white"
             >
-              Tap a paragraph to link image
+              点击段落以关联图片
             </div>
           </div>
         {/if}
@@ -1854,16 +2386,14 @@
           <div class="mb-2 flex items-center gap-2">
             <ImageIcon class="text-muted-foreground h-3.5 w-3.5" />
             <span class="text-muted-foreground text-[10px] font-bold tracking-wider uppercase">
-              Unplaced Illustrations
+              尚未放置的插图
             </span>
-            <span class="text-muted-foreground/60 text-[10px] italic">
-              (Drag to a paragraph to link)
-            </span>
+            <span class="text-muted-foreground/60 text-[10px] italic"> （拖到段落上以关联） </span>
           </div>
           <div
             class="scrollbar-hide flex gap-3 overflow-x-auto pb-2"
             role="list"
-            aria-label="Unplaced illustrations gallery"
+            aria-label="待放置插图库"
           >
             {#each orphanedImages as img (img.id)}
               <div
@@ -1897,7 +2427,7 @@
                 >
                   <img
                     src="data:image/png;base64,{img.imageData}"
-                    alt="Unplaced illustration"
+                    alt="待放置插图"
                     class="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110"
                   />
                   <div
@@ -1928,7 +2458,7 @@
             class="h-8 border-red-500/30 px-3 text-red-500 hover:border-red-400/50 hover:bg-red-500/10 hover:text-red-400"
           >
             <RefreshCw class="h-3.5 w-3.5" />
-            Retry
+            重试
           </Button>
           <Button
             variant="outline"
@@ -1938,7 +2468,7 @@
             class="text-muted-foreground border-border h-8 px-3 hover:border-red-400/50 hover:bg-red-500/10 hover:text-red-400"
           >
             <Trash2 class="h-3.5 w-3.5" />
-            Dismiss
+            关闭提示
           </Button>
         </div>
       {/if}
@@ -1975,7 +2505,7 @@
             ? 'bg-primary text-primary-foreground'
             : 'text-surface-400 hover:text-surface-200'}"
         >
-          From chat
+          来自聊天记录
         </button>
         <button
           type="button"
@@ -1985,7 +2515,7 @@
             ? 'bg-primary text-primary-foreground'
             : 'text-surface-400 hover:text-surface-200'}"
         >
-          Custom
+          自定义
         </button>
       </div>
 
@@ -1994,15 +2524,15 @@
         <p
           class="text-surface-400 border-surface-700 line-clamp-3 rounded border border-dashed px-2.5 py-2 text-xs leading-relaxed"
         >
-          {viewingImagePrompt || 'No prompt available'}
+          {viewingImagePrompt || '没有可用提示词'}
         </p>
       {:else}
         <!-- Editable custom prompt -->
         <!-- svelte-ignore a11y_label_has_associated_control -->
-        <label class="text-surface-400 mb-1.5 block text-xs">Custom Prompt</label>
+        <label class="text-surface-400 mb-1.5 block text-xs">自定义提示词</label>
         <Textarea
           bind:value={viewingImagePrompt}
-          placeholder="Describe the image you want to generate..."
+          placeholder="描述你想生成的图片…"
           rows={3}
           class="resize-none text-sm"
         />
@@ -2019,7 +2549,7 @@
         onclick={() => (isViewingImage = false)}
         class="h-8 text-xs"
       >
-        Close
+        关闭
       </Button>
       <Button
         size="sm"
@@ -2028,7 +2558,7 @@
         class="h-8 gap-1.5 text-xs"
       >
         <RefreshCw class="h-3.5 w-3.5" />
-        Regenerate
+        重新生成
       </Button>
     </div>
   </ResponsiveModal.Content>

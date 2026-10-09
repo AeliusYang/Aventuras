@@ -102,24 +102,22 @@
 
   // POV options for summary
   const povOptions: POVOption[] = [
-    { id: 'first', label: '1st Person', example: '' },
-    { id: 'second', label: '2nd Person', example: '' },
-    { id: 'third', label: '3rd Person', example: '' },
+    { id: 'first', label: '第一人称', example: '' },
+    { id: 'second', label: '第二人称', example: '' },
+    { id: 'third', label: '第三人称', example: '' },
   ]
 </script>
 
 <div class="space-y-4 p-1">
-  <p class="text-muted-foreground">
-    Give your story a title and either write your own opening scene or generate one with AI.
-  </p>
+  <p class="text-muted-foreground">为故事命名，并自行撰写开场或使用 AI 生成。</p>
 
   <div class="space-y-2">
-    <Label>Story Title</Label>
+    <Label>故事标题</Label>
     <Input
       type="text"
       value={storyTitle}
       oninput={(e) => onTitleChange(e.currentTarget.value)}
-      placeholder="Enter a title for your adventure..."
+      placeholder="输入故事标题…"
     />
   </div>
 
@@ -130,7 +128,7 @@
         <div class="flex items-center justify-between">
           <div class="flex items-center gap-2">
             <FileJson class="text-accent-400 h-4 w-4" />
-            <h4 class="text-foreground font-medium">Imported Opening Scene</h4>
+            <h4 class="text-foreground font-medium">导入的开场</h4>
           </div>
           <Button
             variant="ghost"
@@ -138,16 +136,14 @@
             class="text-muted-foreground hover:text-foreground h-auto p-0 text-xs"
             onclick={onClearCardOpening}
           >
-            Clear
+            清空
           </Button>
         </div>
 
         <!-- Greeting Selection (if alternate greetings exist) -->
         {#if cardImportedAlternateGreetings.length > 0}
           <div>
-            <Label class="text-muted-foreground mb-2 block text-xs font-medium"
-              >Select Opening</Label
-            >
+            <Label class="text-muted-foreground mb-2 block text-xs font-medium">选择开场</Label>
             <div class="flex flex-wrap gap-2">
               <Button
                 size="sm"
@@ -155,7 +151,7 @@
                 class="h-7 text-xs"
                 onclick={() => onSelectedGreetingChange(0)}
               >
-                Default
+                默认
               </Button>
               {#each cardImportedAlternateGreetings as _, i (i)}
                 <Button
@@ -164,7 +160,7 @@
                   class="h-7 text-xs"
                   onclick={() => onSelectedGreetingChange(i + 1)}
                 >
-                  Alt {i + 1}
+                  备选 {i + 1}
                 </Button>
               {/each}
             </div>
@@ -194,13 +190,13 @@
             >
               {'{{user}}'}
             </Badge>
-            will be replaced with your character's name
+            将替换为你的角色姓名
           </p>
         {/if}
 
         <Button size="sm" class="gap-2" onclick={onUseCardOpening}>
           <Check class="h-3 w-3" />
-          Use This Opening
+          使用此开场
         </Button>
       </Card.Content>
     </Card.Root>
@@ -210,28 +206,26 @@
   {#if storyTitle.trim()}
     <Card.Root class="bg-surface-900 border-surface-700">
       <Card.Content class="space-y-3 p-4">
-        <h4 class="text-foreground font-medium">Opening Scene</h4>
-        <p class="text-muted-foreground text-sm">
-          Write your own opening scene or generate one with AI
-        </p>
+        <h4 class="text-foreground font-medium">故事开场</h4>
+        <p class="text-muted-foreground text-sm">自行撰写开场，或使用 AI 生成</p>
 
         <!-- Manual Text Entry -->
         <div class="space-y-2">
-          <Label>Write Your Own Opening</Label>
+          <Label>自行撰写开场</Label>
           <Textarea
             value={manualOpeningText}
             oninput={(e) => onManualOpeningChange(e.currentTarget.value)}
-            placeholder="Write the opening scene of your story here... Describe the setting, introduce your character, set the mood. This will be the first entry in your adventure."
+            placeholder="在这里撰写故事开场…可以描绘场景、引入角色、确定氛围。这将成为故事的第一段正文。"
             class="min-h-[140px] text-sm"
             rows={6}
             disabled={isGeneratingOpening || isRefiningOpening || generatedOpening !== null}
           />
           {#if generatedOpening}
             <p class="text-xs text-amber-400">
-              AI-generated opening active. Clear it below to write your own.
+              当前使用 AI 生成的开场。清除下方内容后，可自行撰写。
             </p>
           {:else if manualOpeningText.trim()}
-            <p class="text-xs text-green-400">✓ Custom opening ready</p>
+            <p class="text-xs text-green-400">✓ 自定义开场已准备好</p>
           {/if}
         </div>
 
@@ -244,7 +238,7 @@
             onclick={() => (showExpandOptions = !showExpandOptions)}
           >
             <Sparkles class="h-3.5 w-3.5" />
-            {showExpandOptions ? 'Hide AI Options' : 'Expand with AI'}
+            {showExpandOptions ? '收起 AI 选项' : '用 AI 扩写'}
             <ChevronDown
               class="h-3 w-3 transition-transform {showExpandOptions ? 'rotate-180' : ''}"
             />
@@ -258,12 +252,12 @@
             transition:slide={{ duration: 150 }}
           >
             <div class="space-y-1.5">
-              <Label for="opening-ai-guidance" class="text-xs">AI Guidance (Optional)</Label>
+              <Label for="opening-ai-guidance" class="text-xs">AI 创作要求（选填）</Label>
               <Textarea
                 id="opening-ai-guidance"
                 value={openingGuidance}
                 oninput={(e) => onGuidanceChange(e.currentTarget.value)}
-                placeholder="e.g., Start with a dramatic confrontation, set the scene in a rainy alley..."
+                placeholder="例如：以一场紧张的对峙开场，将场景设在雨中的小巷…"
                 class="mt-1 h-16 resize-none text-sm"
               />
             </div>
@@ -277,10 +271,10 @@
               >
                 {#if isGeneratingOpening}
                   <Loader2 class="h-3.5 w-3.5 animate-spin" />
-                  Generating...
+                  正在生成…
                 {:else}
                   <Sparkles class="h-3.5 w-3.5" />
-                  {generatedOpening ? 'Regenerate Opening' : 'Generate Opening with AI'}
+                  {generatedOpening ? '重新生成开场' : '用 AI 生成开场'}
                 {/if}
               </Button>
               {#if generatedOpening}
@@ -289,7 +283,7 @@
                   size="icon"
                   class="shrink-0"
                   onclick={onClearGenerated}
-                  title="Clear AI-generated opening"
+                  title="清除 AI 生成的开场"
                 >
                   <X class="h-4 w-4" />
                 </Button>
@@ -299,14 +293,12 @@
         {/if}
 
         {#if !generatedOpening && !isGeneratingOpening && !manualOpeningText.trim() && !cardImportedFirstMessage}
-          <span class="text-center text-sm text-amber-400">
-            Either write your own opening or generate one with AI
-          </span>
+          <span class="text-center text-sm text-amber-400"> 请自行撰写开场，或使用 AI 生成 </span>
         {/if}
       </Card.Content>
     </Card.Root>
   {:else}
-    <p class="text-muted-foreground -mt-3 text-sm">Enter a title to continue*</p>
+    <p class="text-muted-foreground -mt-3 text-sm">请填写标题后继续*</p>
   {/if}
 
   {#if openingError}
@@ -327,10 +319,10 @@
                 size="sm"
                 class="text-muted-foreground hover:text-foreground h-auto gap-1 px-2 py-1 text-xs"
                 onclick={onStartEdit}
-                title="Edit the opening text"
+                title="编辑开场正文"
               >
                 <PenTool class="h-3 w-3" />
-                Edit
+                编辑
               </Button>
               <Button
                 variant="ghost"
@@ -338,14 +330,14 @@
                 class="text-accent-400 hover:text-accent-300 hover:bg-accent-950/20 h-auto gap-1 px-2 py-1 text-xs"
                 onclick={onRefineOpening}
                 disabled={isRefiningOpening || isGeneratingOpening}
-                title="Refine using the current opening text"
+                title="根据当前开场继续润色"
               >
                 {#if isRefiningOpening}
                   <Loader2 class="h-3 w-3 animate-spin" />
-                  Refining...
+                  正在润色…
                 {:else}
                   <Sparkles class="h-3 w-3" />
-                  Refine Further
+                  继续润色
                 {/if}
               </Button>
             </div>
@@ -359,9 +351,9 @@
             rows={6}
           />
           <div class="flex justify-end gap-2">
-            <Button variant="secondary" size="sm" onclick={onCancelEdit}>Cancel</Button>
+            <Button variant="secondary" size="sm" onclick={onCancelEdit}>取消</Button>
             <Button size="sm" onclick={onSaveEdit} disabled={!openingDraft?.trim()}>
-              Save Changes
+              保存修改
             </Button>
           </div>
         {:else}
@@ -380,41 +372,41 @@
   <!-- Summary -->
   <Card.Root class="bg-surface-800 border-surface-700">
     <Card.Content class="space-y-2 p-4 text-sm">
-      <h4 class="text-foreground font-medium">Story Summary</h4>
+      <h4 class="text-foreground font-medium">故事概览</h4>
       <div class="text-muted-foreground grid grid-cols-2 gap-2">
         <div>
-          <strong class="text-foreground">Mode:</strong>
-          {selectedMode === 'adventure' ? 'Adventure' : 'Creative Writing'}
+          <strong class="text-foreground">模式：</strong>
+          {selectedMode === 'adventure' ? '冒险模式' : '中文写作'}
         </div>
         <div>
-          <strong class="text-foreground">Genre:</strong>
+          <strong class="text-foreground">题材：</strong>
           {selectedGenre === 'custom' ? customGenre : selectedGenre}
         </div>
         <div>
-          <strong class="text-foreground">POV:</strong>
+          <strong class="text-foreground">人称：</strong>
           {povOptions.find((p) => p.id === selectedPOV)?.label}
         </div>
         <div>
-          <strong class="text-foreground">Tense:</strong>
+          <strong class="text-foreground">时态：</strong>
           {tenseOptions.find((t) => t.id === selectedTense)?.label}
         </div>
         {#if expandedSetting}
           <div class="col-span-2">
-            <strong class="text-foreground">Setting:</strong>
+            <strong class="text-foreground">设定：</strong>
             {expandedSetting.name}
           </div>
         {/if}
         {#if protagonist}
           <div class="col-span-2">
-            <strong class="text-foreground">Protagonist:</strong>
+            <strong class="text-foreground">主角：</strong>
             {protagonist.name}
           </div>
         {/if}
         {#if importedEntriesCount > 0}
           <div class="col-span-2 flex items-center gap-2">
             <Book class="text-accent-400 h-4 w-4" />
-            <strong class="text-foreground">Lorebook:</strong>
-            {importedEntriesCount} entries to import
+            <strong class="text-foreground">世界书：</strong>
+            {importedEntriesCount} 个待导入条目
           </div>
         {/if}
       </div>

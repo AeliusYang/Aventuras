@@ -5,6 +5,7 @@
  * Services receive a service ID and resolve presets dynamically via settings.getServicePresetId().
  */
 
+import { CollaborativeService } from '../generation/CollaborativeService'
 import { settings } from '$lib/stores/settings.svelte'
 import { NarrativeService } from '../generation/NarrativeService'
 import { ClassifierService } from '../generation/ClassifierService'
@@ -28,6 +29,15 @@ import { BackgroundImageService } from '../image/BackgroundImageService'
  * Factory class for creating AI services.
  */
 export class ServiceFactory {
+  createNovelPlanner() {
+    return new CollaborativeService('collaborativeNarrativePlanner')
+  }
+  createNovelScenePlanner() {
+    return new CollaborativeService('collaborativeSceneDirector')
+  }
+  createNovelReviewer() {
+    return new CollaborativeService('collaborativePatternReviewer')
+  }
   // ===== Service Instance Creators =====
 
   /**

@@ -13,11 +13,18 @@ import type { VisualDescriptors } from '$lib/types'
 import type { ServiceId } from '$lib/stores/settings.svelte'
 import { BaseAIService } from '../BaseAIService'
 import { ContextBuilder } from '$lib/services/context'
+import type { ImageEvidence } from '$lib/services/image/generationContext'
+import type { ImagePromptDiagnostic } from '$lib/services/image/diagnostics'
+import { IMAGE_EVIDENCE_RULES } from './evidenceRules'
+import { getImageAnalysisConfigurationIssue, imageAnalysisBinding } from './analysisConfig'
 import { createLogger } from '$lib/log'
 import {
   sceneAnalysisResultSchema,
   imageableSceneSchema,
   type ImageableScene,
+  portraitPreparationSchema,
+  manualSceneAnalysisSchema,
+  type PortraitPreparation,
 } from '../sdk/schemas/imageanalysis'
 
 const log = createLogger('ImageAnalysis')
@@ -58,6 +65,10 @@ export interface ImageAnalysisContext {
   translationLanguage?: string
   /** Generate images with character references */
   referenceMode: boolean
+  /** A user-requested single illustration, never a request to create character portraits. */
+  manual?: boolean
+  evidence?: ImageEvidence
+  onDiagnostic?: (diagnostic: ImagePromptDiagnostic) => void
 }
 
 /**
@@ -70,6 +81,41 @@ export class ImageAnalysisService extends BaseAIService {
    */
   constructor(serviceId: ServiceId) {
     super(serviceId)
+  }
+
+  async preparePortrait(
+    evidence: ImageEvidence,
+    variables: Record<string, unknown>,
+    onDiagnostic?: (diagnostic: ImagePromptDiagnostic) => void,
+    canContinue?: () => boolean,
+  ): Promise<{ result: PortraitPreparation; diagnostic: ImagePromptDiagnostic }> {
+    const issue = getImageAnalysisConfigurationIssue()
+    if (issue) throw new Error(issue)
+    const ctx = await ContextBuilder.forPack(evidence.storyId)
+    ctx.add({ ...variables, imageEvidence: evidence.context })
+    const rendered = await ctx.inspectTemplate('image-portrait-preparation')
+    if (rendered.renderErrors.length || !rendered.system.trim() || !rendered.user.trim())
+      throw new Error('肖像资料整理模板为空或渲染失败，请检查提示词包。')
+    const diagnostic: ImagePromptDiagnostic = {
+      evidence,
+      templateId: 'image-portrait-preparation',
+      packId: rendered.packId,
+      resolvedTemplateId: rendered.systemResolution?.templateId,
+      templateSource: rendered.systemSource,
+      ...imageAnalysisBinding(),
+      system: `${rendered.system}\n\n${IMAGE_EVIDENCE_RULES}`,
+      user: rendered.user,
+      inferredDetails: [],
+    }
+    onDiagnostic?.(diagnostic)
+    if (canContinue?.() === false) throw new Error('人物或故事已变化，本次请求已停止。')
+    const result = await this.generate(
+      portraitPreparationSchema,
+      diagnostic.system,
+      diagnostic.user,
+      'image-portrait-preparation',
+    )
+    return { result, diagnostic: { ...diagnostic, inferredDetails: result.inferredDetails } }
   }
 
   /**
@@ -113,7 +159,7 @@ ${context.translatedNarrative}`
     // Build context and render
     const ctx = await ContextBuilder.forPack(context.storyId)
     ctx.add({
-      imageStylePrompt: context.stylePrompt,
+      imageStylePrompt: context.manual ? '' : context.stylePrompt,
       characterDescriptors: characterDescriptors || 'No character visual descriptors available.',
       charactersWithPortraits: charactersWithPortraitsStr,
       charactersWithoutPortraits: charactersWithoutPortraitsStr,
@@ -121,13 +167,42 @@ ${context.translatedNarrative}`
       narrativeResponse: context.narrativeResponse,
       userAction: context.userAction,
       chatHistory: context.chatHistory || '',
-      lorebookContext: context.lorebookContext || '',
+      lorebookContext: context.manual ? '' : (context.lorebookContext ?? ''),
+      imageEvidence: context.evidence?.context ?? '',
       translatedNarrativeBlock,
     })
-    const { system, user: prompt } = await ctx.render(templateId)
+    const rendered = await ctx.inspectTemplate(templateId)
+    if (rendered.renderErrors.length) throw new Error('图片分析模板渲染失败，请检查提示词包。')
+    const system = context.manual
+      ? `${rendered.system}\n\n本次是用户主动请求的单张正文插图。只选择一个最适合的画面，generatePortrait 必须为 false；不得额外生成肖像。仅使用已有肖像作为参考，缺少肖像的人物用外貌描述呈现。sourceText 必须逐字摘取本次中文正文，不翻译原句；绘图 prompt 可用英文。\n${IMAGE_EVIDENCE_RULES}`
+      : rendered.system
+    const prompt = context.manual
+      ? `${rendered.user}${context.evidence?.context && !rendered.user.includes(context.evidence.context) ? `\n\n【生图依据（有来源的完整资料）】\n${context.evidence.context}` : ''}\n【画风，仅用于理解，调用方最终加入】\n${context.stylePrompt}`
+      : rendered.user
+    const diagnostic: ImagePromptDiagnostic | undefined = context.evidence
+      ? {
+          evidence: context.evidence,
+          templateId,
+          packId: rendered.packId,
+          resolvedTemplateId: rendered.systemResolution?.templateId,
+          templateSource: rendered.systemSource,
+          ...imageAnalysisBinding(),
+          system,
+          user: prompt,
+          inferredDetails: [],
+        }
+      : undefined
+    if (diagnostic) context.onDiagnostic?.(diagnostic)
 
     try {
-      const result = await this.generate(sceneAnalysisResultSchema, system, prompt, templateId)
+      const result = context.manual
+        ? await this.generate(manualSceneAnalysisSchema, system, prompt, templateId)
+        : await this.generate(sceneAnalysisResultSchema, system, prompt, templateId)
+      if (diagnostic)
+        context.onDiagnostic?.({
+          ...diagnostic,
+          inferredDetails: 'inferredDetails' in result ? (result.inferredDetails as string[]) : [],
+        })
 
       // Sort by priority (highest first)
       const sortedScenes = result.scenes.sort((a, b) => b.priority - a.priority)
@@ -147,7 +222,7 @@ ${context.translatedNarrative}`
         return recovered.sort((a, b) => b.priority - a.priority)
       }
       log('identifyScenes failed', error)
-      return []
+      throw error
     }
   }
 

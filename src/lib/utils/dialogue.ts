@@ -9,7 +9,8 @@
  *
  * The rules, deliberately small:
  *
- * - Three quote pairs: straight, typographic, and guillemets. Guillemets are not
+ * - Six quote pairs: straight, typographic, guillemets, and Chinese corner quotes.
+ *   Guillemets are not
  *   decoration: narration translated into Italian or French comes back with them.
  * - Single quotes are NOT dialogue. `don't`, `l'uomo` and English possessives make
  *   them unusable without a part-of-speech model.
@@ -28,7 +29,10 @@
 const QUOTE_PAIRS: ReadonlyArray<readonly [open: string, close: string]> = [
   ['"', '"'],
   ['“', '”'], // “ ”
+  ['‘', '’'], // ‘ ’
   ['«', '»'], // « »
+  ['「', '」'], // Chinese corner brackets
+  ['『', '』'], // Chinese white corner brackets
 ]
 
 const OPENERS = QUOTE_PAIRS.map(([open]) => open)

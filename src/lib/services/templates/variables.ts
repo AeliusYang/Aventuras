@@ -198,6 +198,44 @@ class VariableRegistry {
  * Registered for autocomplete and validation in the template editor.
  */
 export const RUNTIME_VARIABLES: VariableDefinition[] = [
+  {
+    name: 'requestedLength',
+    type: 'text',
+    category: 'runtime',
+    description: '本轮调用方已解析的中文正文篇幅；用户当轮要求优先于故事默认。',
+    required: false,
+  },
+  {
+    name: 'novelCharacterContext',
+    type: 'text',
+    category: 'runtime',
+    description:
+      '当前中文写作故事角色副本：description/personality/scenario/examples/history；缺失项明确标记，示例不是历史事实。',
+    required: false,
+  },
+  {
+    name: 'recentNovelProse',
+    type: 'text',
+    category: 'runtime',
+    description: '当前分支最近最多八段实际正文，整段保留；不含导演指令或被拒版本。',
+    required: false,
+  },
+  {
+    name: 'novelAgentContext',
+    type: 'text',
+    category: 'runtime',
+    description:
+      '本轮用户原文、调用方权威篇幅和完整导演原文；仅导演失败时补入临时用户历史、确认指导及拒绝版本，后者不是事实。',
+    required: false,
+  },
+  {
+    name: 'planningInput',
+    type: 'text',
+    category: 'runtime',
+    description:
+      '中文写作 Agent 的运行输入；可含 recentUserInputs、previousDirectorOutput、确认指导及当前事实。JSON 仅用于组织输入，不规定文本 Agent 的输出结构。',
+    required: false,
+  },
   // === Narrative Service ===
   {
     name: 'recentContent',
@@ -629,6 +667,13 @@ export const RUNTIME_VARIABLES: VariableDefinition[] = [
   },
 
   // === Image Services ===
+  {
+    name: 'imageEvidence',
+    type: 'text',
+    category: 'runtime',
+    description: '生图资料原文，包含来源及时间边界',
+    required: false,
+  },
   {
     name: 'imageStylePrompt',
     type: 'text',

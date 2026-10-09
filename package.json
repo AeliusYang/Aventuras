@@ -1,6 +1,6 @@
 {
   "name": "aventura",
-  "version": "0.7.9",
+  "version": "0.7.16",
   "description": "AI-powered adventure and creative writing frontend",
   "type": "module",
   "scripts": {
@@ -10,9 +10,9 @@
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
     "tauri": "tauri",
+    "pretest": "svelte-kit sync",
     "test": "vitest run",
     "test:watch": "vitest",
-    "release": "node scripts/release.js",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write \"**/*.{ts,js,svelte,json,css,html}\""

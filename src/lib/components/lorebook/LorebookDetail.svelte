@@ -45,13 +45,15 @@
   }
 
   const injectionLabels: Record<string, string> = {
-    always: 'Always Active',
-    keyword: 'Automatic (keywords + AI)',
-    never: 'Disabled',
+    always: '常驻',
+    keyword: '自动（关键词 + AI）',
+    never: '禁用',
   }
 
   const Icon = $derived(typeIcons[entry.type] || BookOpen)
   const colorClass = $derived(typeColors[entry.type] || 'text-surface-400 bg-surface-700')
+  const aliases = $derived([...new Set(entry.aliases)])
+  const keywords = $derived([...new Set(entry.injection.keywords)])
 
   // Lore management active state - disable editing actions
   const isLoreManagementActive = $derived(ui.loreManagementActive)
@@ -100,7 +102,7 @@
   }
 </script>
 
-<div class="flex h-full flex-col">
+<div class="flex h-full min-h-0 min-w-0 flex-col">
   <!-- Header -->
   <div class="border-surface-700 flex items-center justify-between gap-3 border-b p-4">
     <div class="flex min-w-0 items-center gap-3">
@@ -119,10 +121,19 @@
 
       <div class="min-w-0">
         <h2 class="text-surface-100 truncate font-semibold">
-          {ui.lorebookEditMode ? 'Edit Entry' : entry.name}
+          {ui.lorebookEditMode ? '编辑条目' : entry.name}
         </h2>
         {#if !ui.lorebookEditMode}
-          <span class="text-surface-500 text-xs capitalize">{entry.type}</span>
+          <span class="text-surface-500 text-xs capitalize"
+            >{{
+              character: '角色',
+              location: '地点',
+              item: '物品',
+              faction: '阵营',
+              concept: '概念',
+              event: '事件',
+            }[entry.type]}</span
+          >
         {/if}
       </div>
     </div>
@@ -135,21 +146,21 @@
             onclick={handleCancelDelete}
             disabled={deleting}
           >
-            Cancel
+            取消
           </button>
           <button
             class="rounded bg-red-500/20 px-2 py-1 text-xs text-red-400 hover:bg-red-500/30 disabled:opacity-50"
             onclick={handleDelete}
             disabled={deleting}
           >
-            Confirm Delete
+            确认删除
           </button>
         {:else}
           <button
             class="btn-ghost rounded-lg p-2"
             onclick={() => ui.setLorebookEditMode(true)}
             disabled={isLoreManagementActive}
-            title={isLoreManagementActive ? 'Editing disabled during lore management' : 'Edit'}
+            title={isLoreManagementActive ? '世界书管理运行期间暂不可编辑' : '编辑'}
           >
             <Pencil class="h-4 w-4" />
           </button>
@@ -157,7 +168,7 @@
             class="btn-ghost rounded-lg p-2 text-red-400 hover:text-red-300"
             onclick={handleConfirmDelete}
             disabled={isLoreManagementActive}
-            title={isLoreManagementActive ? 'Deletion disabled during lore management' : 'Delete'}
+            title={isLoreManagementActive ? '世界书管理运行期间暂不可删除' : '删除'}
           >
             <Trash2 class="h-4 w-4" />
           </button>
@@ -167,7 +178,7 @@
   </div>
 
   <!-- Content -->
-  <div class="flex-1 overflow-y-auto p-4">
+  <div class="min-h-0 min-w-0 flex-1 overflow-y-auto p-4">
     {#if ui.lorebookEditMode}
       <LorebookEntryForm
         {entry}
@@ -178,20 +189,22 @@
       <div class="space-y-6">
         <!-- Description -->
         <div>
-          <h3 class="text-surface-400 mb-2 text-sm font-medium">Description</h3>
+          <h3 class="text-surface-400 mb-2 text-sm font-medium">说明</h3>
           {#if entry.description}
-            <p class="text-surface-200 whitespace-pre-wrap">{entry.description}</p>
+            <p class="text-surface-200 [overflow-wrap:anywhere] break-words whitespace-pre-wrap">
+              {entry.description}
+            </p>
           {:else}
-            <p class="text-surface-500 italic">No description</p>
+            <p class="text-surface-500 italic">暂无简介</p>
           {/if}
         </div>
 
         <!-- Aliases -->
-        {#if entry.aliases.length > 0}
+        {#if aliases.length > 0}
           <div>
-            <h3 class="text-surface-400 mb-2 text-sm font-medium">Aliases</h3>
+            <h3 class="text-surface-400 mb-2 text-sm font-medium">别名</h3>
             <div class="flex flex-wrap gap-2">
-              {#each entry.aliases as alias (alias)}
+              {#each aliases as alias (alias)}
                 <span class="bg-surface-700 text-surface-300 rounded-full px-2 py-1 text-sm">
                   {alias}
                 </span>
@@ -201,11 +214,11 @@
         {/if}
 
         <!-- Keywords -->
-        {#if entry.injection.keywords.length > 0}
+        {#if keywords.length > 0}
           <div>
-            <h3 class="text-surface-400 mb-2 text-sm font-medium">Keywords</h3>
+            <h3 class="text-surface-400 mb-2 text-sm font-medium">关键词</h3>
             <div class="flex flex-wrap gap-2">
-              {#each entry.injection.keywords as keyword (keyword)}
+              {#each keywords as keyword (keyword)}
                 <span class="bg-accent-500/20 text-accent-300 rounded-full px-2 py-1 text-sm">
                   {keyword}
                 </span>
@@ -216,14 +229,14 @@
 
         <!-- Context Inclusion -->
         <div>
-          <h3 class="text-surface-400 mb-2 text-sm font-medium">Context Inclusion</h3>
+          <h3 class="text-surface-400 mb-2 text-sm font-medium">上下文注入</h3>
           <div class="flex items-center gap-4 text-sm">
             <div>
-              <span class="text-surface-500">Mode:</span>
+              <span class="text-surface-500">模式：</span>
               <span class="text-surface-300 ml-1">{injectionLabels[entry.injection.mode]}</span>
             </div>
             <div>
-              <span class="text-surface-500">Priority:</span>
+              <span class="text-surface-500">优先级：</span>
               <span class="text-surface-300 ml-1">{entry.injection.priority}</span>
             </div>
           </div>
@@ -234,27 +247,31 @@
           <div
             class="flex items-center gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3"
           >
-            <span class="text-sm text-amber-400">Hidden from AI Lore Management</span>
+            <span class="text-sm text-amber-400">已排除在 AI 世界书管理之外</span>
           </div>
         {/if}
 
         <!-- Hidden Info -->
         {#if entry.hiddenInfo}
           <div>
-            <h3 class="text-surface-400 mb-2 text-sm font-medium">Hidden Info</h3>
+            <h3 class="text-surface-400 mb-2 text-sm font-medium">隐藏信息</h3>
             <div class="bg-surface-800/50 border-surface-700 rounded-lg border p-3">
-              <p class="text-surface-300 text-sm whitespace-pre-wrap">{entry.hiddenInfo}</p>
+              <p
+                class="text-surface-300 text-sm [overflow-wrap:anywhere] break-words whitespace-pre-wrap"
+              >
+                {entry.hiddenInfo}
+              </p>
             </div>
           </div>
         {/if}
 
         <!-- Metadata -->
         <div>
-          <h3 class="text-surface-400 mb-2 text-sm font-medium">Metadata</h3>
+          <h3 class="text-surface-400 mb-2 text-sm font-medium">元数据</h3>
           <div class="text-surface-500 space-y-1 text-sm">
-            <div>Created: {new Date(entry.createdAt).toLocaleDateString()}</div>
-            <div>Updated: {new Date(entry.updatedAt).toLocaleDateString()}</div>
-            <div>Source: <span class="capitalize">{entry.createdBy}</span></div>
+            <div>创建于： {new Date(entry.createdAt).toLocaleDateString()}</div>
+            <div>更新于： {new Date(entry.updatedAt).toLocaleDateString()}</div>
+            <div>来源： <span class="capitalize">{entry.createdBy}</span></div>
           </div>
         </div>
       </div>

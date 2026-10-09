@@ -1,5 +1,6 @@
 <script lang="ts">
   import { Sword, Feather, MessageSquare, FileText } from '@lucide/svelte'
+  import { ChevronLeft, ChevronRight } from '@lucide/svelte'
   import * as Card from '$lib/components/ui/card'
   import { Label } from '$lib/components/ui/label'
   import { ScrollArea } from '$lib/components/ui/scroll-area'
@@ -20,6 +21,8 @@
     importChatAsEntries: boolean
     hasChatFile: boolean
     hasCardOpening: boolean
+    openingVariants: Array<{ id: string; text: string }>
+    selectedOpeningVariantId: string
     chatMessageCount: number
     onModeChange: (mode: StoryMode) => void
     onPOVChange: (v: POV) => void
@@ -30,6 +33,7 @@
     onBackgroundImagesEnabledChange: (v: boolean) => void
     onReferenceModeChange: (v: boolean) => void
     onImportChatToggle: (v: boolean) => void
+    onOpeningVariantChange: (id: string) => void
   }
 
   let {
@@ -44,6 +48,8 @@
     importChatAsEntries,
     hasChatFile,
     hasCardOpening,
+    openingVariants,
+    selectedOpeningVariantId,
     chatMessageCount,
     onModeChange,
     onPOVChange,
@@ -54,6 +60,7 @@
     onBackgroundImagesEnabledChange,
     onReferenceModeChange,
     onImportChatToggle,
+    onOpeningVariantChange,
   }: Props = $props()
 
   const imageGenerationEnabled = $derived(hasRequiredCredentials())
@@ -64,12 +71,25 @@
       onImageGenerationModeChange('none')
     }
   })
+
+  const selectedOpeningIndex = $derived(
+    Math.max(
+      0,
+      openingVariants.findIndex((variant) => variant.id === selectedOpeningVariantId),
+    ),
+  )
+
+  function moveOpening(delta: number) {
+    if (openingVariants.length === 0) return
+    const next = (selectedOpeningIndex + delta + openingVariants.length) % openingVariants.length
+    onOpeningVariantChange(openingVariants[next].id)
+  }
 </script>
 
 <div class="flex h-full flex-col gap-5">
   <!-- Story Mode -->
   <div class="space-y-2">
-    <Label>Story Mode</Label>
+    <Label>故事模式</Label>
     <div class="grid grid-cols-2 gap-3">
       <button class="w-full text-left focus:outline-none" onclick={() => onModeChange('adventure')}>
         <Card.Root
@@ -84,8 +104,8 @@
                 : 'text-muted-foreground'}"
             />
             <div>
-              <p class="text-sm font-medium">Adventure</p>
-              <p class="text-muted-foreground text-xs">You are the protagonist</p>
+              <p class="text-sm font-medium">冒险模式</p>
+              <p class="text-muted-foreground text-xs">你扮演主角</p>
             </div>
           </Card.Content>
         </Card.Root>
@@ -106,8 +126,8 @@
                 : 'text-muted-foreground'}"
             />
             <div>
-              <p class="text-sm font-medium">Creative Writing</p>
-              <p class="text-muted-foreground text-xs">You are the author</p>
+              <p class="text-sm font-medium">中文写作</p>
+              <p class="text-muted-foreground text-xs">Director 安排场景，Writer 撰写小说正文</p>
             </div>
           </Card.Content>
         </Card.Root>
@@ -117,7 +137,7 @@
 
   <!-- Chat Import Mode -->
   <div class="space-y-2">
-    <Label>Chat History</Label>
+    <Label>聊天记录</Label>
     <div class="grid grid-cols-2 gap-3">
       <button
         class="w-full text-left focus:outline-none"
@@ -136,12 +156,12 @@
               class="h-5 w-5 {importChatAsEntries ? 'text-primary' : 'text-muted-foreground'}"
             />
             <div>
-              <p class="text-sm font-medium">Import Chat</p>
+              <p class="text-sm font-medium">导入聊天记录</p>
               <p class="text-muted-foreground text-xs">
                 {#if hasChatFile}
-                  {chatMessageCount} messages as story entries
+                  {chatMessageCount} 条消息作为故事内容
                 {:else}
-                  No chat file uploaded
+                  尚未上传聊天记录文件
                 {/if}
               </p>
             </div>
@@ -163,12 +183,12 @@
               class="h-5 w-5 {!importChatAsEntries ? 'text-primary' : 'text-muted-foreground'}"
             />
             <div>
-              <p class="text-sm font-medium">Fresh Start</p>
+              <p class="text-sm font-medium">开始新故事</p>
               <p class="text-muted-foreground text-xs">
                 {#if hasCardOpening}
-                  Use card's opening message
+                  使用角色卡开场白
                 {:else}
-                  Requires character card with greeting
+                  需要带有开场白的角色卡
                 {/if}
               </p>
             </div>
@@ -178,7 +198,45 @@
     </div>
   </div>
 
-  <!-- Writing Style -->
+  {#if selectedMode === 'creative-writing' && !importChatAsEntries && openingVariants.length > 0}
+    <div class="space-y-2">
+      <div class="flex items-center justify-between">
+        <Label>开场白</Label>
+        <span class="text-muted-foreground text-xs tabular-nums"
+          >{selectedOpeningIndex + 1} / {openingVariants.length}</span
+        >
+      </div>
+      <Card.Root>
+        <Card.Content class="space-y-3 p-3">
+          <div class="text-muted-foreground max-h-40 overflow-y-auto text-sm whitespace-pre-wrap">
+            {openingVariants[selectedOpeningIndex].text}
+          </div>
+          {#if openingVariants.length > 1}
+            <div class="flex items-center justify-center gap-3">
+              <button
+                type="button"
+                class="hover:bg-muted rounded p-1"
+                aria-label="上一个开场白"
+                onclick={() => moveOpening(-1)}
+              >
+                <ChevronLeft class="h-4 w-4" />
+              </button>
+              <span class="text-muted-foreground text-xs">左右切换版本</span>
+              <button
+                type="button"
+                class="hover:bg-muted rounded p-1"
+                aria-label="下一个开场白"
+                onclick={() => moveOpening(1)}
+              >
+                <ChevronRight class="h-4 w-4" />
+              </button>
+            </div>
+          {/if}
+        </Card.Content>
+      </Card.Root>
+    </div>
+  {/if}
+
   <ScrollArea class="h-full pr-4">
     <WritingStyleFields
       {selectedPOV}
@@ -189,6 +247,7 @@
       {imageGenerationMode}
       {backgroundImagesEnabled}
       {referenceMode}
+      showNarrativeControls={selectedMode === 'adventure'}
       {onPOVChange}
       {onTenseChange}
       {onToneChange}

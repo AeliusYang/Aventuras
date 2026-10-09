@@ -8,7 +8,10 @@ const state = {
     portraitProfileId: null as string | null,
     referenceProfileId: null as string | null,
   },
-  profiles: {} as Record<string, { id: string; providerType: string; apiKey: string }>,
+  profiles: {} as Record<
+    string,
+    { id: string; providerType: string; apiKey: string; model: string }
+  >,
 }
 
 vi.mock('$lib/stores/settings.svelte', () => ({
@@ -49,15 +52,24 @@ const setSlotIds = (
 beforeEach(() => {
   setSlotIds('p-std', null, null, null)
   state.profiles = {
-    'p-std': { id: 'p-std', providerType: 'openai', apiKey: '' },
-    'p-bg': { id: 'p-bg', providerType: 'local', apiKey: '' },
-    'p-port': { id: 'p-port', providerType: 'local', apiKey: '' },
-    'p-ref': { id: 'p-ref', providerType: 'local', apiKey: '' },
-    'p-local': { id: 'p-local', providerType: 'local', apiKey: '' },
+    'p-std': { id: 'p-std', providerType: 'openai', apiKey: '', model: 'image' },
+    'p-bg': { id: 'p-bg', providerType: 'local', apiKey: '', model: 'image' },
+    'p-port': { id: 'p-port', providerType: 'local', apiKey: '', model: 'image' },
+    'p-ref': { id: 'p-ref', providerType: 'local', apiKey: '', model: 'image' },
+    'p-local': { id: 'p-local', providerType: 'local', apiKey: '', model: 'image' },
   }
 })
 
 describe('hasRequiredCredentials', () => {
+  it('allows independent portrait/background slots and requires a model', () => {
+    setSlotIds(null, 'p-bg', 'p-port', null)
+    expect(hasRequiredCredentials('portrait')).toBe(true)
+    expect(hasRequiredCredentials('background')).toBe(true)
+    expect(isImageGenerationEnabled(undefined, 'portrait')).toBe(true)
+    expect(isImageGenerationEnabled(undefined, 'background')).toBe(true)
+    state.profiles['p-port'].model = ''
+    expect(hasRequiredCredentials('portrait')).toBe(false)
+  })
   it('does not fall back to the standard profile for background', () => {
     setSlotIds('p-std', null, null, null)
 

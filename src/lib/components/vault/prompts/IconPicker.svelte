@@ -135,13 +135,13 @@
           <selectedIcon.component class="h-3.5 w-3.5" />
           <span class="text-muted-foreground">{selectedIcon.name}</span>
         {:else}
-          <span class="text-muted-foreground">No icon</span>
+          <span class="text-muted-foreground">无图标</span>
         {/if}
       </Button>
     {/snippet}
   </Popover.Trigger>
   <Popover.Content class="w-64 p-2" align="start">
-    <Input bind:value={search} placeholder="Search icons..." class="mb-2 h-8 text-xs" />
+    <Input bind:value={search} placeholder="搜索图标…" class="mb-2 h-8 text-xs" />
 
     <!-- Clear option -->
     {#if value}
@@ -150,7 +150,7 @@
         class="text-muted-foreground hover:bg-muted hover:text-foreground mb-1 w-full rounded-md px-2 py-1.5 text-left text-xs transition-colors"
         onclick={() => handleSelect(undefined)}
       >
-        Clear icon
+        清除图标
       </button>
     {/if}
 
@@ -174,7 +174,7 @@
     </div>
 
     {#if filtered.length === 0}
-      <p class="text-muted-foreground py-4 text-center text-xs">No icons found</p>
+      <p class="text-muted-foreground py-4 text-center text-xs">未找到图标</p>
     {/if}
   </Popover.Content>
 </Popover.Root>

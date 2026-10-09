@@ -199,10 +199,10 @@
 <div class="flex h-full flex-col overflow-hidden">
   <!-- Header -->
   <div class="flex items-center justify-between border-b px-4 py-3">
-    <h3 class="text-sm font-semibold">Runtime Variables</h3>
+    <h3 class="text-sm font-semibold">运行时变量</h3>
     <Button variant="outline" size="sm" class="h-7 gap-1 text-xs" onclick={handleAddVariable}>
       <Plus class="h-3 w-3" />
-      Add Variable
+      添加变量
     </Button>
   </div>
 
@@ -212,14 +212,14 @@
       <!-- Empty state -->
       <div class="flex flex-col items-center justify-center py-12 text-center">
         <Activity class="text-muted-foreground mb-3 h-10 w-10 opacity-50" />
-        <p class="text-muted-foreground text-sm font-medium">No runtime variables defined</p>
+        <p class="text-muted-foreground text-sm font-medium">尚未定义运行时变量</p>
         <p class="text-muted-foreground mt-1 max-w-sm text-xs">
-          Define variables that the LLM will populate on characters, locations, items, and story
-          beats. For example, a "mood" variable for characters or "danger_level" for locations.
+          定义由模型填写的角色、地点、物品和剧情节点变量。例如角色的 mood（情绪）或地点的
+          danger_level（危险程度）。
         </p>
         <Button variant="outline" size="sm" class="mt-4 gap-1" onclick={handleAddVariable}>
           <Plus class="h-3.5 w-3.5" />
-          Add Variable
+          添加变量
         </Button>
       </div>
     {:else}
@@ -243,8 +243,7 @@
               >
                 <AlertTriangle class="h-3 w-3 shrink-0" />
                 <span>
-                  10+ variables for {ENTITY_TYPE_LABELS[entityType].toLowerCase()} may increase extraction
-                  cost and reduce accuracy.
+                  为以下类型设置超过 10 个变量： {ENTITY_TYPE_LABELS[entityType].toLowerCase()} 可能增加提取成本并降低准确性。
                 </span>
               </div>
             {/if}

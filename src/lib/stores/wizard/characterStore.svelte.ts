@@ -121,7 +121,7 @@ export class CharacterStore {
 
     this.protagonist = {
       name: this.manualCharacterName.trim(),
-      description: this.manualCharacterDescription.trim() || 'A mysterious figure.',
+      description: this.manualCharacterDescription.trim() || '',
       background: this.manualCharacterBackground.trim() || '',
       motivation: this.manualCharacterMotivation.trim() || '',
       traits: this.manualCharacterTraits.trim()

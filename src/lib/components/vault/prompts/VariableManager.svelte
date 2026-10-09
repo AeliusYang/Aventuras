@@ -73,10 +73,10 @@
 <div class="flex h-full flex-col overflow-hidden">
   <!-- Header -->
   <div class="flex items-center justify-between border-b px-4 py-3">
-    <h3 class="text-sm font-semibold">Custom Variables</h3>
+    <h3 class="text-sm font-semibold">自定义变量</h3>
     <Button variant="outline" size="sm" class="h-7 gap-1 text-xs" onclick={handleAddVariable}>
       <Plus class="h-3 w-3" />
-      Add Variable
+      添加变量
     </Button>
   </div>
 
@@ -86,17 +86,15 @@
       <!-- Empty state -->
       <div class="flex flex-col items-center justify-center py-12 text-center">
         <Variable class="text-muted-foreground mb-3 h-10 w-10 opacity-50" />
-        <p class="text-muted-foreground text-sm font-medium">
-          No custom variables defined for this pack.
-        </p>
+        <p class="text-muted-foreground text-sm font-medium">此提示词包尚未定义自定义变量。</p>
         <p class="text-muted-foreground mt-1 max-w-sm text-xs">
-          Custom variables let you add configurable values to your templates. Use <code
+          自定义变量可为模板添加可配置的值。在模板中使用 <code
             class="bg-muted rounded px-1 py-0.5 font-mono">{`{{ variable_name }}`}</code
-          > syntax in templates.
+          > 语法。
         </p>
         <Button variant="outline" size="sm" class="mt-4 gap-1" onclick={handleAddVariable}>
           <Plus class="h-3.5 w-3.5" />
-          Add Variable
+          添加变量
         </Button>
       </div>
     {:else}

@@ -26,12 +26,12 @@
   import { Button } from '$lib/components/ui/button'
 
   const tabs = [
-    { id: 'characters' as const, icon: Users, label: 'Characters' },
-    { id: 'locations' as const, icon: MapPin, label: 'Locations' },
-    { id: 'inventory' as const, icon: Backpack, label: 'Inventory' },
-    { id: 'quests' as const, icon: Scroll, label: 'Quests' },
-    { id: 'time' as const, icon: Clock, label: 'Time' },
-    { id: 'branches' as const, icon: GitBranch, label: 'Branches' },
+    { id: 'characters' as const, icon: Users, label: '角色' },
+    { id: 'locations' as const, icon: MapPin, label: '地点' },
+    { id: 'inventory' as const, icon: Backpack, label: '物品' },
+    { id: 'quests' as const, icon: Scroll, label: '剧情线索' },
+    { id: 'time' as const, icon: Clock, label: '时间' },
+    { id: 'branches' as const, icon: GitBranch, label: '分支' },
   ]
 
   function handleSwipeLeft() {
@@ -125,10 +125,10 @@
         ? '!bg-primary/10 !text-primary'
         : ''}"
       onclick={() => ui.setActivePanel('story')}
-      title="Story"
+      title="故事"
     >
       <BookOpen class="h-4 w-4" />
-      <span>Story</span>
+      <span>故事</span>
     </Button>
     <Button
       variant="ghost"
@@ -137,13 +137,13 @@
         ? '!bg-primary/10 !text-primary'
         : ''}"
       onclick={() => {
-        ui.setActivePanel('lorebook')
+        ui.openLorebook()
         ui.closeSidebarOnMobile()
       }}
-      title="Lorebook"
+      title="世界书"
     >
       <BookMarked class="h-4 w-4" />
-      <span>Lorebook</span>
+      <span>世界书</span>
     </Button>
     <Button
       variant="ghost"
@@ -155,10 +155,10 @@
         ui.setActivePanel('memory')
         ui.closeSidebarOnMobile()
       }}
-      title="Memory"
+      title="记忆"
     >
       <Brain class="h-4 w-4" />
-      <span>Memory</span>
+      <span>记忆</span>
     </Button>
   </div>
 </aside>

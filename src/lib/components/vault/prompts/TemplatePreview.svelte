@@ -81,7 +81,12 @@
 <div class="flex h-full flex-col overflow-hidden">
   {#if !hideHeader}
     <div class="border-b px-4 py-2">
-      <h4 class="text-muted-foreground text-xs font-medium tracking-wide uppercase">Preview</h4>
+      <h4 class="text-muted-foreground text-xs font-medium tracking-wide uppercase">
+        渲染预览（测试变量）
+      </h4>
+      <p class="text-muted-foreground mt-1 text-[11px]">
+        仅反映当前编辑缓冲区按测试变量渲染的结果，不是历史真实请求快照。
+      </p>
     </div>
   {/if}
 
@@ -95,9 +100,7 @@
       <pre
         class="font-mono text-sm leading-relaxed break-words whitespace-pre-wrap text-[hsl(var(--foreground)/0.9)]">{previewOutput}</pre>
     {:else}
-      <p class="text-muted-foreground text-sm italic">
-        Start typing in the editor to see a preview...
-      </p>
+      <p class="text-muted-foreground text-sm italic">在编辑器中输入内容以查看预览…</p>
     {/if}
   </div>
 </div>

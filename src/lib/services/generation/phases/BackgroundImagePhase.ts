@@ -13,6 +13,7 @@ import type {
   AbortedEvent,
   ErrorEvent,
 } from '../types'
+import { asError } from '$lib/utils/error'
 import type { StoryEntry, ImageGenerationMode } from '$lib/types'
 
 /** Dependencies for image phase - injected to avoid tight coupling */
@@ -44,7 +45,13 @@ export interface BackgroundImageInput {
 /** Result from image phase */
 export interface BackgroundImageResult {
   started: boolean
-  skippedReason?: 'disabled' | 'auto_generate_off' | 'not_configured' | 'aborted' | 'inline_mode'
+  skippedReason?:
+    | 'disabled'
+    | 'auto_generate_off'
+    | 'not_configured'
+    | 'aborted'
+    | 'inline_mode'
+    | 'deferred_until_commit'
 }
 
 /** Coordinates image generation. Errors are non-fatal. */
@@ -101,7 +108,7 @@ export class BackgroundImagePhase {
       yield {
         type: 'error',
         phase: 'image',
-        error: error instanceof Error ? error : new Error(String(error)),
+        error: asError(error, '背景图阶段返回了无法识别的错误。'),
         fatal: false,
       } satisfies ErrorEvent
 

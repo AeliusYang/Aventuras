@@ -57,13 +57,14 @@ const PROVIDER_OPTIONS_KEY: Record<ProviderType, string> = {
 export function buildProviderOptions(
   preset: GenerationPreset,
   providerType: ProviderType,
+  manualMode = settings.advancedRequestSettings.manualMode,
 ): SharedV4ProviderOptions | undefined {
   let options: JSONObject = {}
 
   const reasoning_effort = preset.reasoningEffort
   const reasoningOn = isReasoningOn(reasoning_effort)
 
-  if (!settings.advancedRequestSettings.manualMode) {
+  if (!manualMode) {
     switch (providerType) {
       case 'xai':
         options = { parallel_function_calling: true } satisfies XaiProviderOptions
@@ -206,14 +207,18 @@ export interface ResolvePresetOptions {
   presetId: string
   serviceId: string
   debugId?: string
+  presetOverride?: GenerationPreset
+  requestTimeoutMs?: number
 }
 
 export function resolvePresetModel({
   presetId,
   serviceId,
   debugId,
+  presetOverride,
+  requestTimeoutMs,
 }: ResolvePresetOptions): ResolvedPreset {
-  const preset = settings.getPresetConfig(presetId, serviceId)
+  const preset = presetOverride ?? settings.getPresetConfig(presetId, serviceId)
   const profileId = preset.profileId ?? settings.apiSettings.mainNarrativeProfileId
   const profile = settings.getProfile(profileId)
 
@@ -236,6 +241,7 @@ export function resolvePresetModel({
     structuredOutputs: supportsStructuredOutput,
     manualBody: preset.manualBody ?? '',
     serviceId,
+    timeoutMs: requestTimeoutMs ?? preset.timeoutMs,
   })
 
   return {
@@ -243,7 +249,11 @@ export function resolvePresetModel({
     profile,
     providerType: profile.providerType,
     model,
-    providerOptions: buildProviderOptions(preset, profile.providerType),
+    providerOptions: buildProviderOptions(
+      preset,
+      profile.providerType,
+      presetOverride ? false : undefined,
+    ),
     reasoning: preset.reasoningEffort,
     supportsStructuredOutput,
     useThinkTag: usesThinkTag(profile.providerType),

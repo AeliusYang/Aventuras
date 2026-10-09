@@ -50,6 +50,8 @@ export interface WorldStateTranslationDependencies {
 }
 
 export interface WorldStateTranslationInput {
+  isCollaborative?: boolean
+  isScopeCurrent?: () => boolean
   /** Story whose pack supplies the translation template. */
   storyId: string
   classificationResult: ClassificationNewEntities
@@ -76,6 +78,7 @@ export class WorldStateTranslationService {
     input: WorldStateTranslationInput,
     callbacks: WorldStateTranslationCallbacks,
   ): Promise<WorldStateTranslationResult> {
+    if (input.isCollaborative) return { translatedCount: 0 }
     const { storyId, classificationResult, worldState, targetLanguage } = input
     const items: TranslationItem[] = []
 
@@ -199,6 +202,7 @@ export class WorldStateTranslationService {
 
     // Apply translations
     for (const t of translated) {
+      if (input.isScopeCurrent && !input.isScopeCurrent()) return { translatedCount: 0 }
       const [entityId] = t.id.split(':')
       const orig = items.find((i) => i.id === t.id)
       if (!orig) continue
@@ -223,7 +227,7 @@ export class WorldStateTranslationService {
         await callbacks.updateStoryBeat(entityId, data as Record<string, string | null>)
     }
 
-    await callbacks.refreshWorldState()
+    if (!input.isScopeCurrent || input.isScopeCurrent()) await callbacks.refreshWorldState()
     log('World state elements translated', { count: translated.length })
     return { translatedCount: translated.length }
   }

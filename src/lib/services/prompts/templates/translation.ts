@@ -53,10 +53,10 @@ Translate each item in the JSON array below. For each item:
 
 const translateSuggestionsTemplate: PromptTemplate = {
   id: 'translate-suggestions',
-  name: 'Translate Suggestions',
+  name: '翻译创作建议',
   category: 'service',
-  description: 'Translates creative writing plot suggestions',
-  content: `You are translating plot suggestions for interactive fiction to {{ targetLanguage }}.
+  description: '将剧情建议翻译为目标语言',
+  content: `你正在将互动小说剧情建议翻译为 {{ targetLanguage }}。如果目标语言为简体中文，所有自然语言内容必须使用简体中文。
 
 Translate the JSON array of suggestions below. For each item:
 - Translate the "text" field (the suggestion content)

@@ -52,63 +52,116 @@ export function createTimeoutFetch(
   debugIdExternal?: string,
 ) {
   return async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+    const collaborative = /^collaborative[-:]/.test(serviceId)
     const controller = new AbortController()
     const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
-
-    init?.signal?.addEventListener('abort', () => controller.abort())
-    const startTime = Date.now()
-    let parsedBody: any = {}
-    if (typeof init?.body === 'string') {
-      try {
-        parsedBody = JSON.parse(init.body)
-      } catch {
-        throw new Error('Request body is not valid JSON')
-      }
-    }
-
-    const manual = parseManualBody(manualBody)
-    if (manual) {
-      const reservedKeys = new Set(['messages', 'tools', 'tool_choice', 'stream', 'model'])
-      for (const [key, value] of Object.entries(manual)) {
-        if (!reservedKeys.has(key)) {
-          parsedBody[key] = value
+    const signal = init?.signal
+    const requestSignal =
+      signal ? AbortSignal.any([controller.signal, signal]) : controller.signal
+    const onAbort = () => controller.abort(signal?.reason)
+    signal?.addEventListener('abort', onAbort, { once: true })
+    if (signal?.aborted) onAbort()
+    try {
+      controller.signal.throwIfAborted()
+      const startTime = Date.now()
+      let parsedBody: any = {}
+      if (typeof init?.body === 'string') {
+        try {
+          parsedBody = JSON.parse(init.body)
+        } catch {
+          throw new Error('Request body is not valid JSON')
         }
       }
-    } else if (manualBody.trim()) {
-      console.log('[Fetch] Invalid manualBody JSON, skipping')
-    }
 
-    if (Object.keys(parsedBody).length === 0) {
-      parsedBody = undefined
-    }
-
-    const rawHeaders = normalizeHeaders(init?.headers)
-    const sanitizedHeaders: Record<string, string> = {}
-    const sensitiveKeys = new Set(['authorization', 'x-api-key', 'api-key'])
-    for (const [key, value] of Object.entries(rawHeaders)) {
-      if (sensitiveKeys.has(key.toLowerCase()) && value.length > 8) {
-        sanitizedHeaders[key] = value.slice(0, 4) + '...' + value.slice(-4)
-      } else {
-        sanitizedHeaders[key] = value
+      const manual = parseManualBody(manualBody)
+      if (manual) {
+        const reservedKeys = new Set(['messages', 'tools', 'tool_choice', 'stream', 'model'])
+        for (const [key, value] of Object.entries(manual)) {
+          if (!reservedKeys.has(key)) {
+            parsedBody[key] = value
+          }
+        }
+      } else if (manualBody.trim()) {
+        console.log('[Fetch] Invalid manualBody JSON, skipping')
       }
-    }
 
-    const debugId = debug.addDebugRequest(
-      serviceId,
-      {
-        url: input.toString(),
-        method: init?.method ?? 'GET',
-        headers: sanitizedHeaders,
-        body: parsedBody,
-      },
-      debugIdExternal,
-    )
-    try {
-      const response = await tauriFetch(input, {
-        ...init,
-        signal: controller.signal,
-        body: parsedBody ? JSON.stringify(parsedBody) : undefined,
-      })
+      if (Object.keys(parsedBody).length === 0) {
+        parsedBody = undefined
+      }
+
+      const rawHeaders = normalizeHeaders(init?.headers)
+      const sanitizedHeaders: Record<string, string> = {}
+      for (const [key, value] of Object.entries(rawHeaders)) {
+        sanitizedHeaders[key] = ['accept', 'content-type'].includes(key.toLowerCase())
+          ? value
+          : '[REDACTED]'
+      }
+
+      let safeUrl: string | undefined
+      if (!collaborative) {
+        try {
+          const url = new URL(input.toString())
+          safeUrl = `${url.origin}${url.pathname}`
+        } catch {
+          safeUrl = '[REDACTED]'
+        }
+      }
+      const requestSummary: Record<string, unknown> = {}
+      if (collaborative && parsedBody) {
+        if (typeof parsedBody.model === 'string') requestSummary.model = parsedBody.model
+        for (const key of ['max_tokens', 'max_completion_tokens', 'temperature']) {
+          if (typeof parsedBody[key] === 'number') requestSummary[key] = parsedBody[key]
+        }
+        if (typeof parsedBody.generationConfig?.maxOutputTokens === 'number') {
+          requestSummary.maxOutputTokens = parsedBody.generationConfig.maxOutputTokens
+        }
+        if (typeof parsedBody.generationConfig?.temperature === 'number') {
+          requestSummary.temperature = parsedBody.generationConfig.temperature
+        }
+        const messages = parsedBody.messages ?? parsedBody.contents ?? parsedBody.input
+        if (Array.isArray(messages)) {
+          requestSummary.messageCount = messages.length
+          requestSummary.messageLengths = messages.map((message) => JSON.stringify(message).length)
+        }
+      }
+      const debugId = debug.addDebugRequest(
+        serviceId,
+        collaborative
+          ? requestSummary
+          : {
+              url: safeUrl,
+              method: init?.method ?? 'GET',
+              headers: sanitizedHeaders,
+              body: parsedBody,
+            },
+        debugIdExternal,
+      )
+      let response: Response
+      try {
+        response = await tauriFetch(input, {
+          ...init,
+          signal: requestSignal,
+          body: parsedBody ? JSON.stringify(parsedBody) : undefined,
+        })
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        debug.addDebugResponse(
+          debugId,
+          serviceId,
+          {
+            status: 0,
+            error: message,
+            timeout: controller.signal.aborted,
+            requestBytes: parsedBody ? JSON.stringify(parsedBody).length : 0,
+          },
+          startTime,
+          message,
+        )
+        // Preserve AbortError and provider/network error identity. The pipeline and callers
+        // use AbortError to distinguish an intentional stop from a failed generation; the
+        // paired debug response above carries the additional service/timeout diagnostics.
+        throw error
+      }
 
       // Path A: Error Response (Non-2xx)
       // We log the error asynchronously and return the original response immediately.
@@ -116,7 +169,9 @@ export function createTimeoutFetch(
       if (!response.ok) {
         // Only buffer the body when debug logging is active — otherwise reading a clone
         // of every error response just wastes memory.
-        if (debug.isActive) {
+        if (collaborative) {
+          debug.addDebugResponse(debugId, serviceId, { status: response.status }, startTime)
+        } else if (debug.isActive) {
           const clonedResponse = response.clone()
           clonedResponse
             .text()
@@ -149,7 +204,14 @@ export function createTimeoutFetch(
       // Path B: Non-JSON Success Response (mostly Streams)
       if (!response.headers.get('content-type')?.includes('application/json')) {
         // Stream/non-JSON success — only buffer the full body for the debug panel when active.
-        if (debug.isActive) {
+        if (collaborative) {
+          debug.addDebugResponse(
+            debugId,
+            serviceId,
+            { status: response.status, stream: true },
+            startTime,
+          )
+        } else if (debug.isActive) {
           const clonedResponse = response.clone()
           clonedResponse
             .text()
@@ -297,10 +359,13 @@ export function createTimeoutFetch(
       debug.addDebugResponse(
         debugId,
         serviceId,
-        {
-          body: responsePayload,
-          providerMetadata: Object.keys(providerMetadata).length > 0 ? providerMetadata : undefined,
-        },
+        collaborative
+          ? { status: response.status, responseLength: text.length }
+          : {
+              body: responsePayload,
+              providerMetadata:
+                Object.keys(providerMetadata).length > 0 ? providerMetadata : undefined,
+            },
         startTime,
       )
 
@@ -322,6 +387,7 @@ export function createTimeoutFetch(
       })
     } finally {
       clearTimeout(timeoutId)
+      signal?.removeEventListener('abort', onAbort)
     }
   }
 }

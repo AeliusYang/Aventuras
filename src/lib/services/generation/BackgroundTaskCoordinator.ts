@@ -26,6 +26,7 @@ import {
   type StyleReviewCheckResult,
 } from './StyleReviewScheduler'
 import { createLogger } from '$lib/log'
+import type { GenerationScope } from '$lib/utils/branchScope'
 
 const log = createLogger('BackgroundTaskCoordinator')
 
@@ -36,6 +37,8 @@ export interface BackgroundTaskDependencies {
 }
 
 export interface BackgroundTaskInput {
+  scope?: GenerationScope
+  isScopeCurrent?: () => boolean
   // Style review input
   styleReview: StyleReviewCheckInput
   styleReviewCallbacks?: StyleReviewUICallbacks
@@ -82,6 +85,10 @@ export class BackgroundTaskCoordinator {
   async runBackgroundTasks(input: BackgroundTaskInput): Promise<BackgroundTaskResult> {
     log('Starting background tasks')
 
+    if (input.isScopeCurrent && !input.isScopeCurrent()) {
+      throw new Error('Background task scope is no longer current')
+    }
+
     const result: BackgroundTaskResult = {
       styleReview: { triggered: false },
       chapterCreation: { created: false, loreManagementTriggered: false },
@@ -91,8 +98,17 @@ export class BackgroundTaskCoordinator {
     // 1. Style review and chapter check are independent - run in parallel
     const [styleSettled, chapterSettled] = await Promise.allSettled([
       this.styleScheduler.checkAndTrigger(input.styleReview, input.styleReviewCallbacks),
-      this.chapterService.checkAndCreateChapter(input.chapterCheck),
+      this.chapterService.checkAndCreateChapter({
+        ...input.chapterCheck,
+        scope: input.scope ?? input.chapterCheck.scope,
+        isScopeCurrent: () =>
+          input.isScopeCurrent?.() !== false && input.chapterCheck.isScopeCurrent?.() !== false,
+      }),
     ])
+
+    if (input.isScopeCurrent && !input.isScopeCurrent()) {
+      throw new Error('Background task scope changed while running')
+    }
 
     if (styleSettled.status === 'fulfilled') {
       result.styleReview = styleSettled.value
@@ -113,6 +129,9 @@ export class BackgroundTaskCoordinator {
 
     // 2. Lore management (only if chapter creation triggered it)
     if (result.chapterCreation.loreManagementTriggered) {
+      if (input.isScopeCurrent && !input.isScopeCurrent()) {
+        throw new Error('Background task scope changed before lore management')
+      }
       try {
         result.loreManagement = await this.loreCoordinator.runSession(
           input.loreSession(),

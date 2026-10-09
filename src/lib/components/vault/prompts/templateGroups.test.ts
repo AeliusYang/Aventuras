@@ -1,26 +1,44 @@
-import { describe, it, expect } from 'vitest'
-import { describeTemplate } from './templateGroups'
+import { describe, expect, it } from 'vitest'
+import { getTemplateGroups } from './templateGroups'
 
-describe('describeTemplate', () => {
-  it('names a system template and its group', () => {
-    expect(describeTemplate('adventure')).toEqual({
-      name: 'Adventure Mode',
-      group: 'Story Generation',
-      isUserHalf: false,
-    })
+describe('template group filtering', () => {
+  it('keeps the normal editor complete by default', () => {
+    const ids = getTemplateGroups().flatMap((group) =>
+      group.templates.map((template) => template.id),
+    )
+
+    expect(ids).toContain('adventure')
+    expect(ids).toContain('novel-scene')
+    expect(ids).toContain('image-prompt-analysis')
   })
 
-  it('resolves a user half to its prompt and marks it', () => {
-    const described = describeTemplate('adventure-user')
+  it('limits collaborative workspace navigation to canonical agents', () => {
+    const allowed = [
+      'collaborative-scene-director',
+      'collaborative-long-planner',
+      'collaborative-pattern-reviewer',
+      'collaborative-chinese-writer',
+      'collaborative-fact-extractor',
+      'collaborative-plot-suggestions',
+    ] as const
+    const groups = getTemplateGroups(allowed)
+    const ids = groups.flatMap((group) => group.templates.map((template) => template.id))
 
-    expect(described).not.toBeNull()
-    expect(described!.name).toBe('Adventure Mode')
-    expect(described!.group).toBe('Story Generation')
-    expect(described!.isUserHalf).toBe(true)
+    expect(groups).toHaveLength(1)
+    expect(groups[0]?.name).toBe('中文写作')
+    expect(ids).toEqual([...allowed])
+    expect(ids).not.toContain('novel-scene')
+    expect(ids).not.toContain('adventure')
   })
 
-  it('returns null for an id the app no longer ships', () => {
-    expect(describeTemplate('retired-prompt')).toBeNull()
-    expect(describeTemplate('retired-prompt-user')).toBeNull()
+  it('does not leave empty groups for an incomplete allowlist', () => {
+    const groups = getTemplateGroups(['collaborative-chinese-writer'])
+
+    expect(groups).toEqual([
+      expect.objectContaining({
+        name: '中文写作',
+        templates: [expect.objectContaining({ id: 'collaborative-chinese-writer' })],
+      }),
+    ])
   })
 })

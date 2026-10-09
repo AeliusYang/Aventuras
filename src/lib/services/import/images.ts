@@ -58,6 +58,7 @@ export async function importImagesInline(data: AventuraExport, maps: IdMaps): Pr
       id: crypto.randomUUID(),
       storyId: maps.newStoryId,
       entryId: newEntryId,
+      contentVersion: image.contentVersion,
       sourceText: image.sourceText,
       prompt: image.prompt,
       styleId: image.styleId,

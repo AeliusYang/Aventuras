@@ -38,17 +38,17 @@
   <!-- Global API Settings -->
   <Card>
     <CardHeader>
-      <CardTitle>Global API Settings</CardTitle>
-      <CardDescription>Settings that apply to all API requests</CardDescription>
+      <CardTitle>全局请求设置</CardTitle>
+      <CardDescription>默认请求设置；Agent Profile 中单独设置的超时优先生效</CardDescription>
     </CardHeader>
     <CardContent class="space-y-4">
       <!-- Request Timeout -->
       <div class="space-y-4">
         <div class="flex items-center justify-between">
           <div class="space-y-1">
-            <Label>Request Timeout</Label>
+            <Label>请求超时</Label>
             <p class="text-muted-foreground text-xs">
-              Maximum time to wait for any LLM response (applies to all services)
+              用于冒险正文，以及未单独设置超时的中文写作 Director 和 Writer
             </p>
           </div>
           <span class="text-muted-foreground text-xs font-medium">

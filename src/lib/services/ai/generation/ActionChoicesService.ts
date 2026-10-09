@@ -53,7 +53,6 @@ export class ActionChoicesService extends BaseAIService {
       protagonist: context.protagonistName,
       hasStoryId: !!context.storyId,
     })
-
     // Format recent context
     const recentContext = context.recentEntries
       .slice(-getContextConfig().recentEntriesForChoices)
@@ -154,18 +153,24 @@ export class ActionChoicesService extends BaseAIService {
       styleGuidance,
       povInstruction,
       lengthInstruction,
+      planningInput: JSON.stringify({
+        narrativeResponse: context.narrativeResponse,
+        recentContext,
+        currentLocation,
+        npcsPresent,
+        inventory,
+        activeQuests,
+        lorebookContext,
+        protagonistDescription,
+        pov: context.pov,
+      }),
     })
 
-    // Render through the action-choices template
-    const { system, user: prompt } = await ctx.render('action-choices')
+    const templateId = 'action-choices'
+    const { system, user: prompt } = await ctx.render(templateId)
 
     try {
-      const result = await this.generate(
-        actionChoicesResultSchema,
-        system,
-        prompt,
-        'action-choices',
-      )
+      const result = await this.generate(actionChoicesResultSchema, system, prompt, templateId)
 
       log('Action choices generated:', result.choices.length)
       return result.choices.slice(0, 4)

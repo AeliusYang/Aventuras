@@ -45,22 +45,22 @@
   const entityConfig = $derived.by(() => {
     switch (change.entityType) {
       case 'character':
-        return { label: 'Character', icon: User, color: 'text-amber-400', bg: 'bg-amber-500/15' }
+        return { label: '角色', icon: User, color: 'text-amber-400', bg: 'bg-amber-500/15' }
       case 'lorebook-entry':
         return {
-          label: 'Lorebook entry',
+          label: '世界书条目',
           icon: BookOpen,
           color: 'text-cyan-400',
           bg: 'bg-cyan-500/15',
         }
       case 'scenario':
-        return { label: 'Scenario', icon: Map, color: 'text-violet-400', bg: 'bg-violet-500/15' }
+        return { label: '场景', icon: Map, color: 'text-violet-400', bg: 'bg-violet-500/15' }
       case 'lorebook':
-        return { label: 'Lorebook', icon: BookOpen, color: 'text-blue-400', bg: 'bg-blue-500/15' }
+        return { label: '世界书', icon: BookOpen, color: 'text-blue-400', bg: 'bg-blue-500/15' }
       default:
         // Fallback for safety
         return {
-          label: 'Entity',
+          label: '实体',
           icon: BookOpen,
           color: 'text-surface-400',
           bg: 'bg-surface-500',
@@ -71,13 +71,13 @@
   const actionConfig = $derived.by(() => {
     switch (change.action) {
       case 'create':
-        return { label: 'Create', icon: Plus, color: 'text-green-400' }
+        return { label: '创建', icon: Plus, color: 'text-green-400' }
       case 'update':
-        return { label: 'Update', icon: ArrowRight, color: 'text-blue-400' }
+        return { label: '更新', icon: ArrowRight, color: 'text-blue-400' }
       case 'delete':
-        return { label: 'Delete', icon: Trash2, color: 'text-red-400' }
+        return { label: '删除', icon: Trash2, color: 'text-red-400' }
       case 'merge':
-        return { label: 'Merge', icon: GitMerge, color: 'text-purple-400' }
+        return { label: '合并', icon: GitMerge, color: 'text-purple-400' }
     }
   })
 
@@ -311,17 +311,17 @@
       {#if isAutoApproved}
         <div class="flex items-center gap-1 text-xs font-medium text-teal-400">
           <Zap class="h-3 w-3" />
-          Auto-approved
+          已自动批准
         </div>
       {:else if isApproved}
         <div class="flex items-center gap-1 text-xs font-medium text-emerald-400">
           <CheckCircle2 class="h-3 w-3" />
-          Approved
+          已批准
         </div>
       {:else if isRejected}
         <div class="flex items-center gap-1 text-xs font-medium text-red-400">
           <XCircle class="h-3 w-3" />
-          Rejected
+          已拒绝
         </div>
       {:else}
         {#if onEdit}
@@ -330,7 +330,7 @@
             onclick={onEdit}
           >
             <Pencil class="h-3 w-3" />
-            Edit
+            编辑
           </button>
         {/if}
         <button
@@ -338,14 +338,14 @@
           onclick={onReject}
         >
           <X class="h-3 w-3" />
-          Reject
+          拒绝
         </button>
         <button
           class="flex items-center gap-1 rounded-lg bg-emerald-500/15 px-2.5 py-1.5 text-xs font-medium whitespace-nowrap text-emerald-400 transition-colors hover:bg-emerald-500/25"
           onclick={onApprove}
         >
           <Check class="h-3 w-3" />
-          Approve
+          批准
         </button>
       {/if}
     </div>
@@ -357,7 +357,7 @@
       <!-- Create: Show new entity data -->
       <div class="rounded-lg border border-emerald-500/20 bg-emerald-500/8 p-2.5">
         <div class="mb-1.5 text-[10px] font-bold tracking-wider text-emerald-400 uppercase">
-          New {entityConfig.label}
+          新建 {entityConfig.label}
         </div>
         <div
           class="text-surface-200 font-mono text-xs leading-relaxed break-words whitespace-pre-wrap"
@@ -370,7 +370,7 @@
       <div class="grid grid-cols-1 gap-2 md:grid-cols-2">
         <div class="rounded-lg border border-red-500/20 bg-red-500/8 p-2.5">
           <div class="mb-1.5 text-[10px] font-bold tracking-wider text-red-400 uppercase">
-            Before
+            修改前
           </div>
           <div
             class="text-surface-400 font-mono text-xs leading-relaxed break-words whitespace-pre-wrap"
@@ -380,7 +380,7 @@
         </div>
         <div class="rounded-lg border border-emerald-500/20 bg-emerald-500/8 p-2.5">
           <div class="mb-1.5 text-[10px] font-bold tracking-wider text-emerald-400 uppercase">
-            After
+            修改后
           </div>
           <div
             class="text-surface-200 font-mono text-xs leading-relaxed break-words whitespace-pre-wrap"
@@ -397,7 +397,7 @@
       <!-- Delete: Show entity being removed -->
       <div class="rounded-lg border border-red-500/20 bg-red-500/8 p-2.5">
         <div class="mb-1.5 text-[10px] font-bold tracking-wider text-red-400 uppercase">
-          {entityConfig.label} to Delete
+          {entityConfig.label} 待删除
         </div>
         <div
           class="text-surface-400 font-mono text-xs leading-relaxed break-words whitespace-pre-wrap line-through opacity-70"
@@ -410,13 +410,13 @@
       <div class="space-y-3">
         <div class="rounded-lg border border-red-500/20 bg-red-500/8 p-2.5">
           <div class="mb-1.5 text-[10px] font-bold tracking-wider text-red-400 uppercase">
-            Entries to Merge ({previousEntries?.length ?? 0})
+            待合并条目（{previousEntries?.length ?? 0})
           </div>
           <div class="space-y-1.5">
             {#each previousEntries ?? [] as entry, i (i)}
               <div class="bg-surface-800 rounded-md p-2">
                 <div class="text-surface-400 mb-1 text-[10px] font-semibold">
-                  Entry {i + 1}: {entry.name}
+                  条目 {i + 1}: {entry.name}
                 </div>
                 <div
                   class="text-surface-300 font-mono text-xs leading-relaxed break-words whitespace-pre-wrap"
@@ -434,7 +434,7 @@
 
         <div class="rounded-lg border border-emerald-500/20 bg-emerald-500/8 p-2.5">
           <div class="mb-1.5 text-[10px] font-bold tracking-wider text-emerald-400 uppercase">
-            Merged Entry
+            合并后的条目
           </div>
           <div
             class="text-surface-200 font-mono text-xs leading-relaxed break-words whitespace-pre-wrap"

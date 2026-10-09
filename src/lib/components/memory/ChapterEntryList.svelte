@@ -58,7 +58,7 @@
     {/each}
     {#if entries.length > 10}
       <div class="text-muted-foreground py-1 text-xs">
-        ... {entries.length - 10} more entries
+        ... {entries.length - 10} 个其他条目
       </div>
     {/if}
   </div>

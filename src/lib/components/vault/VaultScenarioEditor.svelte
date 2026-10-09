@@ -163,11 +163,9 @@
           <MapPin class="text-primary h-5 w-5" />
         </div>
         <div>
-          <h2 class="text-lg font-semibold">{isCreating ? 'New Scenario' : 'Edit Scenario'}</h2>
+          <h2 class="text-lg font-semibold">{isCreating ? '新建场景' : '编辑场景'}</h2>
           <p class="text-muted-foreground text-sm">
-            {isCreating
-              ? 'Fill in the details to create your scenario.'
-              : 'Modify your scenario settings and characters.'}
+            {isCreating ? '填写信息以创建场景。' : '修改场景设定和角色。'}
           </p>
         </div>
       </div>
@@ -202,7 +200,7 @@
               })}
           >
             <Bot class="h-4 w-4" />
-            Ask Assistant
+            询问助手
           </Button>
         {:else}
           <div></div>
@@ -210,7 +208,7 @@
         <div class="flex items-center gap-2">
           <Button variant="outline" onclick={handleCloseAttempt} disabled={saving}>
             <X class="h-4 w-4" />
-            <span class="hidden sm:inline">Close</span>
+            <span class="hidden sm:inline">关闭</span>
           </Button>
           <Button onclick={handleSave} disabled={saving || !formData.name.trim() || !hasChanges}>
             {#if saving}
@@ -218,7 +216,7 @@
             {:else}
               <Save class=" h-4 w-4" />
             {/if}
-            {isCreating ? 'Create Scenario' : 'Save Changes'}
+            {isCreating ? '创建场景' : '保存修改'}
           </Button>
         </div>
       </div>

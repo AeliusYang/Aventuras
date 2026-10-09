@@ -56,10 +56,10 @@
     <ResponsiveModal.Header class="border-b px-6 py-4">
       <div class="flex items-center gap-2">
         <Archive class="text-primary h-5 w-5" />
-        <ResponsiveModal.Title>Import from Vault</ResponsiveModal.Title>
+        <ResponsiveModal.Title>从素材库导入</ResponsiveModal.Title>
       </div>
       <ResponsiveModal.Description>
-        Select a lorebook from your vault to add its entries to this story.
+        从素材库选择世界书，将其中的条目添加到本故事。
       </ResponsiveModal.Description>
     </ResponsiveModal.Header>
 
@@ -67,7 +67,7 @@
       {#if importing}
         <div class="flex items-center justify-center gap-2 py-12">
           <Loader2 class="h-5 w-5 animate-spin" />
-          <span class="text-muted-foreground text-sm">Importing entries...</span>
+          <span class="text-muted-foreground text-sm">正在导入条目…</span>
         </div>
       {:else}
         <UniversalVaultBrowser
@@ -79,7 +79,7 @@
     </div>
 
     <ResponsiveModal.Footer class="border-t px-6 py-3">
-      <Button variant="outline" onclick={onClose}>Cancel</Button>
+      <Button variant="outline" onclick={onClose}>取消</Button>
     </ResponsiveModal.Footer>
   </ResponsiveModal.Content>
 </ResponsiveModal.Root>

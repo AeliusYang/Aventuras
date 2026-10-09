@@ -441,9 +441,7 @@
         />
       {:else if !('data' in change)}
         <div class="p-4">
-          <p class="text-muted-foreground text-sm">
-            Delete operations cannot be edited — approve or reject directly.
-          </p>
+          <p class="text-muted-foreground text-sm">删除操作无法编辑，请直接批准或拒绝。</p>
         </div>
       {/if}
     </div>
@@ -454,7 +452,7 @@
     >
       {#if isViewMode}
         <Button variant="outline" size="sm" class="border-surface-600 h-7 text-xs" onclick={onClose}
-          >Close</Button
+          >关闭</Button
         >
         <Button
           size="sm"
@@ -462,11 +460,11 @@
           onclick={handleViewModeSave}
         >
           <Save class="h-3 w-3" />
-          Save
+          保存
         </Button>
       {:else}
         <Button variant="outline" size="sm" class="border-surface-600 h-7 text-xs" onclick={onClose}
-          >Cancel</Button
+          >取消</Button
         >
         <Button
           size="sm"
@@ -474,7 +472,7 @@
           onclick={handleApproveWithEdits}
         >
           <Check class="h-3 w-3" />
-          Confirm & Approve
+          确认并批准
         </Button>
       {/if}
     </div>

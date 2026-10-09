@@ -138,13 +138,7 @@
       </div>
     </Collapsible.Trigger>
     <div class="flex shrink-0 items-center gap-1">
-      <Button
-        variant="ghost"
-        size="icon"
-        class="h-8 w-8"
-        onclick={cfg.onReset}
-        title="Reset to default"
-      >
+      <Button variant="ghost" size="icon" class="h-8 w-8" onclick={cfg.onReset} title="恢复默认值">
         <RotateCcw class="h-3.5 w-3.5" />
       </Button>
       <Collapsible.Trigger>
@@ -155,7 +149,7 @@
                 ? 'rotate-180'
                 : ''}"
             />
-            <span class="sr-only">Toggle</span>
+            <span class="sr-only">切换</span>
           </Button>
         {/snippet}
       </Collapsible.Trigger>
@@ -190,7 +184,7 @@
       <p class="text-muted-foreground text-xs">{cfg.help}</p>
     {/if}
     {#if cfg.inactiveReason}
-      <p class="text-muted-foreground/80 text-[11px] italic">Inactive — {cfg.inactiveReason}</p>
+      <p class="text-muted-foreground/80 text-[11px] italic">未启用： {cfg.inactiveReason}</p>
     {/if}
   </div>
 {/snippet}
@@ -220,14 +214,12 @@
       <div class="space-y-0.5">
         <div class="flex items-center gap-2">
           <Code2 class="text-muted-foreground h-4 w-4" />
-          <Label>Manual Request Mode</Label>
+          <Label>自定义请求模式</Label>
         </div>
-        <p class="text-muted-foreground text-xs">
-          Edit full request body parameters for advanced models.
-        </p>
+        <p class="text-muted-foreground text-xs">直接编辑完整请求体参数。</p>
         {#if settings.advancedRequestSettings.manualMode}
           <p class="pt-1 text-xs font-medium text-amber-500">
-            Manual mode active. Temperature and max token controls are locked.
+            已启用自定义请求模式，温度和最大 Token 控件暂不可调整。
           </p>
         {/if}
       </div>
@@ -242,12 +234,12 @@
       <div class="space-y-0.5">
         <div class="flex items-center gap-2">
           <Bug class="text-muted-foreground h-4 w-4" />
-          <Label>Debug Mode</Label>
+          <Label>调试模式</Label>
         </div>
-        <p class="text-muted-foreground text-xs">Log API requests and responses for debugging.</p>
+        <p class="text-muted-foreground text-xs">记录 API 请求与响应，便于排查问题。</p>
         {#if settings.uiSettings.debugMode}
           <p class="pt-1 text-xs font-medium text-amber-500">
-            Logs are session-only and not persisted.
+            日志仅在当前会话中保留，不写入存储。
           </p>
         {/if}
       </div>
@@ -261,8 +253,8 @@
   <!-- Group 1: what is assembled into the narrator's prompt, before a turn  -->
   <!-- ==================================================================== -->
   {@render groupHeading(
-    "The narrator's prompt",
-    'Chosen before each turn and sent with it. Entry Retrieval and World State Injection draw from two separate pools; Memory Retrieval reaches back into past chapters.',
+    '正文生成上下文',
+    '每轮生成前选择并发送。条目检索与世界状态注入使用独立的数据来源，记忆检索则查找过去的章节。',
   )}
 
   <div class="space-y-3">
@@ -271,8 +263,8 @@
       <Collapsible.Root bind:open={openSections.entryRetrieval}>
         {@render sectionHeader({
           id: 'entryRetrieval',
-          title: 'Entry Retrieval',
-          subtitle: 'Selects Lorebook entries (authored lore) for the prompt',
+          title: '世界书条目检索',
+          subtitle: '选择要加入提示词的世界书条目（预先编写的设定）',
           icon: Search,
           iconWrap: 'bg-amber-500/10 group-hover/trigger:bg-amber-500/20',
           iconColor: 'text-amber-500',
@@ -283,17 +275,13 @@
         <Collapsible.Content>
           <div class="bg-muted/10 space-y-6 border-t p-4">
             <p class="text-muted-foreground text-xs leading-relaxed">
-              Selects which <strong>Lorebook entries</strong> (`Entry` records you or the AI wrote:
-              characters, locations, items, factions, concepts, events) get injected into the
-              narrator prompt. Authored lore only — the current location, active characters and
-              inventory are handled by <strong>World State Injection</strong> below, which selects from
-              the live, turn-by-turn tracked game state. Runs on every narrator turn, in every Memory
-              Retrieval mode: Agentic Retrieval reads lorebook entries while reasoning about the past,
-              but does not choose which ones reach the narrator — that is decided here, and only here.
+              选择要加入上下文的 <strong>世界书条目</strong> （你或 AI
+              编写的角色、地点、物品、阵营、概念和事件设定）。当前位置、活跃角色和背包内容由下方的
+              <strong>世界状态注入</strong> 从逐轮更新的实时状态中选择。无论使用哪种记忆检索模式，每轮正文生成都会执行此步骤。智能记忆检索会读取世界书以理解历史，但由这里决定哪些条目进入正文上下文。
             </p>
 
             {@render sliderRow({
-              label: 'Recent Entries Window',
+              label: '最近条目范围',
               value: system.entryRetrieval.recentEntriesCount,
               display: `${system.entryRetrieval.recentEntriesCount} entries`,
               min: ENTRY_RETRIEVAL_WINDOW_MIN,
@@ -307,13 +295,13 @@
             })}
 
             {@render sliderRow({
-              label: 'Max Matched Entries',
+              label: '匹配条目上限',
               value: system.entryRetrieval.maxTier2Entries,
               display: `${system.entryRetrieval.maxTier2Entries} entries`,
               min: 5,
               max: 40,
               step: 5,
-              help: 'Cap on entries pulled in by name, alias or keyword. Lower than the World State cap on purpose: a lorebook entry is a paragraph, a world-state record is a sentence.',
+              help: '按名称、别名或关键词匹配的条目数量上限。世界书条目通常长于世界状态记录，因此此上限通常应更低。',
               onChange: (v) => {
                 system.entryRetrieval.maxTier2Entries = v
                 saveSystem()
@@ -321,9 +309,9 @@
             })}
 
             {@render switchRow({
-              label: 'Match Against What Is in the Scene',
+              label: '匹配场景中的实体',
               description:
-                'Also look for lore about whatever World State Injection says is present — the current location, the characters in the scene, your inventory, the active quests — not only what the text names. These arrive as second-pass matches, ranked below anything named directly, so a cap drops them first. Turn it off if a dense lorebook is spending its Max Matched Entries on things nobody mentioned.',
+                '除正文提到的名称外，也匹配世界状态中当前地点、在场角色、随身物品和进行中任务的设定。这些匹配优先级较低，超出上限时优先舍弃。如果它们占用了过多条目名额，可以关闭。',
               checked: system.entryRetrieval.useSceneEntities,
               onChange: (v) => {
                 system.entryRetrieval.useSceneEntities = v
@@ -332,13 +320,13 @@
             })}
 
             {@render sliderRow({
-              label: 'Include-All Budget',
+              label: '全部纳入的预算',
               value: system.entryRetrieval.tier3WholesaleWordBudget,
               display: `${system.entryRetrieval.tier3WholesaleWordBudget} words`,
               min: 100,
               max: 2500,
               step: 100,
-              help: 'How much unmatched lore can still go in whole. If the leftover fits this budget, all of it is included and no LLM is called; if it is larger, the LLM picks from it — or, with the switch below off, none of it goes in. Raising this trades a longer prompt for one fewer LLM call per turn.',
+              help: '未匹配设定在预算内时全部纳入，无需调用模型；超出时由模型筛选，若关闭下方开关则舍弃。提高预算可能减少模型调用，但会增加提示词长度。',
               onChange: (v) => {
                 system.entryRetrieval.tier3WholesaleWordBudget = v
                 saveSystem()
@@ -346,9 +334,9 @@
             })}
 
             {@render switchRow({
-              label: 'Use the LLM to Pick Entries Above the Budget',
+              label: '超出预算时由模型筛选条目',
               description:
-                'When the leftover is larger than the budget, let the LLM choose which entries matter. With this off, an oversized leftover is dropped instead — a leftover that fits the budget still goes in either way.',
+                '剩余条目超出预算时，由模型筛选相关内容。关闭后将舍弃超预算的剩余条目；预算内的剩余条目仍会全部纳入。',
               checked: view.entryLLMOn,
               onChange: (v) => {
                 system.entryRetrieval.enableLLMSelection = v
@@ -357,13 +345,13 @@
             })}
 
             {@render sliderRow({
-              label: 'Max LLM-Selected Entries',
+              label: '模型筛选条目上限',
               value: system.entryRetrieval.maxTier3Entries,
               display: `${system.entryRetrieval.maxTier3Entries} entries`,
               min: 5,
               max: 50,
               step: 5,
-              help: 'Cap on what the LLM picked. Applies only above the budget — below it the whole leftover goes in uncapped.',
+              help: '限制模型筛选的数量。仅在超预算时生效；预算内的剩余内容全部纳入，不受此上限影响。',
               inactiveReason: view.inactive.maxTier3Entries,
               onChange: (v) => {
                 system.entryRetrieval.maxTier3Entries = v
@@ -372,7 +360,7 @@
             })}
 
             {@render sliderRow({
-              label: 'Max Words Per Entry',
+              label: '每条最大词数',
               value: system.entryRetrieval.maxWordsPerEntry,
               display:
                 system.entryRetrieval.maxWordsPerEntry === 0
@@ -382,7 +370,7 @@
               max: 500,
               step: 50,
               ends: ['Unlimited', '500 Words'],
-              help: 'Truncates each description when the block is written, whichever tier it came from.',
+              help: '写入上下文时截断过长的描述，适用于所有来源的条目。',
               onChange: (v) => {
                 system.entryRetrieval.maxWordsPerEntry = v
                 saveSystem()
@@ -398,8 +386,8 @@
       <Collapsible.Root bind:open={openSections.worldStateInjection}>
         {@render sectionHeader({
           id: 'worldStateInjection',
-          title: 'World State Injection',
-          subtitle: 'Selects live-tracked characters, locations, items & quests for the prompt',
+          title: '世界状态注入',
+          subtitle: '选择要加入提示词的动态角色、地点、物品和任务记录',
           icon: Users,
           iconWrap: 'bg-teal-500/10 group-hover/trigger:bg-teal-500/20',
           iconColor: 'text-teal-500',
@@ -410,18 +398,14 @@
         <Collapsible.Content>
           <div class="bg-muted/10 space-y-6 border-t p-4">
             <p class="text-muted-foreground text-xs leading-relaxed">
-              Selects which pieces of the story's <strong>live-tracked World State</strong> -- the
-              `Character`/`Location`/`Item`/`StoryBeat` records that the "World State Classifier"
-              updates after every narrator turn (who's present, where you are, your inventory,
-              active quests) -- get injected into the prompt. Separate from
-              <strong>Entry Retrieval</strong> above, which selects from authored Lorebook entries
-              instead. Unlike Entry Retrieval, this runs in full on <strong>every</strong> narrator turn,
-              in every Memory Retrieval mode: Agentic Retrieval searches Lorebook entries and chapters,
-              never live World State, so there is nothing here for it to stand in for.
+              选择故事中需要加入上下文的 <strong>实时世界状态</strong>
+              ，包括“世界状态提取”每轮更新的在场角色、当前位置、背包和活跃剧情线索。这部分数据独立于上方的
+              <strong>世界书条目检索</strong> 所选择的世界书设定。此步骤会完整运行于
+              <strong>每一轮</strong> 正文生成，适用于所有记忆检索模式。智能记忆检索搜索世界书与章节，不搜索实时世界状态，因此无法替代此步骤。
             </p>
 
             {@render sliderRow({
-              label: 'Recent Entries Window',
+              label: '最近条目范围',
               value: system.worldStateInjection.recentEntriesCount,
               display: `${system.worldStateInjection.recentEntriesCount} entries`,
               min: 2,
@@ -435,13 +419,13 @@
             })}
 
             {@render sliderRow({
-              label: 'Max Matched Entities',
+              label: '匹配实体上限',
               value: system.worldStateInjection.maxTier2Entries,
               display: `${system.worldStateInjection.maxTier2Entries} entities`,
               min: 5,
               max: 60,
               step: 5,
-              help: 'Cap on entities pulled in by name matching.',
+              help: '按名称匹配的实体数量上限。',
               onChange: (v) => {
                 system.worldStateInjection.maxTier2Entries = v
                 saveSystem()
@@ -449,13 +433,13 @@
             })}
 
             {@render sliderRow({
-              label: 'Include-All Budget',
+              label: '全部纳入的预算',
               value: system.worldStateInjection.tier3WholesaleWordBudget,
               display: `${system.worldStateInjection.tier3WholesaleWordBudget} words`,
               min: 100,
               max: 2500,
               step: 100,
-              help: 'How much not-yet-selected world state can still go in whole. If the leftover fits this budget, all of it is included and no LLM is called; if it is larger, the LLM picks from it — or, with the switch below off, none of it goes in. A live record runs about 16 words, so 500 is roughly 30 of them.',
+              help: '尚未选中的世界状态在预算内时全部纳入，无需调用模型；超出时由模型筛选，若关闭下方开关则舍弃。原版估算每条约 16 词，500 词约可容纳 30 条；中文内容的实际数量可能不同。',
               onChange: (v) => {
                 system.worldStateInjection.tier3WholesaleWordBudget = v
                 saveSystem()
@@ -463,9 +447,9 @@
             })}
 
             {@render switchRow({
-              label: 'Use the LLM to Pick Entities Above the Budget',
+              label: '超出预算时由模型筛选实体',
               description:
-                'When the leftover is larger than the budget, let the LLM choose which characters, locations, items and quests matter. With this off, an oversized leftover is dropped instead — a leftover that fits the budget still goes in either way.',
+                '剩余内容超出预算时，由模型筛选相关角色、地点、物品和任务。关闭后舍弃超预算的剩余内容；预算内的内容仍会全部纳入。',
               checked: view.worldStateLLMOn,
               onChange: (v) => {
                 system.worldStateInjection.enableLLMSelection = v
@@ -474,13 +458,13 @@
             })}
 
             {@render sliderRow({
-              label: 'Max LLM-Selected Entities',
+              label: '模型筛选实体上限',
               value: system.worldStateInjection.maxTier3Entries,
               display: `${system.worldStateInjection.maxTier3Entries} entities`,
               min: 5,
               max: 80,
               step: 5,
-              help: "Cap on what the LLM picked. Applies only above the budget — below it the whole leftover goes in uncapped. Always-included state (where you are, who's present, what you're carrying, active quests) and the recently-mentioned carry-over are never capped.",
+              help: '仅限制超预算时由模型筛选的实体数量。当前地点、在场角色、携带物品、进行中任务及近期提及的保留状态不受此上限影响。',
               inactiveReason: view.inactive.worldStateMaxTier3,
               onChange: (v) => {
                 system.worldStateInjection.maxTier3Entries = v
@@ -497,8 +481,8 @@
       <Collapsible.Root bind:open={openSections.memoryRetrieval}>
         {@render sectionHeader({
           id: 'memoryRetrieval',
-          title: 'Memory Retrieval',
-          subtitle: 'How past chapters are retrieved for context',
+          title: '记忆检索',
+          subtitle: '从过去章节检索上下文的方式',
           icon: Sparkles,
           iconWrap: 'bg-pink-500/10 group-hover/trigger:bg-pink-500/20',
           iconColor: 'text-pink-500',
@@ -512,8 +496,8 @@
         <Collapsible.Content>
           <div class="bg-muted/10 space-y-6 border-t p-4">
             {@render switchRow({
-              label: 'Enable Memory Retrieval',
-              description: 'Retrieve context from past chapters during generation',
+              label: '启用记忆检索',
+              description: '生成时检索过去章节中的相关内容',
               checked: view.memoryOn,
               onChange: (v) => {
                 system.timelineFill.enabled = v
@@ -524,7 +508,7 @@
             {#if view.memoryOn}
               <!-- Mode Selection -->
               <div class="space-y-3">
-                <Label>Retrieval Mode</Label>
+                <Label>检索模式</Label>
                 <div class="grid grid-cols-2 gap-2">
                   <button
                     class="flex flex-col items-start gap-1 rounded-lg border p-3 text-left transition-colors {view.memoryMode ===
@@ -536,9 +520,9 @@
                       saveSystem()
                     }}
                   >
-                    <span class="text-sm font-medium">Static</span>
+                    <span class="text-sm font-medium">静态检索</span>
                     <span class="text-muted-foreground text-xs">
-                      Generates questions, then answers them from chapters
+                      先生成问题，再从章节中查找答案
                     </span>
                   </button>
                   <button
@@ -551,9 +535,9 @@
                       saveSystem()
                     }}
                   >
-                    <span class="text-sm font-medium">Agentic</span>
+                    <span class="text-sm font-medium">智能检索</span>
                     <span class="text-muted-foreground text-xs">
-                      LLM agent explores chapters and entries with tools
+                      由模型调用工具，主动查找章节和条目
                     </span>
                   </button>
                 </div>
@@ -561,12 +545,12 @@
 
               {#if view.memoryMode === 'static'}
                 {@render sliderRow({
-                  label: 'Max Queries',
+                  label: '查询数量上限',
                   value: system.timelineFill.maxQueries,
                   min: 1,
                   max: 10,
                   step: 1,
-                  help: 'Number of questions generated to query chapter history',
+                  help: '用于查询历史章节的问题数量',
                   onChange: (v) => {
                     system.timelineFill.maxQueries = v
                     saveSystem()
@@ -576,12 +560,12 @@
 
               {#if view.memoryMode !== 'static'}
                 {@render sliderRow({
-                  label: 'Max Iterations',
+                  label: '迭代次数上限',
                   value: system.agenticRetrieval.maxIterations,
                   min: 5,
                   max: 50,
                   step: 5,
-                  help: 'Maximum tool-calling rounds for the retrieval agent',
+                  help: '检索任务调用工具的最大轮数',
                   onChange: (v) => {
                     system.agenticRetrieval.maxIterations = v
                     saveSystem()
@@ -589,9 +573,9 @@
                 })}
 
                 {@render switchRow({
-                  label: 'Enable Grep Tool',
+                  label: '启用原文搜索工具',
                   description:
-                    'Give the agent a no-LLM tool to search verbatim story text across chapters. It looks things up directly instead of asking a second model to read whole chapters, which is far cheaper.',
+                    '允许任务直接跨章节搜索故事原文，无需额外模型阅读整章，通常可降低成本。',
                   checked: view.grepOn,
                   onChange: (v) => {
                     system.agenticRetrieval.grepEnabled = v
@@ -601,13 +585,13 @@
 
                 {#if view.grepOn}
                   {@render sliderRow({
-                    label: 'Quotes Per Search',
+                    label: '每次搜索返回的引文数量',
                     value: system.agenticRetrieval.grepExcerptsPerSearch,
                     display: `${system.agenticRetrieval.grepExcerptsPerSearch} quotes`,
                     min: 5,
                     max: 60,
                     step: 1,
-                    help: 'How much of one search the agent gets to read. Too low and a broad search shows a few percent of its hits, which is not enough to answer with — the agent then falls back to reading a whole chapter with a second model, which costs far more than the quotes would have.',
+                    help: '控制任务每次能读取的搜索结果数量。过低可能导致信息不足，转而调用另一模型阅读整章，增加成本。',
                     onChange: (v) => {
                       system.agenticRetrieval.grepExcerptsPerSearch = v
                       saveSystem()
@@ -628,8 +612,8 @@
   <!-- Group 2: work that happens after the narrator has answered            -->
   <!-- ==================================================================== -->
   {@render groupHeading(
-    'After each turn',
-    'Reads the narration that was just produced. Nothing here affects the turn it runs on — only later ones, through the state and notes it leaves behind.',
+    '每轮生成之后',
+    '读取刚生成的正文。通过保存的状态和记录影响后续轮次，不改变本轮正文。',
   )}
 
   <div class="space-y-3">
@@ -638,8 +622,8 @@
       <Collapsible.Root bind:open={openSections.classifier}>
         {@render sectionHeader({
           id: 'classifier',
-          title: 'World State Classifier',
-          subtitle: 'Extracts world state changes from each narration',
+          title: '世界状态提取',
+          subtitle: '从每段正文提取世界状态变化',
           icon: Brain,
           iconWrap: 'bg-cyan-500/10 group-hover/trigger:bg-cyan-500/20',
           iconColor: 'text-cyan-500',
@@ -649,13 +633,13 @@
         <Collapsible.Content>
           <div class="bg-muted/10 space-y-6 border-t p-4">
             {@render sliderRow({
-              label: 'Recent Entries Window',
+              label: '最近条目范围',
               value: system.classifier.recentEntriesWindow,
               display: `${system.classifier.recentEntriesWindow} entries`,
               min: CLASSIFIER_WINDOW_MIN,
               max: CLASSIFIER_WINDOW_MAX,
               step: 1,
-              help: 'Recent story entries sent whole alongside the passage being classified. Two per turn — an action and a narration',
+              help: '与待分析正文一起完整发送的近期故事条目。每轮通常含动作和正文两条。',
               onChange: (v) => {
                 system.classifier.recentEntriesWindow = v
                 saveSystem()
@@ -671,8 +655,8 @@
       <Collapsible.Root bind:open={openSections.styleReviewer}>
         {@render sectionHeader({
           id: 'styleReviewer',
-          title: 'Style Reviewer',
-          subtitle: 'Detects repetitive phrases and prose patterns from recent narration',
+          title: '文风与重复分析',
+          subtitle: '检测近期正文中重复的短语和叙述模式',
           icon: PenLine,
           iconWrap: 'bg-violet-500/10 group-hover/trigger:bg-violet-500/20',
           iconColor: 'text-violet-500',
@@ -683,9 +667,8 @@
         <Collapsible.Content>
           <div class="bg-muted/10 space-y-6 border-t p-4">
             {@render switchRow({
-              label: 'Enable Style Reviewer',
-              description:
-                'Periodically analyze recent narration for overused phrases and structural repetition, feeding the results back into the narrator prompt',
+              label: '启用文风检查',
+              description: '定期分析近期正文中过度使用的表达与结构，并将结果反馈给正文生成提示词',
               checked: view.styleReviewerOn,
               onChange: (v) => {
                 system.styleReviewer.enabled = v
@@ -695,13 +678,13 @@
 
             {#if view.styleReviewerOn}
               {@render sliderRow({
-                label: 'Review Every',
+                label: '检查间隔',
                 value: system.styleReviewer.triggerInterval,
                 display: `${system.styleReviewer.triggerInterval} turns`,
                 min: 2,
                 max: 32,
                 step: 1,
-                help: 'How often the review runs. Its findings stay in the narrator prompt between runs, so a short interval costs a call more often without changing what the narrator sees in between.',
+                help: '检查的执行频率。两次检查之间会持续使用上次结果，缩短间隔会增加模型调用。',
                 onChange: (v) => {
                   system.styleReviewer.triggerInterval = v
                   saveSystem()
@@ -709,13 +692,13 @@
               })}
 
               {@render sliderRow({
-                label: 'Recent Entries Window',
+                label: '最近条目范围',
                 value: system.styleReviewer.recentEntriesCount,
                 display: `${system.styleReviewer.recentEntriesCount} entries`,
                 min: 4,
                 max: 64,
                 step: 1,
-                help: 'Most recent narration entries analyzed for repetition. Player action entries are always ignored.',
+                help: '用于重复分析的近期正文条目数，不包含玩家动作。',
                 onChange: (v) => {
                   system.styleReviewer.recentEntriesCount = v
                   saveSystem()
@@ -732,8 +715,8 @@
       <Collapsible.Root bind:open={openSections.loreManagement}>
         {@render sectionHeader({
           id: 'loreManagement',
-          title: 'Lore Management',
-          subtitle: 'Autonomous agent limits and consolidation',
+          title: '设定管理',
+          subtitle: '自主任务限制与条目合并',
           icon: BookOpen,
           iconWrap: 'bg-purple-500/10 group-hover/trigger:bg-purple-500/20',
           iconColor: 'text-purple-500',
@@ -743,7 +726,7 @@
         <Collapsible.Content>
           <div class="bg-muted/10 space-y-6 border-t p-4">
             {@render sliderRow({
-              label: 'Max Iterations',
+              label: '迭代次数上限',
               value: system.loreManagement.maxIterations,
               min: 10,
               max: 100,
@@ -756,9 +739,9 @@
             })}
 
             {@render switchRow({
-              label: 'Require duplicate consolidation',
+              label: '要求处理重复条目',
               description:
-                'Entries with matching or near-identical names are listed for the agent either way. With this on, it cannot end the session until it has merged each group or declared it two separate things — which is what stops a lorebook growing duplicates, at the cost of a longer run.',
+                '任务始终会看到名称相同或近似的条目。开启后，必须合并每组条目或明确它们是不同事物才能结束，有助于减少重复，但可能延长运行时间。',
               checked: service.loreManagement.requireDuplicateResolution,
               onChange: (v) => {
                 service.loreManagement.requireDuplicateResolution = v
@@ -776,10 +759,7 @@
   <!-- ==================================================================== -->
   <!-- Group 3: everything that is not the narrator turn                     -->
   <!-- ==================================================================== -->
-  {@render groupHeading(
-    'Suggestions and import',
-    'Side features with their own context budgets. None of these touch the narration itself.',
-  )}
+  {@render groupHeading('建议与导入', '这些辅助功能各自使用独立的上下文预算，不直接修改正文。')}
 
   <div class="space-y-3">
     <!-- Suggestions & Choices (was "Context Window") -->
@@ -787,8 +767,8 @@
       <Collapsible.Root bind:open={openSections.suggestions}>
         {@render sectionHeader({
           id: 'suggestions',
-          title: 'Suggestions & Choices',
-          subtitle: 'How much context the suggestion and action-choice generators get',
+          title: '剧情建议与行动选项',
+          subtitle: '生成剧情建议和行动选项时使用的上下文数量',
           icon: Layers,
           iconWrap: 'bg-blue-500/10 group-hover/trigger:bg-blue-500/20',
           iconColor: 'text-blue-500',
@@ -801,13 +781,13 @@
         <Collapsible.Content>
           <div class="bg-muted/10 space-y-6 border-t p-4">
             {@render sliderRow({
-              label: 'Plot Suggestions',
+              label: '剧情建议',
               value: service.contextWindow.recentEntriesForSuggestions,
               display: `${service.contextWindow.recentEntriesForSuggestions} entries`,
               min: 2,
               max: 15,
               step: 1,
-              help: 'Recent story entries read when generating plot suggestions. Entry Retrieval and World State Injection have their own Recent Entries Window; this is not it.',
+              help: '生成剧情建议时读取的近期故事条目数量。条目检索与世界状态注入使用各自独立的范围。',
               onChange: (v) => {
                 service.contextWindow.recentEntriesForSuggestions = v
                 saveService()
@@ -815,13 +795,13 @@
             })}
 
             {@render sliderRow({
-              label: 'Action Choices',
+              label: '行动选项',
               value: service.contextWindow.recentEntriesForChoices,
               display: `${service.contextWindow.recentEntriesForChoices} entries`,
               min: 1,
               max: 10,
               step: 1,
-              help: 'Entries for generating action choices',
+              help: '生成行动选项时使用的条目数量',
               onChange: (v) => {
                 service.contextWindow.recentEntriesForChoices = v
                 saveService()
@@ -829,13 +809,13 @@
             })}
 
             {@render sliderRow({
-              label: 'Suggestions (lorebook entries)',
+              label: '剧情建议使用的世界书条目',
               value: service.lorebookLimits.maxForSuggestions,
               display: `${service.lorebookLimits.maxForSuggestions} entries`,
               min: 5,
               max: 30,
               step: 5,
-              help: 'Max lorebook entries included when generating plot suggestions',
+              help: '生成剧情建议时包含的世界书条目上限',
               onChange: (v) => {
                 service.lorebookLimits.maxForSuggestions = v
                 saveService()
@@ -851,8 +831,8 @@
       <Collapsible.Root bind:open={openSections.lorebookImport}>
         {@render sectionHeader({
           id: 'lorebookImport',
-          title: 'Lorebook Import',
-          subtitle: 'Batch size and concurrency',
+          title: '世界书导入',
+          subtitle: '批量大小与并发数',
           icon: FolderOpen,
           iconWrap: 'bg-green-500/10 group-hover/trigger:bg-green-500/20',
           iconColor: 'text-green-500',
@@ -862,7 +842,7 @@
         <Collapsible.Content>
           <div class="bg-muted/10 space-y-6 border-t p-4">
             {@render sliderRow({
-              label: 'Batch Size',
+              label: '批量大小',
               value: service.lorebookClassifier.batchSize,
               min: 10,
               max: 100,
@@ -875,7 +855,7 @@
             })}
 
             {@render sliderRow({
-              label: 'Max Concurrent Requests',
+              label: '最大并发请求数',
               value: service.lorebookClassifier.maxConcurrent,
               min: 1,
               max: 10,

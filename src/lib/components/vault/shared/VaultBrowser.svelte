@@ -98,9 +98,9 @@
         <div class="flex h-full flex-col items-center justify-center p-4 py-8">
           <EmptyState
             icon={emptyIcon}
-            title={searchQuery ? 'No matches found' : emptyTitle}
-            description={searchQuery ? 'Try adjusting your search query' : emptyDescription}
-            actionLabel={!searchQuery && onNavigateToVault ? 'Go to Vault' : undefined}
+            title={searchQuery ? '未找到匹配内容' : emptyTitle}
+            description={searchQuery ? '试着调整搜索词' : emptyDescription}
+            actionLabel={!searchQuery && onNavigateToVault ? '前往素材库' : undefined}
             onAction={!searchQuery && onNavigateToVault ? onNavigateToVault : undefined}
             class="py-2"
             size="sm"

@@ -41,6 +41,26 @@ export interface Story {
   currentBgImage: string | null
 }
 
+/** Raw material captured when a story is created from an external importer. */
+export interface StoryImportSource {
+  sourceType: 'sillytavern-card' | 'sillytavern-chat' | 'sillytavern-card-and-chat'
+  originalFilename?: string | null
+  chatFilename?: string | null
+  rawCardJson?: string | null
+  importedAt: number
+  status: 'raw' | 'organized' | 'failed'
+  lastError?: string | null
+  /** User-approved import choices. Missing on legacy stories. */
+  selections?: { characters: boolean; scenario: boolean; lorebook: boolean }
+  userReplacement?: string | null
+  entryIdsBySourceKey?: Record<string, string>
+  excludedSourceKeys?: string[]
+  /** Last adopted source background, used to replace that portion without touching manual text. */
+  backgroundText?: string
+  organizationEnabled?: boolean
+  greetings?: string[]
+}
+
 // Persistent retry state - lightweight version saved to database
 export type ActionInputType = 'do' | 'say' | 'think' | 'story' | 'free'
 
@@ -114,9 +134,12 @@ export interface MemoryConfig {
 export type TargetLength = 'short' | 'medium' | 'long' | 'dynamic'
 
 /** How a story generates images: not at all, on the model's initiative, or embedded in the prose. */
-export type ImageGenerationMode = 'none' | 'agentic' | 'inline'
+export type ImageGenerationMode = 'none' | 'manual' | 'agentic' | 'inline'
 
 export interface StorySettings {
+  collaborativeNovelWorkflow?: import('./collaborative').CollaborativeNovelWorkflow
+  collaborativeNovelPlan?: import('./collaborative').CollaborativeNovelPlanState
+  collaborativeNovelPattern?: import('./collaborative').CollaborativeNovelPatternState
   model?: string
   temperature?: number
   maxTokens?: number
@@ -129,7 +152,9 @@ export interface StorySettings {
   backgroundImagesEnabled?: boolean
   referenceMode?: boolean
   targetLength?: TargetLength
+  importOrganizationDismissed?: boolean
   customSystemPrompt?: string // Per-story Liquid template override; bypasses pack template when set
+  importSource?: StoryImportSource
 }
 
 export interface StoryEntry {
@@ -154,12 +179,43 @@ export interface StoryEntry {
 }
 
 export interface EntryMetadata {
+  writerRecovery?: import('./collaborative').CollaborativeWriterRecovery
+  writerRecoveryId?: string
+  /** Reusable pre-Writer checkpoint, retained on each successful prose variant. */
+  writerReplay?: import('./collaborative').CollaborativeWriterRecovery
+  /**
+   * Alternate prose versions for a single narration entry (SillyTavern-style swipes).
+   * The active variant is mirrored to StoryEntry.content and the other top-level fields
+   * so existing prompt, retrieval and rendering code continues to work unchanged.
+   */
+  variantSet?: StoryEntryVariantSet
+  /** Persisted outcome of collaborative fact/state maintenance for this narration. */
+  collaborativeStateMaintenance?: import('$lib/services/collaborativeStateMaintenance').CollaborativeStateMaintenanceV2
+  collaborativeStateRebuild?: {
+    version: 1
+    historyHash: string
+    targetEntryId: string
+    rebuiltAt: number
+    source: 'ai_confirmed'
+  }
+  collaborativeDiagnostics?: {
+    phases: string[]
+    sceneDirectorCompleted: boolean
+    sceneDirector?: import('./collaborative').NovelTurn['directorDiagnostics']
+    writerTemplateId: string
+    writerTemplateSource?: string
+    translationPhases: number
+  }
+  novelTurn?: import('./collaborative').NovelTurn
+  novelRetry?: import('./collaborative').NovelRetry
+  novelUserSummary?: string
   tokenCount?: number
   model?: string // Model that generated this entry (narration only)
   profileId?: string // API profile id used for generation
   profileName?: string // API profile name at generation time (for display)
   reasoningEffort?: ReasoningEffort // Thinking effort used for generation
   temperature?: number // Sampling temperature used for generation
+  maxTokens?: number // Resolved output token budget used for generation
   generationTime?: number // Wall-clock generation duration in ms (narration only)
   source?: string
   // Story time tracking - captures in-story time at entry creation and after classification
@@ -169,6 +225,35 @@ export interface EntryMetadata {
   originalInput?: string // For translateInput: original user text before translation to English
   /** What retrieval put in the prompt for this turn. Diagnostic only — nothing reads it back. */
   retrievalSnapshot?: RetrievalSnapshot
+}
+
+/** A persisted alternate version of one narration entry. */
+export interface StoryEntryVariant {
+  id: string
+  content: string
+  /** Lifecycle of a generated alternate. Legacy variants are treated as stored. */
+  state?: 'pending' | 'stored'
+  reasoning?: string
+  translatedContent?: string | null
+  translationLanguage?: string | null
+  /** Variant-local metadata; excludes the enclosing variantSet to avoid recursion. */
+  metadata?: Omit<EntryMetadata, 'variantSet'> | null
+  /** Classification output used to re-apply state when the user swipes back. */
+  classificationResult?:
+    import('$lib/services/ai/sdk/schemas/classifier').ClassificationResult | null
+  /** Reversible state delta produced when this variant was applied. */
+  worldStateDelta?: WorldStateDelta | null
+  suggestedActions?: string | null
+  /** Director route marker used to keep rerolls materially different. */
+  routeSignature?: string | null
+  createdAt: number
+}
+
+/** Candidate versions for a single narration entry. */
+export interface StoryEntryVariantSet {
+  version: 1
+  activeVariantId: string
+  variants: StoryEntryVariant[]
 }
 
 export interface Character {
@@ -429,6 +514,7 @@ export interface Chapter {
 export interface Checkpoint {
   id: string
   storyId: string
+  branchId?: string | null
   name: string
 
   // Snapshot boundaries
@@ -789,6 +875,8 @@ export interface EmbeddedImage {
   id: string
   storyId: string
   entryId: string
+  /** Exact source prose + active variant association; absent for legacy images. */
+  contentVersion?: string
   sourceText: string // Text matched in narrative (case-insensitive)
   prompt: string // Full generation prompt
   styleId: string // Image style template used
@@ -826,6 +914,8 @@ export interface GenerationPreset {
   structuredOutputOverride?: 'auto' | 'on' | 'off'
   /** Inject a prompt nudge to encourage the model to use thinking tags properly */
   thinkingNudgePrompt?: boolean
+  /** Optional per-agent request timeout. */
+  timeoutMs?: number
 }
 
 // ===== Translation System Types =====
@@ -924,6 +1014,8 @@ export interface StoryBeatBeforeState {
  * Contains enough information to fully undo the classification's effects.
  */
 export interface WorldStateDelta {
+  /** Version of the reversible delta contract. Missing means a validated legacy delta. */
+  version?: 2
   /** The raw classification result that was applied (stored as-is for debugging/audit) */
   classificationResult: Record<string, unknown>
 

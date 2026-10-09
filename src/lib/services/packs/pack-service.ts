@@ -1,5 +1,15 @@
 import { database } from '$lib/services/database'
+import type { StoryMode } from '$lib/types'
+import { COLLABORATIVE_IMPORT_DEFAULT_PACK_KEY } from './types'
 import { PROMPT_TEMPLATES } from '$lib/services/prompts/templates'
+import {
+  canonicalCollaborativeTemplates,
+  novelOpeningRules,
+} from '$lib/services/prompts/templates/collaborative'
+import { legacyTemplateId } from '$lib/services/prompts/resolution'
+import { ContextBuilder } from '$lib/services/context/context-builder'
+import { validateTemplate } from '$lib/services/templates/validator'
+import { templateEngine } from '$lib/services/templates/engine'
 import { hashContent } from './hash'
 import {
   classifyTemplates,
@@ -7,9 +17,21 @@ import {
   type ClassifiedTemplates,
   type RefreshScope,
 } from './staleness'
-import type { PresetPack, FullPack, PackTemplate } from './types'
+import type { PresetPack, FullPack, PackTemplate, PackUsageStory, CustomVariable } from './types'
 
 export { isUntouched } from './staleness'
+
+export function missingRequiredVariables(
+  variables: CustomVariable[],
+  values: Record<string, string> | null | undefined,
+): CustomVariable[] {
+  return variables.filter(
+    (variable) =>
+      variable.isRequired &&
+      !variable.defaultValue?.trim() &&
+      !values?.[variable.variableName]?.trim(),
+  )
+}
 
 /**
  * Pack Service
@@ -22,6 +44,83 @@ export { isUntouched } from './staleness'
  * This service adds the business rules on top.
  */
 class PackService {
+  private savingTemplates = new Set<string>()
+  async getCollaborativeImportDefaultPackId(): Promise<string | null> {
+    const id = await database.getSetting(COLLABORATIVE_IMPORT_DEFAULT_PACK_KEY)
+    return id && (await database.getPack(id)) ? id : null
+  }
+
+  async getEffectiveCollaborativeImportDefaultPackId(): Promise<string | null> {
+    const preferred = await this.getCollaborativeImportDefaultPackId()
+    if (preferred) return preferred
+    return (
+      (await database.getAllPacks()).find(
+        (pack) => pack.name === '中文写作' && pack.author === 'AIRP',
+      )?.id ?? null
+    )
+  }
+
+  async setCollaborativeImportDefaultPackId(packId: string): Promise<void> {
+    if (!(await database.getPack(packId))) throw new Error('提示词包已不存在，请重新选择。')
+    await database.setSetting(COLLABORATIVE_IMPORT_DEFAULT_PACK_KEY, packId)
+  }
+
+  async resetCollaborativeImportDefaultPack(): Promise<void> {
+    await database.deleteSetting(COLLABORATIVE_IMPORT_DEFAULT_PACK_KEY)
+  }
+
+  async resolveSetupPackId(
+    mode: StoryMode,
+    isImport: boolean,
+    restoredPackId?: string,
+  ): Promise<string> {
+    if (restoredPackId && (await database.getPack(restoredPackId))) return restoredPackId
+    if (mode !== 'creative-writing') return 'default-pack'
+    if (isImport) {
+      const preferred = await this.getCollaborativeImportDefaultPackId()
+      if (preferred) return preferred
+    }
+    return (await this.ensureCollaborativePack()).id
+  }
+
+  async ensureCollaborativePack(): Promise<PresetPack> {
+    const existing = (await database.getAllPacks()).find(
+      (p) => p.name === '中文写作' && p.author === 'AIRP',
+    )
+    if (existing) {
+      await this.syncManagedCollaborativePack(existing.id)
+      return existing
+    }
+    const pack = await this.createPack(
+      '中文写作',
+      '中文小说默认提示词；自然输入、主角决定权与场景停点优先。',
+      'AIRP',
+    )
+    for (const id of ['opening-generation-creative', 'opening-refinement-creative']) {
+      await database.setPackTemplateContent(pack.id, id, novelOpeningRules, false)
+    }
+    return pack
+  }
+
+  /** Keep the app-owned AIRP pack on public defaults without touching user edits. */
+  private async syncManagedCollaborativePack(packId: string): Promise<void> {
+    const existing = new Map(
+      (await database.getPackTemplates(packId)).map((template) => [template.templateId, template]),
+    )
+    for (const template of canonicalCollaborativeTemplates) {
+      const system = existing.get(template.id)
+      if (!system || isUntouched(system)) {
+        await database.setPackTemplateContent(packId, template.id, template.content, true)
+      }
+      if (template.userContent) {
+        const userId = `${template.id}-user`
+        const user = existing.get(userId)
+        if (!user || isUntouched(user)) {
+          await database.setPackTemplateContent(packId, userId, template.userContent, true)
+        }
+      }
+    }
+  }
   private initialized = false
 
   /**
@@ -73,15 +172,17 @@ class PackService {
       }
     }
 
-    // Refresh existing default-pack templates when code baseline changes.
-    // For each existing template, if its content_hash doesn't match the new code baseline,
-    // update it -- UNLESS the user has customized it (content doesn't match any known baseline).
-    // Since we can't track old baselines, we accept the tradeoff: default pack templates
-    // are auto-updated to match code changes. Users who need custom templates should use
-    // custom packs (which are never auto-updated).
+    // Existing story prompts stay pinned. Baseline replacement is an explicit editor action.
     await this.refreshDefaultPackTemplates(existingByTemplateId)
 
     await this.backfillMissingTemplates()
+
+    const managedCollaborativePacks = (await database.getAllPacks()).filter(
+      (pack) => pack.name === '中文写作' && pack.author === 'AIRP',
+    )
+    for (const pack of managedCollaborativePacks) {
+      await this.syncManagedCollaborativePack(pack.id)
+    }
 
     this.initialized = true
   }
@@ -113,6 +214,10 @@ class PackService {
       // common case (nothing missing) does no writes and logs nothing.
       const missing = new Map<string, string>()
       for (const template of PROMPT_TEMPLATES) {
+        // Custom packs keep legacy customizations. The built-in pack always receives canonical
+        // IDs so runtime resolution cannot remain pinned to an obsolete alias.
+        const alias = legacyTemplateId(template.id)
+        if (pack.id !== 'default-pack' && alias && existingIds.has(alias)) continue
         if (!existingIds.has(template.id)) missing.set(template.id, template.content)
         const userId = `${template.id}-user`
         if (template.userContent && !existingIds.has(userId)) {
@@ -190,6 +295,50 @@ class PackService {
     // No custom variables copied — new packs start clean
 
     return pack
+  }
+
+  async duplicatePack(
+    sourcePackId: string,
+    name: string,
+    description?: string,
+    author?: string,
+  ): Promise<PresetPack> {
+    const cleanName = name.trim()
+    if (!cleanName) throw new Error('提示词包名称不能为空')
+    const source = await database.getPack(sourcePackId)
+    if (!source) throw new Error('Source Pack not found')
+    return database.duplicatePack(sourcePackId, {
+      id: crypto.randomUUID(),
+      name: cleanName,
+      description: description ?? source.description,
+      author: author ?? source.author,
+      isDefault: false,
+    })
+  }
+
+  async getPackUsageStories(packId: string): Promise<PackUsageStory[]> {
+    return database.getPackUsageStories(packId)
+  }
+
+  /** Validate all selected stories before performing one atomic Pack reassignment. */
+  async reassignStoriesPack(storyIds: string[], targetPackId: string): Promise<void> {
+    const targetPack = await database.getPack(targetPackId)
+    if (!targetPack) throw new Error('Target Pack not found')
+    const variables = await database.getPackVariables(targetPackId)
+    const missingByStory: string[] = []
+    for (const storyId of [...new Set(storyIds)]) {
+      const values = await database.getStoryCustomVariables(storyId)
+      const missing = missingRequiredVariables(variables, values)
+      if (missing.length > 0) {
+        missingByStory.push(
+          `${storyId}: ${missing.map((variable) => variable.displayName).join('、')}`,
+        )
+      }
+    }
+    if (missingByStory.length > 0) {
+      throw new Error(`以下故事缺少目标 Pack 的必填变量：\n${missingByStory.join('\n')}`)
+    }
+    await database.reassignStoriesPack(storyIds, targetPackId)
   }
 
   /**
@@ -325,12 +474,56 @@ class PackService {
     return true
   }
 
+  /** Same save path for the pack editor and the Inspector; validate both halves first. */
+  async saveTemplatePair(
+    packId: string,
+    templateId: string,
+    next: { system: string; user?: string },
+    expected: { system: string; user?: string },
+  ): Promise<void> {
+    const key = `${packId}:${templateId}`
+    if (this.savingTemplates.has(key)) throw new Error('该模板正在保存，请稍后重试。')
+    this.savingTemplates.add(key)
+    try {
+      const builder = await ContextBuilder.forPackId(packId)
+      const current = await builder.inspectTemplate(templateId)
+      if (
+        current.systemTemplate !== expected.system ||
+        (expected.user !== undefined && current.userTemplate !== expected.user)
+      ) {
+        throw new Error('模板已被其他编辑器修改，请重新加载后再保存。')
+      }
+      const variables = (await database.getPackVariables(packId)).map((v) => v.variableName)
+      const errors = [next.system, next.user ?? ''].flatMap((content) =>
+        validateTemplate(content, variables).errors.filter(
+          (error) => error.type !== 'unknown_variable',
+        ),
+      )
+      if (errors.length) throw new Error(errors.map((error) => error.message).join('\n'))
+      if (templateId === 'collaborative-chinese-writer') {
+        const user = next.user ?? current.userTemplate
+        if (!user.trim())
+          throw new Error(
+            '中文写作 Writer 的 user 模板不能为空；旧版缺失 user 与显式清空不是同一配置。',
+          )
+        if (!templateEngine.extractVariableNames(user).includes('novelAgentContext')) {
+          throw new Error(
+            '中文写作 Writer 的 user 模板必须引用 {{ novelAgentContext }}，不能省略本轮 Agent 原文上下文。',
+          )
+        }
+      }
+      await database.setPackTemplateContent(packId, templateId, next.system, false)
+      if (next.user !== undefined) {
+        await database.setPackTemplateContent(packId, `${templateId}-user`, next.user, false)
+      }
+    } finally {
+      this.savingTemplates.delete(key)
+    }
+  }
+
   /**
    * Refresh default pack templates whose code baseline has changed.
-   * Only updates templates that haven't been user-modified from their PREVIOUS baseline.
-   * Since we can't distinguish "user modified old baseline" from "code changed, user didn't touch",
-   * we update all default-pack templates to the current code baseline. Users who customize templates
-   * should use custom packs (which are never auto-updated).
+   * Untouched templates follow the application baseline; editor changes remain pinned.
    */
   private async refreshDefaultPackTemplates(
     existingByTemplateId: Map<string, PackTemplate>,
@@ -368,7 +561,7 @@ class PackService {
    * Get the default baseline content for a template ID.
    * Handles both system prompt (template.id) and user message (template.id + '-user') patterns.
    */
-  private getDefaultContent(templateId: string): string | null {
+  getDefaultContent(templateId: string): string | null {
     // Check for user content template (e.g., 'adventure-user')
     if (templateId.endsWith('-user')) {
       const baseId = templateId.replace(/-user$/, '')

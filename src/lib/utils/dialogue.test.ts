@@ -3,9 +3,10 @@ import { matchDialogueAt, findDialogueStart, segmentDialogue, dialogueSpans } fr
 import { parseStoryMarkdown, parseMarkdown } from './markdown'
 
 describe('matchDialogueAt', () => {
-  it('matches the three supported quote pairs', () => {
+  it('matches the supported quote pairs', () => {
     expect(matchDialogueAt('"hello"')?.inner).toBe('hello')
     expect(matchDialogueAt('“hello”')?.inner).toBe('hello')
+    expect(matchDialogueAt('‘hello’')?.inner).toBe('hello')
     expect(matchDialogueAt('«hello»')?.inner).toBe('hello')
   })
 
@@ -63,6 +64,13 @@ describe('segmentDialogue', () => {
       '"Two."',
       '"Three."',
     ])
+  })
+
+  it('handles Chinese double and single quotation marks in one opening', () => {
+    const html = parseStoryMarkdown('“前半段。”她顿了顿，又说：‘后半段。’')
+    expect(html.match(/class="dialogue-line"/g)).toHaveLength(2)
+    expect(html).toContain('<span class="dialogue-line">“前半段。”</span>')
+    expect(html).toContain('<span class="dialogue-line">‘后半段。’</span>')
   })
 
   it('is lossless — segments concatenate back to the input', () => {
@@ -125,6 +133,13 @@ describe('parseStoryMarkdown', () => {
     expect(html).toContain('<span class="dialogue-line">"<em>Run</em>,"</span>')
   })
 
+  it.each(['「中文对白」', '『另一段中文对白』'])(
+    'recognises Chinese corner quotes: %s',
+    (text) => {
+      expect(parseStoryMarkdown(text)).toContain(`<span class="dialogue-line">${text}</span>`)
+    },
+  )
+
   it('handles raw HTML inside a quote exactly as the plain renderer does', () => {
     // marked passes raw HTML through, in this renderer and in parseMarkdown alike.
     // The dialogue extension must stay neutral about that rather than quietly
@@ -181,5 +196,22 @@ describe('parseStoryMarkdown', () => {
     // the real markup back afterwards; a placeholder inside a quote must survive.
     const html = parseStoryMarkdown('"Look at PICPH0PICPH now."')
     expect(html).toContain('<span class="dialogue-line">"Look at PICPH0PICPH now."</span>')
+  })
+
+  it('marks dialogue inside saved HTML-wrapped narration', () => {
+    const html = parseStoryMarkdown(
+      '<maintext><p>她放下杯子。</p><p>“你选。”</p></maintext>\n<Status_block>『状态』</Status_block>',
+    )
+
+    expect(html).toContain('<p><span class="dialogue-line">“你选。”</span></p>')
+    expect(html).toContain('<Status_block>『状态』</Status_block>')
+  })
+
+  it('does not inspect quotes in HTML attributes while rendering wrapped narration', () => {
+    const html = parseStoryMarkdown('<maintext><pic prompt="say \'hi\'">“真正的对白”</maintext>')
+
+    expect(html).toContain('<pic prompt="say \'hi\'">')
+    expect(html).toContain('<span class="dialogue-line">“真正的对白”</span>')
+    expect(html).not.toContain("dialogue-line\">'hi'")
   })
 })

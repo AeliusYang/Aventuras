@@ -130,7 +130,7 @@
   <div class="flex items-center justify-between pb-1">
     <h4 class="text-muted-foreground flex items-center gap-2 text-sm font-medium">
       <Archive class="h-4 w-4" />
-      Load from Vault
+      从素材库载入
     </h4>
     <Button
       variant="link"
@@ -138,7 +138,7 @@
       class="h-auto p-0 text-xs"
       onclick={() => onNavigateToVault?.()}
     >
-      Manage Vault
+      管理素材库
     </Button>
   </div>
 
@@ -158,14 +158,10 @@
             </div>
             <div class="text-left">
               <div class="text-sm font-medium">
-                {selectedScenarioId && loadedVaultScenarioId
-                  ? 'Scenario Selected'
-                  : 'Select a Scenario'}
+                {selectedScenarioId && loadedVaultScenarioId ? '已选择场景' : '选择场景'}
               </div>
               <div class="text-muted-foreground text-xs">
-                {selectedScenarioId && loadedVaultScenarioId
-                  ? 'Click to change selection'
-                  : 'Browse your saved worlds'}
+                {selectedScenarioId && loadedVaultScenarioId ? '点击更换' : '浏览已保存的世界设定'}
               </div>
             </div>
           </div>
@@ -194,7 +190,7 @@
 </div>
 <h4 class="text-muted-foreground flex items-center gap-2 pb-2 text-sm font-medium">
   <MapPin class="h-4 w-4" />
-  Quick Start Templates
+  快速开始模板
 </h4>
 <div class="grid grid-cols-2 gap-2 pb-4 sm:grid-cols-3">
   {#each QUICK_START_SEEDS as seed (seed.id)}
@@ -224,32 +220,30 @@
   <!-- Genre Input -->
   <div class="space-y-1">
     <Input
-      label="Genre"
+      label="题材"
       id="genre-input"
       value={customGenre}
       oninput={(e) => onCustomGenreChange(e.currentTarget.value)}
-      placeholder="e.g. Dark Fantasy, Cyberpunk Noir, etc."
+      placeholder="例如：黑暗奇幻、赛博朋克悬疑等"
     />
-    <p class="text-muted-foreground text-[0.8rem]">
-      A short tag describing the style/tone of your story.
-    </p>
+    <p class="text-muted-foreground text-[0.8rem]">用简短标签描述故事的风格或基调。</p>
   </div>
 
   <!-- Setting Description -->
   <div class="space-y-2">
-    <Label for="setting-input">World Description</Label>
+    <Label for="setting-input">世界描述</Label>
     <Textarea
       id="setting-input"
       value={settingSeed}
       oninput={(e) => onSettingSeedChange(e.currentTarget.value)}
-      placeholder="Describe your world... (e.g., A kingdom where music is magic)"
+      placeholder="描述你的世界…（例如：一个以音乐施展魔法的王国）"
       class="mt-1 min-h-25 resize-none"
     />
 
     {#if hasUserPlaceholder}
       <div class="bg-muted/50 text-muted-foreground flex items-center gap-2 rounded-md p-2 text-xs">
         <Badge variant="outline" class="h-5 font-mono text-[10px]">{'{{user}}'}</Badge>
-        <span>will be replaced with your character's name</span>
+        <span>将替换为你的角色姓名</span>
       </div>
     {/if}
 
@@ -261,13 +255,13 @@
         onclick={() => (showExpandOptions = !showExpandOptions)}
       >
         <Sparkles class="h-3.5 w-3.5" />
-        {showExpandOptions ? 'Hide AI Options' : 'Expand with AI'}
+        {showExpandOptions ? '收起 AI 选项' : '用 AI 扩写'}
         <ChevronDown class="h-3 w-3 transition-transform {showExpandOptions ? 'rotate-180' : ''}" />
       </Button>
 
       <Button size="sm" onclick={onUseAsIs} disabled={!settingSeed.trim()} class="gap-2">
         <Check class="h-3.5 w-3.5" />
-        Use Description
+        使用此描述
       </Button>
     </div>
 
@@ -278,12 +272,12 @@
         transition:slide={{ duration: 150 }}
       >
         <div class="space-y-1.5">
-          <Label for="ai-guidance" class="text-xs">AI Guidance (Optional)</Label>
+          <Label for="ai-guidance" class="text-xs">AI 创作要求（选填）</Label>
           <Textarea
             id="ai-guidance"
             value={settingElaborationGuidance}
             oninput={(e) => onGuidanceChange(e.currentTarget.value)}
-            placeholder="e.g., Focus on dark gothic atmosphere, add steampunk elements..."
+            placeholder="例如：突出阴郁的哥特氛围，加入蒸汽朋克元素…"
             class="mt-1 h-16 resize-none text-sm"
           />
         </div>
@@ -296,10 +290,10 @@
         >
           {#if isExpandingSetting}
             <Loader2 class="h-3.5 w-3.5 animate-spin" />
-            Expanding...
+            正在扩写…
           {:else}
             <Sparkles class="h-3.5 w-3.5" />
-            Generate Expanded World
+            扩写世界设定
           {/if}
         </Button>
       </div>
@@ -318,7 +312,7 @@
   >
     <span class="flex items-center gap-2 text-green-500">
       <Check class="h-4 w-4" />
-      Imported NPCs: {importedCardNpcs.map((n) => n.name).join(', ')}
+      导入的 NPC： {importedCardNpcs.map((n) => n.name).join(', ')}
     </span>
     <Button
       variant="ghost"
@@ -344,7 +338,7 @@
     <div class="flex items-center justify-between">
       <div class="flex items-center gap-2">
         <Check class="h-4 w-4 text-green-500" />
-        <span class="font-medium">Active World Setting</span>
+        <span class="font-medium">当前世界设定</span>
       </div>
 
       <div class="flex items-center gap-1">
@@ -358,9 +352,9 @@
           disabled={!settingSeed.trim() || savedScenarioToVaultConfirm}
         >
           {#if savedScenarioToVaultConfirm}
-            <Check class="h-3.5 w-3.5" /> Saved
+            <Check class="h-3.5 w-3.5" /> 已保存
           {:else}
-            <Archive class="h-3.5 w-3.5" /> Save
+            <Archive class="h-3.5 w-3.5" /> 保存
           {/if}
         </Button>
 
@@ -371,9 +365,9 @@
           onclick={isEditingDescription ? handleSaveDescription : handleEditDescription}
         >
           {#if isEditingDescription}
-            <Check class="h-3.5 w-3.5" /> Done
+            <Check class="h-3.5 w-3.5" /> 完成
           {:else}
-            <PenTool class="h-3.5 w-3.5" /> Edit
+            <PenTool class="h-3.5 w-3.5" /> 编辑
           {/if}
         </Button>
       </div>
@@ -396,7 +390,7 @@
       <!-- Locations -->
       {#if expandedSetting.keyLocations.length > 0}
         <div class="flex flex-wrap gap-2 text-xs">
-          <span class="text-foreground py-0.5 font-medium">Locations:</span>
+          <span class="text-foreground py-0.5 font-medium">地点：</span>
           {#each expandedSetting.keyLocations as loc (loc.name)}
             <Badge variant="secondary" class="font-normal">{loc.name}</Badge>
           {/each}
@@ -418,7 +412,7 @@
       <Input
         value={settingElaborationGuidance}
         oninput={(e) => onGuidanceChange(e.currentTarget.value)}
-        placeholder="Refinement notes..."
+        placeholder="输入修改要求…"
         class="h-8 text-xs"
       />
       <Button
@@ -427,7 +421,7 @@
         class="h-8 w-8 p-0"
         onclick={onExpandFurther}
         disabled={isRefiningSetting}
-        title="Refine with AI"
+        title="用 AI 润色"
       >
         {#if isRefiningSetting}
           <Loader2 class="h-3.5 w-3.5 animate-spin" />

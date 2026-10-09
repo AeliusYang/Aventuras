@@ -42,9 +42,12 @@ import { eventBus, type EventType } from '$lib/services/events'
 import { SvelteMap, SvelteSet } from 'svelte/reactivity'
 import { StreamingHtmlRenderer } from '$lib/utils/htmlStreaming'
 import { countTokens } from '$lib/services/tokenizer'
-import { branchScopeKey } from '$lib/utils/branchScope'
+import { branchScopeKey, type GenerationScope } from '$lib/utils/branchScope'
 
 export type VaultTab = 'characters' | 'lorebooks' | 'scenarios' | 'prompts'
+
+export type PromptEditorReturnTarget =
+  { kind: 'global-pack-manager' } | { kind: 'story-settings'; storyId: string; settingsTab: string }
 
 // Backup for retry functionality - captures state before each user message
 export interface RetryBackup {
@@ -121,6 +124,33 @@ class UIStore {
   isGenerating = $state(false)
   isRetryingLastMessage = $state(false) // Hide stop button during completed-message retries
   vaultTab = $state<VaultTab>('characters')
+  promptEditorTarget = $state<{ packId: string; templateId: string } | null>(null)
+  promptEditorReturnTarget = $state<PromptEditorReturnTarget>({ kind: 'global-pack-manager' })
+
+  /** One-shot author input supplied by the quick-start story creator. */
+  private pendingCreativeInputs = new Map<string, string>()
+  /** Stories created without an initial input should focus the composer once after opening. */
+  private pendingCreativeFocus = new Set<string>()
+
+  setPendingCreativeInput(storyId: string, input: string): void {
+    const trimmed = input.trim()
+    if (trimmed) this.pendingCreativeInputs.set(storyId, trimmed)
+  }
+
+  consumePendingCreativeInput(storyId: string): string | null {
+    const value = this.pendingCreativeInputs.get(storyId) ?? null
+    if (value !== null) this.pendingCreativeInputs.delete(storyId)
+    return value
+  }
+
+  requestCreativeInputFocus(storyId: string): void {
+    this.pendingCreativeFocus.add(storyId)
+  }
+
+  consumeCreativeInputFocus(storyId: string): boolean {
+    const requested = this.pendingCreativeFocus.delete(storyId)
+    return requested
+  }
 
   // Image generation state. Both are counts, because the narration analysis and the
   // background-image analysis run concurrently: as a boolean, whichever finished first
@@ -143,6 +173,12 @@ class UIStore {
   streamingReasoningTokens = $state(0)
   streamingContentTokens = $state(0)
   generationStatus = $state('') // Status message during generation steps (e.g. "Retrieving memories...")
+  novelUserSummary = $state<string | null>(null)
+  directorStreamingContent = $state('')
+  directorStreamingActive = $state(false)
+  directorPanelExpanded = $state(false)
+  generationScope = $state<GenerationScope | null>(null)
+  submissionScope = $state<GenerationScope | null>(null)
   isStreaming = $state(false)
   private htmlRenderer: StreamingHtmlRenderer | null = null
   private visualProseEntryId: string | null = null
@@ -312,6 +348,15 @@ class UIStore {
   // no full retry backup is available (e.g. the latest narration survived a manual delete
   // of the entries that came after it).
   private regenerateNarrationCallback: ((entryId: string) => Promise<void>) | null = null
+  private retryWriterCallback: ((entryId: string) => Promise<void>) | null = null
+
+  setRetryWriterCallback(callback: ((entryId: string) => Promise<void>) | null) {
+    this.retryWriterCallback = callback
+  }
+
+  async triggerRetryWriter(entryId: string) {
+    await this.retryWriterCallback?.(entryId)
+  }
 
   // Reasoning block state persistence
   streamingReasoningExpanded = $state(false)
@@ -362,7 +407,24 @@ class UIStore {
   }
 
   setActivePanel(panel: ActivePanel) {
+    // Detail selection is only meaningful while the lorebook panel is mounted. Clear it
+    // when leaving so a failed or deleted entry cannot poison the next panel mount.
+    if (panel !== 'lorebook' && this.activePanel === 'lorebook') {
+      this.resetLorebookManager()
+    }
     this.activePanel = panel
+  }
+
+  /**
+   * Enter the lorebook panel with a clean, story-local selection.
+   *
+   * Lorebook selection is global UI state while entries are story-scoped. A failed
+   * detail render must therefore never be allowed to carry its selection into the
+   * next panel mount.
+   */
+  openLorebook() {
+    if (this.activePanel !== 'lorebook') this.resetLorebookManager()
+    this.activePanel = 'lorebook'
   }
 
   setSidebarTab(tab: SidebarTab) {
@@ -371,6 +433,33 @@ class UIStore {
 
   setVaultTab(tab: VaultTab) {
     this.vaultTab = tab
+  }
+
+  openPromptPackEditor(
+    packId: string,
+    templateId: string,
+    returnTarget: PromptEditorReturnTarget = { kind: 'global-pack-manager' },
+  ) {
+    this.promptEditorTarget = { packId, templateId }
+    this.promptEditorReturnTarget = returnTarget
+    this.vaultTab = 'prompts'
+    this.activePanel = 'vault'
+    this.settingsModalOpen = false
+  }
+
+  setPromptEditorReturnTarget(target: PromptEditorReturnTarget) {
+    this.promptEditorReturnTarget = target
+  }
+
+  clearPromptEditorSession() {
+    const target = this.promptEditorReturnTarget
+    this.promptEditorTarget = null
+    this.promptEditorReturnTarget = { kind: 'global-pack-manager' }
+    return target
+  }
+
+  clearPromptEditorTarget() {
+    this.promptEditorTarget = null
   }
 
   toggleSidebar() {
@@ -508,6 +597,48 @@ class UIStore {
 
   setGenerationStatus(status: string) {
     this.generationStatus = status
+  }
+
+  beginGenerationScope(scope: GenerationScope) {
+    this.generationScope = scope
+    this.novelUserSummary = null
+    this.directorStreamingContent = ''
+    this.directorStreamingActive = false
+    this.directorPanelExpanded = false
+    this.generationStatus = ''
+  }
+
+  setNovelUserSummary(summary: string | null, scope?: GenerationScope) {
+    if (scope && this.generationScope?.turnId !== scope.turnId) return
+    this.novelUserSummary = summary
+  }
+
+  startDirectorStreaming(scope?: GenerationScope) {
+    if (scope && this.generationScope?.turnId !== scope.turnId) return
+    this.directorStreamingContent = ''
+    this.directorStreamingActive = true
+    this.directorPanelExpanded = true
+  }
+
+  appendDirectorStreamContent(content: string, scope?: GenerationScope) {
+    if (scope && this.generationScope?.turnId !== scope.turnId) return
+    this.directorStreamingContent += content
+  }
+
+  setDirectorPanelExpanded(expanded: boolean) {
+    this.directorPanelExpanded = expanded
+  }
+
+  collapseDirectorPanel(scope?: GenerationScope) {
+    if (scope && this.generationScope?.turnId !== scope.turnId) return
+    this.directorPanelExpanded = false
+  }
+
+  clearDirectorStreaming(scope?: GenerationScope) {
+    if (scope && this.generationScope?.turnId !== scope.turnId) return
+    this.directorStreamingContent = ''
+    this.directorStreamingActive = false
+    this.directorPanelExpanded = false
   }
 
   setRetryingLastMessage(value: boolean) {

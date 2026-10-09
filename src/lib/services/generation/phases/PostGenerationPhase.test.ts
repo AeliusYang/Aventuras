@@ -113,6 +113,25 @@ describe('PostGenerationPhase', () => {
     expect(events.map((e) => e.type)).toEqual(['phase_start', 'phase_complete'])
   })
 
+  it('does not generate or translate anything in collaborative mode', async () => {
+    const deps = makeDeps({
+      generateSuggestions: vi.fn(),
+      generateActionChoices: vi.fn(),
+      translateSuggestions: vi.fn(),
+      translateActionChoices: vi.fn(),
+    })
+    const { result } = await drain(
+      new PostGenerationPhase(deps).execute(
+        makeInput({ isCollaborative: true, translationSettings: italian }),
+      ),
+    )
+    expect(result).toEqual({ suggestions: null, actionChoices: null })
+    expect(deps.generateSuggestions).not.toHaveBeenCalled()
+    expect(deps.generateActionChoices).not.toHaveBeenCalled()
+    expect(deps.translateSuggestions).not.toHaveBeenCalled()
+    expect(deps.translateActionChoices).not.toHaveBeenCalled()
+  })
+
   describe('translation', () => {
     it('translates action choices when a non-English target is set', async () => {
       const { result } = await drain(

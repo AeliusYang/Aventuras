@@ -91,7 +91,7 @@
       onclick={() => ui.setActivePanel('story')}
     >
       <ArrowLeft class="h-3.5 w-3.5" />
-      <span>Back to Story</span>
+      <span>返回故事</span>
     </Button>
   </div>
 
@@ -119,8 +119,8 @@
       <div class="py-12">
         <EmptyState
           icon={BookOpen}
-          title="No Chapters Yet"
-          description="Chapters are created automatically when the story grows beyond the token threshold, or you can create one manually using the button above."
+          title="尚无章节"
+          description="故事内容超过 Token 阈值后会自动创建章节，也可以通过上方按钮手动创建。"
         />
       </div>
     {/if}

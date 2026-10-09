@@ -6,9 +6,7 @@
   import { supportsReasoning, supportsCapabilityFetch } from '$lib/services/ai/sdk/providers'
   import {
     clampReasoningToCapability,
-    REASONING_LABELS,
     REASONING_LEVELS,
-    REASONING_SHORT_LABELS,
     reasoningCapabilityFor,
     type ReasoningCapability,
   } from '$lib/services/ai/core/reasoning'
@@ -18,18 +16,29 @@
   import { Input } from '$lib/components/ui/input'
   import ModelSelector from './ModelSelector.svelte'
 
+  const REASONING_LABELS: Record<ReasoningEffort, string> = {
+    none: '关闭',
+    minimal: '最低',
+    low: '低',
+    medium: '中',
+    high: '高',
+    xhigh: '极高',
+  }
+
   interface Props {
     profileId: string | null
     model: string
     temperature: number
     maxTokens: number
     reasoningEffort: ReasoningEffort
+    timeoutMs?: number
 
     onProfileChange: (id: string | null) => Promise<void>
     onModelChange: (model: string) => void
     onTemperatureChange: (v: number) => void
     onMaxTokensChange: (v: number) => void
     onReasoningChange: (v: ReasoningEffort) => void
+    onTimeoutChange?: (v: number) => void
 
     onRefreshModels: () => Promise<void>
     isRefreshingModels?: boolean
@@ -43,11 +52,13 @@
     temperature,
     maxTokens,
     reasoningEffort,
+    timeoutMs,
     onProfileChange,
     onModelChange,
     onTemperatureChange,
     onMaxTokensChange,
     onReasoningChange,
+    onTimeoutChange,
     onRefreshModels,
     isRefreshingModels = false,
     class: className = '',
@@ -193,6 +204,16 @@
     // Enforcement logic is now handled in the $effect above
     onModelChange(newModel)
   }
+
+  function handleTimeoutBlur(event: Event) {
+    if (!onTimeoutChange) return
+    const raw = Number.parseInt((event.currentTarget as HTMLInputElement).value, 10)
+    onTimeoutChange(
+      Number.isFinite(raw)
+        ? Math.min(Math.max(raw, 1000), 600000)
+        : (timeoutMs ?? settings.apiSettings.llmTimeoutMs),
+    )
+  }
 </script>
 
 <div class={cn('grid gap-4', className)}>
@@ -212,11 +233,11 @@
     <div class="flex items-center gap-1.5 text-xs text-emerald-500">
       <Brain class="h-3.5 w-3.5" />
       {#if modelReasoningCapability === 'enforced'}
-        Reasoning always on for this model
+        此模型始终启用推理
       {:else if providerFetchesModelCapabilities}
-        Reasoning supported
+        支持推理
       {:else}
-        Reasoning supported by provider (specific model support unknown)
+        服务商支持推理，当前模型的支持情况未知
       {/if}
     </div>
   {/if}
@@ -231,7 +252,7 @@
     <!-- Temperature -->
     <div class="grid gap-4">
       <div class="flex justify-between">
-        <Label>Temperature</Label>
+        <Label>温度</Label>
         <span class="text-muted-foreground text-xs">{temperature.toFixed(2)}</span>
       </div>
       <Slider
@@ -243,8 +264,8 @@
         onValueChange={onTemperatureChange}
       />
       <div class="text-muted-foreground flex justify-between text-xs">
-        <span>Focused</span>
-        <span>Creative</span>
+        <span>更集中</span>
+        <span>更多变化</span>
       </div>
     </div>
 
@@ -252,9 +273,9 @@
     <div class="grid gap-4">
       <div class="flex items-center justify-between">
         <div class="grid gap-0.5">
-          <Label>Max Output Tokens</Label>
+          <Label>最大输出 Token 数</Label>
           <span class="text-muted-foreground text-[10px] leading-tight">
-            Includes reasoning + response tokens
+            包含推理和回复的 Token 数
           </span>
         </div>
         <div class="flex items-center gap-1.5">
@@ -262,7 +283,7 @@
             <span
               class="text-muted-foreground rounded bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium text-amber-600 dark:text-amber-400"
             >
-              Manual
+              手动
             </span>
           {:else}
             <span class="text-muted-foreground text-xs">
@@ -276,9 +297,7 @@
               'rounded p-0.5 transition-colors',
               showNumericOverride ? 'text-primary' : 'text-muted-foreground hover:text-foreground',
             )}
-            title={showNumericOverride
-              ? 'Close manual override (snap to slider)'
-              : 'Set exact value (expert)'}
+            title={showNumericOverride ? '关闭手动输入，恢复到滑块档位' : '输入精确数值（高级）'}
           >
             <Settings2 class="h-3.5 w-3.5" />
           </button>
@@ -323,7 +342,7 @@
           placeholder="256 – 262144"
         />
         <p class="text-muted-foreground text-[10px]">
-          Expert override: accepts any value from 256 to 262,144
+          高级手动设置：可输入 256 至 262,144 之间的数值
         </p>
       {/if}
     </div>
@@ -339,7 +358,7 @@
     >
       <div class="grid gap-4">
         <div class="flex justify-between">
-          <Label>Thinking: {REASONING_LABELS[reasoningEffort]}</Label>
+          <Label>推理强度： {REASONING_LABELS[reasoningEffort]}</Label>
         </div>
         <!-- An enforced model starts at the first level above 'none'; the ticks and the
              bounds both come from REASONING_LEVELS, so adding a level cannot desync them. -->
@@ -353,10 +372,28 @@
         />
         <div class="text-muted-foreground flex justify-between text-xs">
           {#each REASONING_LEVELS.slice(reasoningSliderMin) as level (level)}
-            <span>{REASONING_SHORT_LABELS[level]}</span>
+            <span>{REASONING_LABELS[level]}</span>
           {/each}
         </div>
       </div>
+    </div>
+  {/if}
+
+  {#if timeoutMs !== undefined && onTimeoutChange}
+    <div class={cn('grid gap-2 border-t pt-4', isManualMode && 'pointer-events-none opacity-50')}>
+      <Label for="agent-timeout-ms">请求超时（毫秒）</Label>
+      <Input
+        id="agent-timeout-ms"
+        type="number"
+        min={1000}
+        max={600000}
+        step={1000}
+        value={timeoutMs}
+        onblur={handleTimeoutBlur}
+      />
+      <p class="text-muted-foreground text-xs">
+        此值由绑定该 Profile 的任务共同继承；中文写作 Director 也使用此值作为完整请求的超时时间。
+      </p>
     </div>
   {/if}
 </div>

@@ -12,7 +12,7 @@
 </script>
 
 <div class="space-y-4">
-  <p class="text-muted-foreground">How do you want to experience your story?</p>
+  <p class="text-muted-foreground">你想以什么方式参与故事？</p>
   <div class="grid gap-4 sm:grid-cols-2">
     <!-- Adventure Mode -->
     <button
@@ -30,13 +30,12 @@
             <div class="bg-primary/10 rounded-lg p-3">
               <Sword class="text-primary h-6 w-6" />
             </div>
-            <Card.Title>Adventure Mode</Card.Title>
+            <Card.Title>冒险模式</Card.Title>
           </div>
         </Card.Header>
         <Card.Content>
           <p class="text-muted-foreground text-sm">
-            <strong>You are the protagonist.</strong> Explore the world, interact with characters, and
-            make choices that shape your story. The AI narrates the consequences of your actions.
+            <strong>你扮演主角。</strong> 探索世界、与角色互动，用选择影响故事。AI 根据你的行动叙述后续发展。
           </p>
         </Card.Content>
       </Card.Root>
@@ -58,13 +57,12 @@
             <div class="bg-primary/10 rounded-lg p-3">
               <Feather class="text-primary h-6 w-6" />
             </div>
-            <Card.Title>Creative Writing</Card.Title>
+            <Card.Title>中文写作</Card.Title>
           </div>
         </Card.Header>
         <Card.Content>
           <p class="text-muted-foreground text-sm">
-            <strong>You are the author.</strong> Direct the story and craft the narrative. The AI collaborates
-            with you to write prose following your creative vision.
+            <strong>你担任作者。</strong> Director 理解自然输入并安排场景，Writer 按照你的创作意图撰写中文小说正文。
           </p>
         </Card.Content>
       </Card.Root>

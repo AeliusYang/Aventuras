@@ -28,7 +28,6 @@
   }: Props = $props()
 
   const selectedPack = $derived(availablePacks.find((p) => p.id === selectedPackId))
-  const hasMultiplePacks = $derived(availablePacks.length > 1)
   const hasVariables = $derived(packVariables.length > 0)
 </script>
 
@@ -39,17 +38,15 @@
       <Package class="text-primary h-4 w-4" />
     </div>
     <div>
-      <h3 class="text-lg font-semibold">Prompt Pack</h3>
-      <p class="text-muted-foreground text-sm">
-        Choose which prompt templates to use for this story.
-      </p>
+      <h3 class="text-lg font-semibold">提示词包</h3>
+      <p class="text-muted-foreground text-sm">选择此故事使用的提示词模板。</p>
     </div>
   </div>
 
   <!-- Pack Dropdown (only shown when multiple packs exist) -->
-  {#if hasMultiplePacks}
+  {#if availablePacks.length}
     <div class="space-y-2">
-      <Label>Pack</Label>
+      <Label>提示词包</Label>
       <Select.Root
         type="single"
         value={selectedPackId}
@@ -58,7 +55,7 @@
         }}
       >
         <Select.Trigger class="w-full">
-          {selectedPack?.name ?? 'Select a pack'}
+          {selectedPack?.name ?? '选择提示词包'}
         </Select.Trigger>
         <Select.Content>
           {#each availablePacks as pack (pack.id)}
@@ -66,7 +63,7 @@
               <div class="flex items-center gap-2">
                 {pack.name}
                 {#if pack.isDefault}
-                  <Badge variant="secondary" class="text-xs">Default</Badge>
+                  <Badge variant="secondary" class="text-xs">默认</Badge>
                 {/if}
               </div>
             </Select.Item>
@@ -81,20 +78,6 @@
     </div>
   {/if}
 
-  <!-- Empty state: default pack, no variables -->
-  {#if !hasMultiplePacks && !hasVariables}
-    <div class="flex flex-col items-center justify-center py-8 text-center">
-      <div class="bg-muted mb-3 rounded-full p-4">
-        <Package class="text-muted-foreground h-10 w-10" />
-      </div>
-      <h4 class="mb-1 text-sm font-medium">Default Pack Selected</h4>
-      <p class="text-muted-foreground max-w-sm text-sm">
-        Using the built-in prompt templates. You can create custom packs with configurable variables
-        in the Vault's Prompt Editor.
-      </p>
-    </div>
-  {/if}
-
   <!-- Variable Inputs -->
   {#if hasVariables}
     <!-- Divider with centered label -->
@@ -103,7 +86,7 @@
         <div class="w-full border-t"></div>
       </div>
       <div class="relative flex justify-center text-xs uppercase">
-        <span class="bg-background text-muted-foreground px-2">Variables</span>
+        <span class="bg-background text-muted-foreground px-2">变量</span>
       </div>
     </div>
 
@@ -167,7 +150,7 @@
                 <Select.Trigger class="w-full">
                   {variable.enumOptions.find(
                     (o) => o.value === variableValues[variable.variableName],
-                  )?.label ?? 'Select...'}
+                  )?.label ?? '请选择…'}
                 </Select.Trigger>
                 <Select.Content>
                   {#each variable.enumOptions as opt (opt.value)}

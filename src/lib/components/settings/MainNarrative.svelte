@@ -72,8 +72,11 @@
   <Card.Header>
     <Card.Title class="flex items-center gap-2 text-base">
       <Cpu class="text-primary h-5 w-5" />
-      Main Narrative
+      冒险正文
     </Card.Title>
+    <Card.Description
+      >用于冒险模式；中文写作正文使用下方“中文写作：中文正文 Writer”绑定的 Agent Profile。</Card.Description
+    >
   </Card.Header>
 
   <Card.Content class="grid gap-3 pt-4">
@@ -82,14 +85,14 @@
         class="flex items-center gap-2 rounded border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-sm text-amber-600 dark:text-amber-400"
       >
         <AlertTriangle class="h-4 w-4 shrink-0" />
-        No API profiles configured. Add one in the API tab.
+        尚未配置模型连接，请在“模型连接”页面添加。
       </div>
     {:else if !settings.apiSettings.defaultModel}
       <div
         class="text-muted-foreground bg-muted/50 flex items-center gap-2 rounded border border-dashed px-3 py-2 text-sm"
       >
         <AlertTriangle class="h-4 w-4 shrink-0" />
-        No model selected. Choose a model below or set one from the API tab.
+        尚未选择模型，请在下方选择或前往“模型连接”页面设置。
       </div>
     {/if}
 
@@ -129,7 +132,7 @@
     {#if settings.advancedRequestSettings.manualMode}
       <div class="mt-4 border-t pt-4">
         <div class="mb-2 flex items-center justify-between">
-          <Label>Manual Request Body (JSON)</Label>
+          <Label>自定义请求体（JSON）</Label>
           <Button
             variant="text"
             size="sm"
@@ -140,7 +143,7 @@
                 settings.setMainManualBody(next)
               })}
           >
-            Pop out
+            在独立窗口中打开
           </Button>
         </div>
         <Textarea
@@ -150,7 +153,7 @@
           rows={4}
         />
         <p class="text-muted-foreground mt-1 text-xs">
-          Overrides request parameters; messages and tools are managed by Aventuras.
+          覆盖请求参数；消息与工具由 Aventuras 管理。
         </p>
       </div>
     {/if}

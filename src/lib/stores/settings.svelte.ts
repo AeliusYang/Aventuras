@@ -16,6 +16,7 @@ import type {
   UpdateSettings,
 } from '$lib/types'
 import { database } from '$lib/services/database'
+import { normalizeCollaborativeStory } from '$lib/services/generation/collaborativeWorkflow'
 import { grammarService } from '$lib/services/grammar'
 import { PROVIDERS } from '$lib/services/ai/sdk/providers/config'
 import {
@@ -43,6 +44,8 @@ import { SvelteSet, SvelteMap } from 'svelte/reactivity'
 import { dedupeTextModels } from '$lib/utils/dedupeTextModels'
 import { applyIncognitoKeyboard } from '$lib/utils/platform'
 import type { ImageGenerationServiceSettings, TimelineFillSettings } from '$lib/services/ai'
+import type { CollaborativeAgentKey } from '$lib/types/collaborative'
+import { collaborativeServiceIds } from '$lib/services/ai/core/collaborativeAgentDefaults'
 import { debug } from './debug.svelte'
 import { modelHealth } from './modelHealth.svelte'
 import {
@@ -1154,6 +1157,32 @@ export function getDefaultGenerationPresetsForProvider(provider: ProviderType): 
       reasoningEffort: services?.translation.reasoningEffort ?? emptyServiceDefault.reasoningEffort,
       manualBody: '',
     },
+    {
+      id: 'collaborative-control',
+      name: '中文写作控制',
+      description: 'Director、规划、复查、事实提取和剧情建议',
+      profileId: null,
+      model: services?.agentic.model ?? emptyServiceDefault.model,
+      temperature: 0.3,
+      maxTokens: 8192,
+      reasoningEffort: 'low',
+      manualBody: '',
+      timeoutMs: LLM_TIMEOUT_DEFAULT,
+      structuredOutputOverride: 'off',
+    },
+    {
+      id: 'collaborative-writer',
+      name: '中文写作正文',
+      description: '中文写作正文 Writer',
+      profileId: null,
+      model: services?.agentic.model ?? emptyServiceDefault.model,
+      temperature: 0.8,
+      maxTokens: 8192,
+      reasoningEffort: 'none',
+      manualBody: '',
+      timeoutMs: LLM_TIMEOUT_DEFAULT,
+      structuredOutputOverride: 'off',
+    },
   ]
 }
 
@@ -1214,6 +1243,12 @@ export function getDefaultUISettings(): UISettings {
  * this replaced) now fails `npm run check` instead of requiring a manual grep audit.
  */
 export const DEFAULT_SERVICE_PRESET_ASSIGNMENTS = {
+  collaborativeSceneDirector: 'collaborative-control',
+  collaborativeNarrativePlanner: 'collaborative-control',
+  collaborativePatternReviewer: 'collaborative-control',
+  collaborativeWriter: 'collaborative-writer',
+  collaborativeFactStateExtractor: 'collaborative-control',
+  collaborativePlotSuggestions: 'collaborative-control',
   classifier: 'classification',
   lorebookClassifier: 'classification',
   entryRetrieval: 'classification',
@@ -1367,6 +1402,32 @@ class SettingsStore {
       maxTokens: 4096,
       reasoningEffort: 'none',
       manualBody: '',
+    },
+    {
+      id: 'collaborative-control',
+      name: '中文写作控制',
+      description: 'Director、规划、复查、事实提取和剧情建议',
+      profileId: null,
+      model: 'z-ai/glm-4.7',
+      temperature: 0.3,
+      maxTokens: 8192,
+      reasoningEffort: 'low',
+      manualBody: '',
+      timeoutMs: LLM_TIMEOUT_DEFAULT,
+      structuredOutputOverride: 'off',
+    },
+    {
+      id: 'collaborative-writer',
+      name: '中文写作正文',
+      description: '中文写作正文 Writer',
+      profileId: null,
+      model: 'z-ai/glm-4.7',
+      temperature: 0.8,
+      maxTokens: 8192,
+      reasoningEffort: 'none',
+      manualBody: '',
+      timeoutMs: LLM_TIMEOUT_DEFAULT,
+      structuredOutputOverride: 'off',
     },
   ])
 
@@ -1871,6 +1932,9 @@ class SettingsStore {
         await this.migrateNullProfileIds()
       }
 
+      // Load after profiles/default provider migration so new installs inherit a real profile.
+      await this.migrateCollaborativeAgentConfigs()
+
       // Load translation settings
       const translationSettingsJson = await database.getSetting('translation_settings')
       if (translationSettingsJson) {
@@ -1948,6 +2012,111 @@ class SettingsStore {
   async setMainManualBody(body: string) {
     this.apiSettings.manualBody = body
     await database.setSetting('main_manual_body', body)
+  }
+
+  /** Move the retired per-Agent request copies into shared Generation Profiles once. */
+  private async migrateCollaborativeAgentConfigs(): Promise<void> {
+    const migrationKey = 'collaborative_agent_profile_migration_v1'
+    if ((await database.getSetting(migrationKey)) === 'complete') return
+
+    const defaultProfileId =
+      this.apiSettings.defaultProfileId ||
+      this.apiSettings.mainNarrativeProfileId ||
+      this.apiSettings.profiles[0]?.id ||
+      null
+    const providerDefaults = getDefaultGenerationPresetsForProvider(
+      this.getDefaultProviderType(),
+    ).map((preset) => ({ ...preset, profileId: preset.profileId || defaultProfileId }))
+    for (const id of ['collaborative-control', 'collaborative-writer']) {
+      if (!this.generationPresets.some((preset) => preset.id === id)) {
+        const preset = providerDefaults.find((candidate) => candidate.id === id)
+        if (preset) this.generationPresets.push(preset)
+      }
+    }
+
+    type LegacyConfig = {
+      profileId?: string
+      model?: string
+      temperature?: number
+      maxTokens?: number
+      reasoningEffort?: ReasoningEffort
+      timeoutMs?: number
+      enabled?: boolean
+    }
+    const stored = await database.getSetting('collaborative_agent_configs')
+    let legacy: Partial<Record<CollaborativeAgentKey, LegacyConfig>> = {}
+    if (stored) {
+      try {
+        legacy = JSON.parse(stored) as Partial<Record<CollaborativeAgentKey, LegacyConfig>>
+      } catch {
+        legacy = {}
+      }
+    }
+
+    const keys = Object.keys(collaborativeServiceIds) as CollaborativeAgentKey[]
+    const migratedBySignature = new SvelteMap<string, string>()
+    for (const key of keys) {
+      const old = legacy[key]
+      if (!old?.model) continue
+      const profileId =
+        old.profileId && this.getProfile(old.profileId) ? old.profileId : defaultProfileId
+      const values = {
+        profileId,
+        model: old.model,
+        temperature: old.temperature ?? (key === 'writer' ? 0.8 : 0.3),
+        maxTokens: old.maxTokens ?? 8192,
+        reasoningEffort: old.reasoningEffort ?? (key === 'writer' ? 'none' : 'low'),
+        timeoutMs: old.timeoutMs ?? LLM_TIMEOUT_DEFAULT,
+      }
+      const signature = JSON.stringify(values)
+      let presetId = migratedBySignature.get(signature)
+      if (!presetId) {
+        const existing = this.generationPresets.find(
+          (preset) =>
+            preset.profileId === values.profileId &&
+            preset.model === values.model &&
+            preset.temperature === values.temperature &&
+            preset.maxTokens === values.maxTokens &&
+            preset.reasoningEffort === values.reasoningEffort &&
+            (preset.timeoutMs ?? LLM_TIMEOUT_DEFAULT) === values.timeoutMs,
+        )
+        if (existing) presetId = existing.id
+        else {
+          presetId = `collaborative-migrated-${key}`
+          this.generationPresets.push({
+            id: presetId,
+            name: key === 'writer' ? '中文写作正文（迁移）' : '中文写作控制（迁移）',
+            description: '从旧中文写作 Agent 参数迁移',
+            ...values,
+            manualBody: '',
+            structuredOutputOverride: 'off',
+          })
+        }
+        migratedBySignature.set(signature, presetId)
+      }
+      this.servicePresetAssignments[collaborativeServiceIds[key]] = presetId
+    }
+
+    const optionalKeys = keys.filter((key) => key !== 'sceneDirector' && key !== 'writer')
+    const disabled = optionalKeys.filter((key) => legacy[key]?.enabled === false)
+    if (disabled.length > 0) {
+      for (const story of await database.getAllStories()) {
+        const normalized = normalizeCollaborativeStory(story)
+        if (normalized.mode !== 'creative-writing') continue
+        const workflow = { ...(normalized.settings?.collaborativeNovelWorkflow ?? {}) }
+        for (const key of disabled) workflow[key] = { ...(workflow[key] ?? {}), enabled: false }
+        await database.updateStory(story.id, {
+          mode: normalized.mode,
+          settings: { ...(normalized.settings ?? {}), collaborativeNovelWorkflow: workflow },
+        })
+      }
+    }
+
+    await this.saveGenerationPresets()
+    await this.saveServicePresetAssignments()
+    await database.deleteSetting('collaborative_agent_configs')
+    await database.deleteSetting('collaborative_agent_configs_version')
+    await database.setSetting(migrationKey, 'complete')
   }
 
   // ===== Profile Management Methods =====

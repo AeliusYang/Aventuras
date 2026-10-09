@@ -92,6 +92,8 @@ export class STImportWizardStore {
   cardImportResult = $state<CharacterCardImport.CardImportResult | null>(null)
   cardSanitized = $state<CharacterCardImport.SanitizedCharacter | null>(null)
   cardProcessError = $state<string | null>(null)
+  /** Selected SillyTavern opening greeting for a fresh story. */
+  selectedOpeningVariantId = $state('opening-0')
 
   embeddedLorebookData = $state<{
     name: string
@@ -122,11 +124,12 @@ export class STImportWizardStore {
 
   // Step 5: Writing Style & Chat Options
   selectedMode = $state<StoryMode>('adventure')
+  modeSetupBusy = $state(false)
   selectedGenre = $state<Genre>('custom')
   customGenre = $state('')
   selectedPOV = $state<POV>('second')
   selectedTense = $state<Tense>('present')
-  tone = $state('immersive and engaging')
+  tone = $state('')
   visualProseMode = $state(false)
   imageGenerationMode = $state<ImageGenerationMode>('none')
   backgroundImagesEnabled = $state(false)
@@ -148,9 +151,12 @@ export class STImportWizardStore {
   // Callback
   onClose: () => void
 
-  constructor(onClose: () => void) {
+  constructor(onClose: () => void, initialMode: StoryMode = 'adventure') {
     this.onClose = onClose
+    this.selectedMode = initialMode
+    this.selectedPOV = initialMode === 'creative-writing' ? 'third' : 'second'
     void this.loadPacks()
+    if (initialMode === 'creative-writing') void this.setMode(initialMode)
   }
 
   // Derived
@@ -182,6 +188,21 @@ export class STImportWizardStore {
     return ''
   }
 
+  get openingVariants(): Array<{ id: string; text: string }> {
+    if (!this.cardImportResult) return []
+    const greetings = [
+      this.cardImportResult.firstMessage,
+      ...(this.cardImportResult.alternateGreetings ?? []),
+    ].filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+    return greetings.map((text, index) => ({ id: `opening-${index}`, text }))
+  }
+
+  selectOpeningVariant(id: string): void {
+    if (this.openingVariants.some((variant) => variant.id === id)) {
+      this.selectedOpeningVariantId = id
+    }
+  }
+
   // === Navigation ===
 
   // === Pack Selection ===
@@ -207,6 +228,24 @@ export class STImportWizardStore {
     await this.loadPackVariables(packId)
   }
 
+  async setMode(mode: StoryMode): Promise<void> {
+    if (this.modeSetupBusy) return
+    this.modeSetupBusy = true
+    try {
+      if (mode === 'creative-writing' && this.selectedPackId === 'default-pack') {
+        const pack = await packService.ensureCollaborativePack()
+        await this.selectPack(pack.id)
+      }
+      if (this.selectedMode !== mode)
+        this.selectedPOV = mode === 'creative-writing' ? 'third' : 'second'
+      this.selectedMode = mode
+    } catch (error) {
+      ui.showToast(error instanceof Error ? error.message : '无法准备中文写作', 'error')
+    } finally {
+      this.modeSetupBusy = false
+    }
+  }
+
   setVariableValue(variableName: string, value: string): void {
     this.customVariableValues = { ...this.customVariableValues, [variableName]: value }
   }
@@ -224,7 +263,7 @@ export class STImportWizardStore {
       case 1: // Prompt Pack
         return this.allVariablesFilled()
       case 2: // Upload Files
-        return this.cardParsedData !== null
+        return this.cardParsedData !== null || this.chatParseResult !== null
       case 3: // Import Selection
         return !this.isProcessingCard
       case 4: // Characters
@@ -232,7 +271,7 @@ export class STImportWizardStore {
       case 5: // World & Lorebook
         return this.settingSeed.trim().length > 0
       case 6: // Writing Style
-        return true
+        return !this.modeSetupBusy
       case 7: // Portraits (optional)
         return true
       case 8: // Review
@@ -402,6 +441,7 @@ export class STImportWizardStore {
 
       this.cardImportResult = result
       this.cardSanitized = sanitized
+      this.selectedOpeningVariantId = 'opening-0'
 
       if (!result.success && result.errors.length > 0) {
         this.cardProcessError = result.errors.join('; ')
@@ -424,7 +464,7 @@ export class STImportWizardStore {
           description:
             sanitized?.description ||
             this.cardParsedData?.description ||
-            'A character from the imported card.',
+            '',
           role: 'primary',
           relationship: '',
           traits: sanitized?.traits?.slice(0, 8) || [],
@@ -503,7 +543,7 @@ export class STImportWizardStore {
 
     this.protagonist = {
       name: this.manualCharacterName.trim(),
-      description: this.manualCharacterDescription.trim() || 'A mysterious figure.',
+      description: this.manualCharacterDescription.trim() || '',
       background: this.manualCharacterBackground.trim() || '',
       motivation: this.manualCharacterMotivation.trim() || '',
       traits: this.manualCharacterTraits.trim()
@@ -666,10 +706,28 @@ export class STImportWizardStore {
 
       // Build opening
       let opening: GeneratedOpening
+      let openingVariants: string[] | undefined
+      let selectedOpeningVariantId: string | undefined
       if (!this.importChatAsEntries && this.cardImportResult?.firstMessage) {
-        // Fresh start: use card's first message as opening
+        // Fresh start: preserve first_mes and all alternate_greetings as one
+        // SillyTavern-style variant set. The selected variant remains the
+        // openingScene mirror for backwards-compatible story creation.
+        const greetingVariants = [
+          this.cardImportResult.firstMessage,
+          ...(this.cardImportResult.alternateGreetings ?? []),
+        ].filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+        openingVariants = greetingVariants.map((value) =>
+          replaceUserPlaceholders(value, protagonistName),
+        )
+        const selectedIndex = Math.max(
+          0,
+          openingVariants.findIndex(
+            (_, index) => `opening-${index}` === this.selectedOpeningVariantId,
+          ),
+        )
+        selectedOpeningVariantId = `opening-${selectedIndex}`
         opening = {
-          scene: replaceUserPlaceholders(this.cardImportResult.firstMessage, protagonistName),
+          scene: openingVariants[selectedIndex] ?? replaceUserPlaceholders(this.cardImportResult.firstMessage, protagonistName),
           title: this.storyTitle,
           initialLocation: {
             name: 'Starting Location',
@@ -743,6 +801,10 @@ export class STImportWizardStore {
       }
 
       const storyData = await scenarioService.prepareStoryData(wizardData, opening)
+      if (this.selectedMode === 'creative-writing' && openingVariants && openingVariants.length > 0) {
+        storyData.openingVariants = openingVariants
+        storyData.selectedOpeningVariantId = selectedOpeningVariantId
+      }
 
       // Use user-provided tag and description from the wizard
       if (this.vaultTag.trim()) {
@@ -767,6 +829,9 @@ export class STImportWizardStore {
       const newStory = await story.createStoryFromWizard({
         ...storyData,
         importedEntries: processedEntries.length > 0 ? processedEntries : undefined,
+        packId: this.selectedPackId,
+        customVariableValues:
+          Object.keys(this.customVariableValues).length > 0 ? this.customVariableValues : null,
       })
 
       // Import chat messages as entries if selected
@@ -801,12 +866,6 @@ export class STImportWizardStore {
       // Save to vault if requested
       if (this.saveToVault && this.cardParsedData) {
         await this.saveImportToVault()
-      }
-
-      // Set pack
-      await database.setStoryPack(newStory.id, this.selectedPackId)
-      if (Object.keys(this.customVariableValues).length > 0) {
-        await database.setStoryCustomVariables(newStory.id, this.customVariableValues)
       }
 
       await story.loadStory(newStory.id)

@@ -4,6 +4,12 @@ The database, the native layer that moves bytes around it, and the settings blob
 
 ## Database and Migrations
 
+Collaborative-novel turn diagnostics and reroll context live in the existing entry metadata JSON
+(`novelTurn`, `novelRetry`) and need no SQL migration. `.avt` import preserves that metadata while
+remapping story, branch, entry and world-state entity ids. Author wishes and rejected attempts are not
+classifier facts. Novel stories record rollback deltas even when the global experimental
+state-tracking switch is off; original stories retain their switch semantics.
+
 - **Engine**: SQLite, accessed from the frontend via `@tauri-apps/plugin-sql` and from the Rust side via
   `sqlx` (see `tauri-plugin-sql` / `sqlx` in `src-tauri/Cargo.toml`).
 - **Location**: `tauri-plugin-sql` resolves `sqlite:aventura.db` against Tauri's **app config dir**
@@ -60,9 +66,13 @@ migrations section for why that is not the app data dir. `sync/` never touches t
 
 ## Settings Migrations
 
-Settings are persisted as one JSON blob, and nothing removes legacy keys from it. Reshaping runs on
-the way from disk into the store, in `src/lib/stores/settingsMigrations.ts` — kept out of the rune
-store precisely so it can be tested. A rename goes through here too: `recentEntriesForRetrieval`
+Settings are persisted as individual rows in the settings table. Some rows contain scalar strings and
+others contain JSON blocks such as Generation Profiles and service assignments. Most repeatable shape
+migrations run on the way from disk into the store in `src/lib/stores/settingsMigrations.ts` — kept out
+of the rune store precisely so they can be tested. One-time migrations that coordinate multiple rows
+may live beside loading in `settings.svelte.ts`; the collaborative Agent migration is one such case and
+deletes the obsolete private-config rows after converting them to shared Profile assignments. A rename
+through the repeatable migration path includes `recentEntriesForRetrieval`, which
 became `recentEntriesForSuggestions`, because it named the one thing it does not drive — neither
 retrieval service ever read it, `SuggestionsService` is its only consumer, and the slider was
 already labelled "Plot Suggestions". Two properties every migration there must hold:

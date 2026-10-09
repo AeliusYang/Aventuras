@@ -14,6 +14,9 @@ use tokio::sync::Mutex;
 
 use crate::db::{open_rw_pool, INTERACTIVE_BUSY_TIMEOUT};
 
+#[cfg(test)]
+mod tests;
+
 /// One batch at a time, whoever asks.
 ///
 /// Each call opens its own connection, so two of them otherwise race for the file's write
@@ -32,6 +35,8 @@ pub struct TxStatement {
     sql: String,
     #[serde(default)]
     params: Vec<serde_json::Value>,
+    #[serde(default, rename = "expectedRows")]
+    expected_rows: Option<u64>,
 }
 
 /// Run every statement in one transaction, in order. Rolls back on the first error.
@@ -101,12 +106,29 @@ async fn run_statements(pool: &SqlitePool, statements: &[TxStatement]) -> Result
         }
 
         match query.execute(&mut *tx).await {
-            Ok(result) => affected.push(result.rows_affected()),
+            Ok(result) => {
+                let rows = result.rows_affected();
+                if let Some(expected) = statement.expected_rows {
+                    if rows != expected {
+                        if let Err(rollback) = tx.rollback().await {
+                            return Err(format!(
+                                "expected {expected} affected rows, got {rows}; rollback also failed: {rollback}"
+                            ));
+                        }
+                        return Err(format!(
+                            "expected {expected} affected rows, got {rows}; transaction rolled back"
+                        ));
+                    }
+                }
+                affected.push(rows)
+            }
             Err(e) => {
                 // Explicit rather than by drop, so a rollback that itself fails is reported
                 // instead of disappearing.
                 if let Err(rollback) = tx.rollback().await {
-                    return Err(format!("statement failed ({e}); rollback also failed: {rollback}"));
+                    return Err(format!(
+                        "statement failed ({e}); rollback also failed: {rollback}"
+                    ));
                 }
                 return Err(format!("statement failed, transaction rolled back: {e}"));
             }

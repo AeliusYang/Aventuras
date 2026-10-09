@@ -192,16 +192,14 @@
 </script>
 
 <div class="space-y-5">
-  <p class="text-muted-foreground">
-    Define your protagonist and review the supporting cast from the character card.
-  </p>
+  <p class="text-muted-foreground">设定你的主角，并检查从角色卡导入的配角。</p>
 
   <!-- Protagonist Section -->
   <div class="space-y-3">
     <h4 class="flex items-center gap-2 text-sm font-medium">
       <User class="h-4 w-4" />
-      Protagonist
-      <Badge variant="secondary" class="text-xs">Required</Badge>
+      主角
+      <Badge variant="secondary" class="text-xs">必填</Badge>
     </h4>
 
     {#if protagonist && !showManualInput}
@@ -221,7 +219,7 @@
                 <h5 class="font-medium">{protagonist.name}</h5>
                 <Button variant="ghost" size="sm" onclick={startEditProtagonist}>
                   <Edit3 class="mr-1 h-3 w-3" />
-                  Edit
+                  编辑
                 </Button>
               </div>
               <p class="text-muted-foreground text-sm">{protagonist.description}</p>
@@ -241,9 +239,9 @@
       <Card.Root>
         <Card.Content class="p-4">
           <div class="mb-3 flex items-center justify-between">
-            <p class="text-sm font-medium">Choose from Vault</p>
+            <p class="text-sm font-medium">从素材库选择</p>
             <Button variant="ghost" size="sm" onclick={() => onToggleVaultPicker(false)}>
-              Back to manual
+              返回手动填写
             </Button>
           </div>
           <UniversalVaultBrowser type="character" onSelect={(c) => onSelectFromVault(c)} />
@@ -254,9 +252,7 @@
       <Card.Root>
         <Card.Content class="space-y-3 p-4">
           <div class="flex items-center justify-between">
-            <p class="text-muted-foreground text-xs">
-              Enter your protagonist's details or pick one from the vault.
-            </p>
+            <p class="text-muted-foreground text-xs">填写主角信息，或从素材库选择角色。</p>
             <Button
               variant="outline"
               size="sm"
@@ -264,23 +260,23 @@
               onclick={() => onToggleVaultPicker(true)}
             >
               <Archive class="h-3 w-3" />
-              From Vault
+              来自素材库
             </Button>
           </div>
           <div>
-            <Label for="protagonist-name">Name</Label>
+            <Label for="protagonist-name">名称</Label>
             <Input
               id="protagonist-name"
-              placeholder="Character name"
+              placeholder="角色姓名"
               value={manualCharacterName}
               oninput={(e) => onManualNameChange(e.currentTarget.value)}
             />
           </div>
           <div>
-            <Label for="protagonist-desc">Description</Label>
+            <Label for="protagonist-desc">说明</Label>
             <Textarea
               id="protagonist-desc"
-              placeholder="Brief character description"
+              placeholder="角色简述"
               value={manualCharacterDescription}
               oninput={(e) => onManualDescriptionChange(e.currentTarget.value)}
               rows={2}
@@ -288,29 +284,29 @@
           </div>
           <div class="grid grid-cols-2 gap-3">
             <div>
-              <Label for="protagonist-bg">Background</Label>
+              <Label for="protagonist-bg">背景</Label>
               <Input
                 id="protagonist-bg"
-                placeholder="Character background"
+                placeholder="角色背景"
                 value={manualCharacterBackground}
                 oninput={(e) => onManualBackgroundChange(e.currentTarget.value)}
               />
             </div>
             <div>
-              <Label for="protagonist-motiv">Motivation</Label>
+              <Label for="protagonist-motiv">动机</Label>
               <Input
                 id="protagonist-motiv"
-                placeholder="Character motivation"
+                placeholder="角色动机"
                 value={manualCharacterMotivation}
                 oninput={(e) => onManualMotivationChange(e.currentTarget.value)}
               />
             </div>
           </div>
           <div>
-            <Label for="protagonist-traits">Traits (comma-separated)</Label>
+            <Label for="protagonist-traits">性格特征（用英文逗号分隔）</Label>
             <Input
               id="protagonist-traits"
-              placeholder="brave, curious, witty"
+              placeholder="勇敢, 好奇, 机敏"
               value={manualCharacterTraits}
               oninput={(e) => onManualTraitsChange(e.currentTarget.value)}
             />
@@ -321,7 +317,7 @@
             onclick={onUseManualCharacter}
             disabled={!manualCharacterName.trim()}
           >
-            Confirm Protagonist
+            确认主角
           </Button>
         </Card.Content>
       </Card.Root>
@@ -333,7 +329,7 @@
     <div class="space-y-3">
       <h4 class="flex items-center gap-2 text-sm font-medium">
         <Users class="h-4 w-4" />
-        Supporting Cast
+        配角生成
         <Badge variant="outline" class="text-xs">{supportingCharacters.length}</Badge>
       </h4>
 
@@ -357,7 +353,7 @@
                         <Badge variant="secondary" class="text-xs">{char.role}</Badge>
                       {/if}
                       {#if char.name === cardCharacterName}
-                        <Badge variant="outline" class="text-xs">From Card</Badge>
+                        <Badge variant="outline" class="text-xs">来自角色卡</Badge>
                       {/if}
                     </div>
                     <p class="text-muted-foreground mt-0.5 line-clamp-2 text-xs">
@@ -378,7 +374,7 @@
                     size="icon"
                     class="text-muted-foreground hover:text-foreground h-7 w-7"
                     onclick={() => startEdit(i)}
-                    title="Edit"
+                    title="编辑"
                   >
                     <Edit3 class="h-3 w-3" />
                   </Button>
@@ -390,7 +386,7 @@
                       : 'text-muted-foreground hover:text-foreground'}"
                     onclick={() => saveCharToVault(i)}
                     disabled={savedToVault.has(i)}
-                    title={savedToVault.has(i) ? 'Saved to vault' : 'Save to vault'}
+                    title={savedToVault.has(i) ? '已保存到素材库' : '保存到素材库'}
                   >
                     {#if savedToVault.has(i)}
                       <Check class="h-3 w-3" />
@@ -403,7 +399,7 @@
                     size="icon"
                     class="text-muted-foreground hover:text-destructive h-7 w-7"
                     onclick={() => onDeleteSupportingCharacter(i)}
-                    title="Delete"
+                    title="删除"
                   >
                     <Trash2 class="h-3 w-3" />
                   </Button>
@@ -426,7 +422,7 @@
     }}
   >
     <ResponsiveModal.Content class="flex flex-col md:h-auto md:max-h-[90vh] md:max-w-150">
-      <ResponsiveModal.Header title={editingProtagonist ? 'Edit Protagonist' : 'Edit Character'} />
+      <ResponsiveModal.Header title={editingProtagonist ? '编辑主角' : '编辑角色'} />
 
       <div class="flex-1 overflow-y-auto px-4 sm:pr-4">
         <form
@@ -440,21 +436,21 @@
             <!-- Protagonist-specific fields -->
             <div class="mb-4 grid grid-cols-2 gap-3">
               <div>
-                <Label for="edit-background">Background</Label>
+                <Label for="edit-background">背景</Label>
                 <Input
                   id="edit-background"
                   value={editBackground}
                   oninput={(e) => (editBackground = e.currentTarget.value)}
-                  placeholder="Character background"
+                  placeholder="角色背景"
                 />
               </div>
               <div>
-                <Label for="edit-motivation">Motivation</Label>
+                <Label for="edit-motivation">动机</Label>
                 <Input
                   id="edit-motivation"
                   value={editMotivation}
                   oninput={(e) => (editMotivation = e.currentTarget.value)}
-                  placeholder="Character motivation"
+                  placeholder="角色动机"
                 />
               </div>
             </div>
@@ -462,21 +458,21 @@
             <!-- Supporting character fields -->
             <div class="mb-4 grid grid-cols-2 gap-3">
               <div>
-                <Label for="edit-role">Role</Label>
+                <Label for="edit-role">角色定位</Label>
                 <Input
                   id="edit-role"
                   value={editRole}
                   oninput={(e) => (editRole = e.currentTarget.value)}
-                  placeholder="e.g., ally, mentor, antagonist..."
+                  placeholder="例如：盟友、导师、对手…"
                 />
               </div>
               <div>
-                <Label for="edit-relationship">Relationship</Label>
+                <Label for="edit-relationship">关系</Label>
                 <Input
                   id="edit-relationship"
                   value={editRelationship}
                   oninput={(e) => (editRelationship = e.currentTarget.value)}
-                  placeholder="Relationship to protagonist"
+                  placeholder="与主角的关系"
                 />
               </div>
             </div>
@@ -495,7 +491,7 @@
           disabled={!editFormData.name.trim()}
           class="w-full"
         >
-          Save Changes
+          保存修改
         </Button>
       </ResponsiveModal.Footer>
     </ResponsiveModal.Content>

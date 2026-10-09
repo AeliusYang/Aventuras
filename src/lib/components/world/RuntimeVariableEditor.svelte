@@ -168,7 +168,7 @@
         type="text"
         value={textValue}
         oninput={handleTextChange}
-        placeholder="Not set"
+        placeholder="未设置"
         class="h-7 text-xs"
       />
     {:else if definition.variableType === 'number'}
@@ -186,7 +186,7 @@
         <Select.Trigger class="h-7 w-full text-xs">
           <div class="flex items-center gap-2 overflow-hidden">
             <span class="truncate">
-              {enumValue ? getEnumLabel(enumValue) : 'Not set'}
+              {enumValue ? getEnumLabel(enumValue) : '未设置'}
             </span>
           </div>
         </Select.Trigger>

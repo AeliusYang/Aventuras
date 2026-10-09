@@ -4,9 +4,19 @@
   import { exportService } from '$lib/services/export'
   import { errMessage } from '$lib/utils/error'
   import { ask } from '@tauri-apps/plugin-dialog'
-  import { BookOpen, Download, RefreshCw, Archive, Plus, MessageSquareShare } from '@lucide/svelte'
-  import SetupWizard from '../wizard/SetupWizard.svelte'
-  import STImportWizard from '../wizard/STImportWizard.svelte'
+  import {
+    BookOpen,
+    Download,
+    RefreshCw,
+    Archive,
+    Plus,
+    FileCode,
+    Feather,
+    Sword,
+    X,
+  } from '@lucide/svelte'
+  import * as ResponsiveModal from '$lib/components/ui/responsive-modal'
+  import StorySetup from '../wizard/StorySetup.svelte'
   import PackMappingDialog from './PackMappingDialog.svelte'
   import { settings } from '$lib/stores/settings.svelte'
   import type { PresetPack } from '$lib/services/packs'
@@ -27,8 +37,14 @@
   } | null>(null)
   let showSetupWizard = $state(false)
   let setupWizardKey = $state(0)
+  let setupWizardMode = $state<import('$lib/types').StoryMode | undefined>(undefined)
+  let showNewStoryPicker = $state(false)
+  let showQuickStart = $state(false)
+  let quickStartKey = $state(0)
   let showSTImportWizard = $state(false)
   let stImportWizardKey = $state(0)
+  let stImportMode = $state<import('$lib/types').StoryMode>('adventure')
+  let showImportPicker = $state(false)
 
   // Load stories on mount
   $effect(() => {
@@ -36,13 +52,30 @@
   })
 
   function openSetupWizard() {
+    showNewStoryPicker = true
+  }
+
+  function launchNewStory(mode: import('$lib/types').StoryMode) {
+    showNewStoryPicker = false
+    if (mode === 'creative-writing') {
+      quickStartKey += 1
+      showQuickStart = true
+      return
+    }
+    setupWizardMode = mode
     setupWizardKey += 1
     showSetupWizard = true
   }
 
-  function openSTImportWizard() {
+  function openSTImportWizard(mode: import('$lib/types').StoryMode = 'adventure') {
     stImportWizardKey += 1
+    stImportMode = mode
     showSTImportWizard = true
+  }
+
+  function openPromptManager() {
+    ui.setVaultTab('prompts')
+    ui.setActivePanel('vault')
   }
 
   // Switch before loading so the story view mounts with its sidebars in one pass.
@@ -62,7 +95,7 @@
     const confirmed = await ask(
       'Are you sure you want to delete this story? This action cannot be undone.',
       {
-        title: 'Delete Story',
+        title: '删除故事',
         kind: 'warning',
       },
     )
@@ -111,8 +144,9 @@
   // materialising it as a string, and a .avt larger than V8's max string length (2^29-24 bytes,
   // ~512 MiB) cannot be one — a 546 MB export failed with a bogus "not valid JSON" error, because
   // the read never produced the whole file. The native path streams it instead.
-  async function triggerImport() {
+  async function triggerAventuraImport() {
     if (isImporting) return
+    showImportPicker = false
     isImporting = true
     try {
       const result = await exportService.importFromAventura({ resolvePackBinding })
@@ -142,46 +176,44 @@
     <div class="mb-6 flex flex-row items-start justify-between gap-3 sm:mb-8 sm:gap-4">
       <div class="mr-2 min-w-0 flex-1">
         <h1 class="text-foreground truncate pb-1 text-xl font-bold tracking-tight sm:text-3xl">
-          Story Library
+          故事库
         </h1>
-        <p class="text-muted-foreground -mt-1 truncate text-sm sm:text-base">
-          Your adventures await...
-        </p>
+        <p class="text-muted-foreground -mt-1 truncate text-sm sm:text-base">从这里开始你的故事</p>
       </div>
       <div class="flex shrink-0 items-center gap-1.5 sm:gap-2">
         <Button
           icon={RefreshCw}
-          label="Sync"
+          label="同步"
           variant="outline"
-          title="Sync stories between devices"
+          title="在设备之间同步故事"
           onclick={() => ui.openSyncModal()}
         />
         <Button
           icon={Archive}
-          label="Vault"
+          label="素材库"
           variant="outline"
-          title="Vault"
+          title="素材库"
           onclick={() => ui.setActivePanel('vault')}
         />
         <Button
-          icon={Download}
-          label="Import"
+          icon={FileCode}
+          label="提示词管理"
           variant="outline"
-          title="Import Story"
-          onclick={triggerImport}
+          title="管理提示词包"
+          onclick={openPromptManager}
         />
         <Button
-          icon={MessageSquareShare}
-          label="ST Import"
+          icon={Download}
+          label="导入故事"
           variant="outline"
-          title="Import from SillyTavern"
-          onclick={openSTImportWizard}
+          title="选择故事或酒馆导入方式"
+          onclick={() => (showImportPicker = true)}
         />
         <Button
           variant="default"
           icon={Plus}
-          label="New Story"
-          title="New Story"
+          label="新建故事"
+          title="新建故事"
           onclick={openSetupWizard}
         />
       </div>
@@ -191,9 +223,9 @@
     {#if story.allStories.length === 0}
       <EmptyState
         icon={BookOpen}
-        title="No stories yet"
-        description="Create your first adventure to get started."
-        actionLabel="Create Story"
+        title="还没有故事"
+        description="创建第一个故事，开始你的创作。"
+        actionLabel="创建故事"
         onAction={openSetupWizard}
         class="pb-20"
       />
@@ -219,22 +251,142 @@
         d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028 14.09 14.09 0 0 0 1.226-1.994.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z"
       />
     </svg>
-    <span class="hidden sm:inline">Official Aventuras Discord</span>
+    <span class="hidden sm:inline">Aventuras 官方 Discord</span>
   </a>
 </div>
+
+{#if showImportPicker}
+  <ResponsiveModal.Root open={showImportPicker} onOpenChange={(open) => (showImportPicker = open)}>
+    <ResponsiveModal.Content class="max-w-2xl">
+      <div class="flex items-start justify-between gap-3">
+        <div>
+          <ResponsiveModal.Title>导入故事</ResponsiveModal.Title>
+          <ResponsiveModal.Description>选择文件来源和故事模式。</ResponsiveModal.Description>
+        </div>
+        <Button
+          variant="ghost"
+          size="icon"
+          title="关闭"
+          aria-label="关闭导入方式"
+          onclick={() => (showImportPicker = false)}
+        >
+          <X class="h-4 w-4" />
+        </Button>
+      </div>
+      <div class="mt-5 grid gap-3 sm:grid-cols-3">
+        <button
+          class="border-border hover:border-primary rounded-lg border p-4 text-left transition-colors"
+          onclick={triggerAventuraImport}
+        >
+          <Download class="text-primary mb-3 h-6 w-6" />
+          <p class="font-medium">导入 Aventuras 故事</p>
+          <p class="text-muted-foreground mt-1 text-sm">打开 .avt 故事存档。</p>
+        </button>
+        <button
+          class="border-border hover:border-primary rounded-lg border p-4 text-left transition-colors"
+          onclick={() => {
+            showImportPicker = false
+            openSTImportWizard('creative-writing')
+          }}
+        >
+          <Feather class="text-primary mb-3 h-6 w-6" />
+          <p class="font-medium">中文角色卡</p>
+          <p class="text-muted-foreground mt-1 text-sm">
+            导入酒馆角色卡，保留原始内容，进入中文写作。
+          </p>
+        </button>
+        <button
+          class="border-border hover:border-primary rounded-lg border p-4 text-left transition-colors"
+          onclick={() => {
+            showImportPicker = false
+            openSTImportWizard('adventure')
+          }}
+        >
+          <Sword class="text-primary mb-3 h-6 w-6" />
+          <p class="font-medium">Aventuras角色卡</p>
+          <p class="text-muted-foreground mt-1 text-sm">
+            导入酒馆角色卡或聊天记录，确认后进入冒险模式。
+          </p>
+        </button>
+      </div>
+    </ResponsiveModal.Content>
+  </ResponsiveModal.Root>
+{/if}
 
 <!-- Setup Wizard -->
 {#if showSetupWizard}
   {#key setupWizardKey}
-    <SetupWizard onClose={() => (showSetupWizard = false)} />
+    <StorySetup
+      initialMode={setupWizardMode}
+      onClose={() => {
+        showSetupWizard = false
+        setupWizardMode = undefined
+      }}
+    />
+  {/key}
+{/if}
+
+{#if showQuickStart}
+  {#key quickStartKey}
+    <StorySetup initialMode="creative-writing" onClose={() => (showQuickStart = false)} />
   {/key}
 {/if}
 
 <!-- ST Import Wizard -->
 {#if showSTImportWizard}
   {#key stImportWizardKey}
-    <STImportWizard onClose={() => (showSTImportWizard = false)} />
+    <StorySetup
+      isImport={true}
+      initialMode={stImportMode}
+      onClose={() => (showSTImportWizard = false)}
+    />
   {/key}
+{/if}
+
+{#if showNewStoryPicker}
+  <ResponsiveModal.Root
+    open={showNewStoryPicker}
+    onOpenChange={(open) => (showNewStoryPicker = open)}
+  >
+    <ResponsiveModal.Content class="max-w-2xl">
+      <div class="flex items-start justify-between gap-3">
+        <div>
+          <ResponsiveModal.Title>新建故事</ResponsiveModal.Title>
+          <ResponsiveModal.Description
+            >选择开始方式，之后仍可在故事内补充设置。</ResponsiveModal.Description
+          >
+        </div>
+        <Button
+          variant="ghost"
+          size="icon"
+          title="关闭"
+          onclick={() => (showNewStoryPicker = false)}
+        >
+          <X class="h-4 w-4" />
+        </Button>
+      </div>
+      <div class="mt-5 grid gap-3 sm:grid-cols-2">
+        <button
+          class="border-border hover:border-primary rounded-lg border p-4 text-left"
+          onclick={() => launchNewStory('creative-writing')}
+        >
+          <Feather class="text-primary mb-3 h-6 w-6" />
+          <p class="font-medium">中文写作</p>
+          <p class="text-muted-foreground mt-1 text-sm">
+            输入自然语言，直接进入 Director 与 Writer。
+          </p>
+        </button>
+        <button
+          class="border-border hover:border-primary rounded-lg border p-4 text-left"
+          onclick={() => launchNewStory('adventure')}
+        >
+          <Sword class="text-primary mb-3 h-6 w-6" />
+          <p class="font-medium">冒险模式</p>
+          <p class="text-muted-foreground mt-1 text-sm">填写主角与开场，其他资料可以以后补充。</p>
+        </button>
+      </div>
+    </ResponsiveModal.Content>
+  </ResponsiveModal.Root>
 {/if}
 
 <!-- Pack mapping step of an in-flight import -->

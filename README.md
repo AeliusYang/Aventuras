@@ -1,93 +1,38 @@
-# Aventuras
+# Aventuras 中文写作
 
-Interactive fiction with an AI that remembers. Play a text adventure or write collaboratively,
-on desktop and Android, with any LLM provider you like — cloud or running on your own machine.
+基于 [AventurasTeam/Aventuras](https://github.com/AventurasTeam/Aventuras) 的中文写作改造版，当前源码版本为 **0.7.16**。
 
-Aventuras keeps the story straight: chapters are summarized as you play, a lorebook feeds the
-right entries into the right scene, an agent tidies that lorebook behind you, and the world
-state — who is present, where you are, what you carry — is tracked turn by turn.
+中文写作使用 Director → Writer → 事实维护流程。用户可自然输入动作、对白、剧情要求或“继续”；长期规划和短期剧情建议通过现有按需入口使用。普通冒险模式保留原有流程。
 
-## Highlights
+内置默认提示词包名为 **中文写作**，普通创建与角色卡导入均可直接使用。当前与兼容旧版模板均不包含成人场景专节。提示词仍能通过 Prompt Inspector 查看并在 Prompt Pack 编辑器中修改。
 
-- **Two modes** — Adventure, with multiple-choice actions and world tracking; Creative Writing,
-  freeform with AI suggestions. First/second/third person, past or present tense.
-- **Any provider** — OpenRouter, OpenAI, Anthropic, Google, xAI, Groq, DeepSeek, Mistral, Z.AI,
-  NanoGPT, Chutes, Pollinations, NVIDIA NIM, plus local llama.cpp, LM Studio and Ollama.
-  Streaming, extended thinking, and per-subsystem **Agent Profiles** so retrieval, classification
-  and narration can each use a different model.
-- **Memory that scales** — automatic chapter summarization, and a retrieval step that goes and
-  finds what the current scene needs from everything that came before.
-- **Lorebook** — characters, locations, items, factions, concepts and events, with aliases,
-  secrets, keyword and relevance-based injection, SillyTavern import, and an autonomous agent
-  that consolidates duplicates and fills gaps.
-- **The Vault** — a cross-story library of reusable characters, lorebooks and scenarios, with a
-  tool-calling assistant that edits them and shows you a diff before anything lands.
-- **Every prompt is editable** — they are Liquid templates, all of them, in an in-app editor.
-- **Images** — inline `<pic>` illustrations, scene backgrounds and character portraits, across
-  nine backends including local ComfyUI and A1111.
-- **Writing tools** — local grammar checking (Harper/WASM), style analysis for repetition,
-  suggestions that match how you write.
-- **Yours to keep** — SQLite on your machine, full backup/restore, `.avt` story export, LAN sync
-  between devices over QR pairing, and an optional translation layer over the whole app.
-- **26 themes**, adjustable text size, dialogue highlighting.
+本副本仅含源码、通用资源与测试，不附带 API 连接、故事数据库、角色卡、私人预设原文件、评测记录、备份或 Git 历史。
 
-## Install
+## 开发与构建
 
-Pre-built binaries are on the [Releases](https://github.com/AventurasTeam/Aventuras/releases) page:
+需要 Node.js 22.13+（建议 Node.js 24 LTS）、npm；桌面构建另需 Rust 和相应平台的 [Tauri 构建依赖](https://v2.tauri.app/start/prerequisites/)。
 
-| Platform | Download                                  |
-| -------- | ----------------------------------------- |
-| Windows  | `aventuras_x.x.x_x64-setup.exe`           |
-| macOS    | `aventuras_x.x.x_x64.dmg`                 |
-| Linux    | `aventuras_x.x.x_amd64.deb` / `.AppImage` |
-| Android  | `aventuras-release.apk`                   |
-
-No API keys in config files — providers are set up in the app, under Settings → API Settings.
-
-## Build from source
-
-Requires Node.js 22+, the latest stable Rust, and (for Android) the Android SDK, NDK r27 and
-JDK 17–24.
-
-```bash
-git clone https://github.com/AventurasTeam/Aventuras.git
-cd Aventuras
-npm install
-npx tauri dev
+```sh
+npm ci
+npm run check
+npm test
+npm run build
+npm run tauri build
 ```
 
-| Script            | Does                            |
-| ----------------- | ------------------------------- |
-| `npm run dev`     | Vite dev server (frontend only) |
-| `npx tauri dev`   | full app, with hot reload       |
-| `npm run build`   | production build                |
-| `npm run check`   | type checking (`svelte-check`)  |
-| `npm test`        | test suite (Vitest)             |
-| `npm run lint`    | ESLint — `lint:fix` to fix      |
-| `npm run format`  | Prettier                        |
-| `npm run release` | version bump, tag and push      |
+`npm run dev` 启动前端开发服务，`npm run tauri dev` 启动完整桌面开发环境。API 由使用者在应用内配置。
 
-Desktop builds are `npx tauri build`; Android is documented in
-[docs/development/release.md](docs/development/release.md).
+本副本沿用上游应用标识 `com.karelian.aventura`。如果在已有安装的电脑上启动桌面程序，它会访问同一应用数据目录；源码脱敏不代表运行环境隔离。核验全新默认体验时请使用独立操作系统账户或隔离环境。
 
-## Tech stack
+上游自动更新保持禁用。此副本不含指向上游仓库的自动发布流程，也未配置 Git 远程。
 
-TypeScript (strict) · SvelteKit 2 · Svelte 5 runes · Tauri 2 (Rust) · Tailwind + shadcn-svelte ·
-SQLite (`tauri-plugin-sql` / `sqlx`) · Vercel AI SDK · LiquidJS · CodeMirror 6 · Zod ·
-Harper.js (WASM) · Vitest
+## 文档与许可
 
-## Contributing
+- [公开副本说明与验证结果](docs/public-release.md)
+- [默认中文写作提示词全文](docs/default-prompts.md)
+- [架构概览](docs/architecture/overview.md)
+- [提示词机制](docs/architecture/prompts.md)
+- [开发脚本](scripts/README.md)
+- [GitHub 发布方式](docs/github-release.md)
 
-Start with [docs/](docs/README.md) — the architecture is documented per area, and
-[CLAUDE.md](CLAUDE.md) has the conventions. CI runs build, lint and type-check on every PR
-against `master`, `develop` or `dev`.
-
-## Acknowledgments
-
-[Tauri](https://tauri.app/) · [SvelteKit](https://kit.svelte.dev/) ·
-[OpenRouter](https://openrouter.ai/) · [Harper](https://writewithharper.com/) ·
-[Lucide](https://lucide.dev/)
-
-## License
-
-AGPL-3.0
+保留上游 [AGPL-3.0 许可证](LICENSE.md) 与 `third-party-licenses/` 中的第三方许可。本项目是基于 Aventuras 的修改版本，不代表上游官方发行。

@@ -24,10 +24,10 @@
   }
 
   const typeLabels: Record<string, string> = {
-    action: 'Action',
-    dialogue: 'Dialogue',
-    revelation: 'Revelation',
-    twist: 'Twist',
+    action: '行动方向',
+    dialogue: '人物互动',
+    revelation: '信息揭示',
+    twist: '局势变化',
   }
 
   // Swipe handlers for mobile
@@ -60,9 +60,9 @@
     >
       <div class="text-surface-300 flex items-center gap-2">
         <Lightbulb class="h-4 w-4" />
-        <span class="text-sm font-medium">What happens next?</span>
+        <span class="text-sm font-medium">短期剧情建议</span>
         {#if collapsed && suggestions.length > 0}
-          <span class="text-surface-500 text-xs">({suggestions.length} suggestions)</span>
+          <span class="text-surface-500 text-xs">({suggestions.length} 条建议）</span>
         {/if}
       </div>
       <div class="flex items-center gap-1">
@@ -75,7 +75,7 @@
               onRefresh()
             }}
             disabled={loading}
-            title="Generate new suggestions"
+            title="刷新短期剧情建议"
           >
             <RefreshCw class="h-4 w-4 {loading ? 'animate-spin' : ''}" />
           </button>
@@ -96,11 +96,11 @@
         {#if loading}
           <div class="text-surface-400 flex items-center justify-center py-2">
             <Loader2 class="mr-2 h-5 w-5 animate-spin" />
-            <span class="text-sm">Generating suggestions...</span>
+            <span class="text-sm">正在生成短期剧情建议…</span>
           </div>
         {:else if suggestions.length === 0}
           <div class="text-surface-500 py-1 text-center text-sm">
-            No suggestions available. Click refresh to generate some.
+            暂无建议，点击刷新可生成基于当前故事状态的剧情方向。
           </div>
         {:else}
           <div class="space-y-1.5 pt-0.5">

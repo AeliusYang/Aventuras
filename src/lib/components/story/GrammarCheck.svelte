@@ -134,7 +134,7 @@
               e.stopPropagation()
               handleDismiss(index)
             }}
-            title="Dismiss"
+            title="关闭提示"
           >
             <X class="h-4 w-4" />
           </button>
@@ -155,7 +155,7 @@
                   >
                     <Check class="h-3 w-3 shrink-0" />
                     <span class="max-w-[120px] truncate sm:max-w-none"
-                      >{suggestion || '(remove)'}</span
+                      >{suggestion || '（移除）'}</span
                     >
                   </button>
                 {/each}
@@ -163,15 +163,15 @@
                   <button
                     class="bg-surface-700 border-surface-600 text-surface-300 hover:bg-surface-600 active:bg-surface-500 flex min-h-[32px] items-center gap-1 rounded border px-2 py-1.5 text-[11px] transition-colors sm:text-xs"
                     onclick={() => handleAddToDictionary(issue)}
-                    title="Add to dictionary"
+                    title="加入词典"
                   >
                     <Plus class="h-3 w-3 shrink-0" />
-                    <span class="whitespace-nowrap">Add to dictionary</span>
+                    <span class="whitespace-nowrap">加入词典</span>
                   </button>
                 {/if}
               </div>
             {:else}
-              <p class="text-xs text-yellow-400/60 italic">No suggestions available</p>
+              <p class="text-xs text-yellow-400/60 italic">暂无建议</p>
             {/if}
           </div>
         {/if}

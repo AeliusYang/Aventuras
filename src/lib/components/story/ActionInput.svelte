@@ -1,4 +1,12 @@
 <script lang="ts">
+  import type { NovelRetry, CollaborativeWriterRecovery } from '$lib/types/collaborative'
+  import {
+    recoveryFingerprint,
+    recoveryScopeMatches,
+    recoveryWasSaved,
+  } from '$lib/services/generation/writerRecovery'
+  import { novelRetry, historyKey } from '$lib/services/generation/collaborative'
+  import { createStateMaintenanceRecord } from '$lib/services/collaborativeStateMaintenance'
   import { tick } from 'svelte'
   import { ui, type RetrievalCacheKey } from '$lib/stores/ui.svelte'
   import { toRetrievalSnapshot } from '$lib/services/ai/retrieval'
@@ -9,6 +17,7 @@
   import { settings } from '$lib/stores/settings.svelte'
   import type { EntryMetadata, Story } from '$lib/types'
   import { aiService } from '$lib/services/ai'
+  import { collaborativeServiceIds } from '$lib/services/ai/core/collaborativeAgentDefaults'
   import { database } from '$lib/services/database'
   import { SimpleActivationTracker } from '$lib/services/ai/retrieval/EntryRetrievalService'
   import { TranslationService } from '$lib/services/ai/utils/TranslationService'
@@ -57,6 +66,10 @@
     type PipelineEventState,
   } from '$lib/services/generation'
   import { InlineImageTracker } from '$lib/services/ai/image'
+  import {
+    createGenerationScope,
+    isGenerationScopeCurrent as isScopeCurrent,
+  } from '$lib/utils/branchScope'
 
   function log(...args: any[]) {
     console.log('[ActionInput]', ...args)
@@ -69,8 +82,12 @@
   async function translateUserInput(
     content: string,
     translationSettings: typeof settings.translationSettings,
+    targetStory = story.currentStory,
   ): Promise<{ promptContent: string; originalInput: string | undefined }> {
-    if (!TranslationService.shouldTranslateInput(translationSettings)) {
+    if (
+      targetStory?.mode === 'creative-writing' ||
+      !TranslationService.shouldTranslateInput(translationSettings)
+    ) {
       return { promptContent: content, originalInput: undefined }
     }
 
@@ -81,7 +98,7 @@
       const result = await aiService.translateInput(
         content,
         translationSettings.sourceLanguage,
-        story.currentStory?.id,
+        targetStory?.id,
       )
       log('Input translated', {
         originalLength: content.length,
@@ -103,6 +120,9 @@
   let isRawActionChoice = $state(false)
   let stopRequested = false
   let activeAbortController: AbortController | null = null
+  let activeRerollScope: ReturnType<typeof createGenerationScope> | null = null
+  let activeTurnId: string | null = null
+  let activeSuggestionsRefreshId: string | null = null
   let textareaRef: HTMLTextAreaElement | null = $state(null)
 
   // ============================================================================
@@ -110,13 +130,140 @@
   // ============================================================================
 
   const isCreativeMode = $derived(story.storyMode === 'creative-writing')
-
-  const sendKeyHint = $derived(
-    isTouchDevice() ? 'Shift+Enter to send' : 'Enter to send, Shift+Enter for new line',
+  const isCollaborative = $derived(story.currentStory?.mode === 'creative-writing')
+  const collaborativeSuggestionsEnabled = $derived(
+    !isCollaborative ||
+      story.currentStory?.settings?.collaborativeNovelWorkflow?.plotSuggestions?.enabled !== false,
   )
 
-  // Block generation when any service is missing a model or has an invalid profile
-  const blockGeneration = $derived(settings.hasGenerationConfigIssues)
+  const sendKeyHint = $derived(
+    isTouchDevice() ? 'Shift+Enter 发送' : 'Enter 发送，Shift+Enter 换行',
+  )
+
+  function generationBlockReason(writerOnly = false) {
+    const current = story.currentStory
+    if (!isCollaborative || !current)
+      return settings.hasGenerationConfigIssues ? '模型配置不完整，请检查设置' : ''
+    const workflow = current.settings?.collaborativeNovelWorkflow
+    try {
+      for (const agent of ['sceneDirector', 'writer', 'factStateExtractor'] as const) {
+        if (writerOnly && agent === 'sceneDirector') continue
+        if (agent === 'factStateExtractor' && workflow?.factStateExtractor?.enabled === false)
+          continue
+        const serviceId = collaborativeServiceIds[agent]
+        const presetId = settings.getServicePresetId(serviceId)
+        const preset = settings.generationPresets.find((candidate) => candidate.id === presetId)
+        if (!preset) return `中文写作 ${agent} 未绑定有效 Agent Profile`
+        const profileId = preset.profileId ?? settings.apiSettings.mainNarrativeProfileId
+        if (!settings.getProfile(profileId)) return `中文写作 ${agent} 的模型连接不存在`
+        if (!preset.model?.trim()) return `中文写作 ${agent} 未配置模型`
+        if (!Number.isFinite(preset.maxTokens) || preset.maxTokens <= 0)
+          return `中文写作 ${agent} 输出 Token 上限无效`
+      }
+      return ''
+    } catch (error) {
+      return errMessage(error)
+    }
+  }
+  const generationConfigError = $derived(generationBlockReason())
+  const blockGeneration = $derived(Boolean(generationConfigError))
+
+  let writerRecovery = $state<CollaborativeWriterRecovery | null>(null)
+  let recoveryHidden = $state(false)
+  let recoveryBusy = $state(false)
+  let recoveryMessage = $state('')
+  let recoveryLoadKey = ''
+  $effect(() => {
+    const current = story.currentStory
+    const key = current ? `${current.id}:${current.currentBranchId ?? 'main'}` : ''
+    if (key === recoveryLoadKey) return
+    recoveryLoadKey = key
+    writerRecovery = null
+    recoveryHidden = false
+    recoveryMessage = ''
+    if (!current || current.mode !== 'creative-writing') return
+    void database
+      .getWriterRecovery(current.id, current.currentBranchId ?? null)
+      .then(async (record) => {
+        if (key !== recoveryLoadKey || !record) return
+        if (recoveryWasSaved(record, await database.getStoryEntry(record.narrationEntryId))) {
+          await database.clearWriterRecovery(record.storyId, record.branchId, record.id)
+          return
+        }
+        if (key === recoveryLoadKey) writerRecovery = record
+      })
+      .catch((error) => ui.showToast(`无法读取正文恢复记录：${errMessage(error)}`, 'warning'))
+  })
+
+  async function currentRecoveryFingerprint(
+    record: CollaborativeWriterRecovery,
+    excludeVariant = false,
+  ) {
+    const current = story.currentStory
+    const action = story.entries.find((entry) => entry.id === record.userActionEntryId)
+    if (!current || !action) throw new Error('原用户输入不存在，请重新提交本轮要求。')
+    const entries = excludeVariant
+      ? story.entries.filter((e) => e.id !== record.variantBaseEntryId)
+      : story.entries
+    const ctx: GenerationContext = {
+      story: current,
+      visibleEntries: entries,
+      allEntries: entries,
+      worldState: story.worldStateSnapshot,
+      userAction: { entryId: action.id, content: action.content, rawInput: action.content },
+    }
+    if (!recoveryScopeMatches(record, ctx))
+      throw new Error('故事、分支或原用户输入已变化，请重新运行整轮。')
+    return recoveryFingerprint(ctx, {
+      packId: await database.getStoryPackId(current.id),
+      variables: await database.getStoryCustomVariables(current.id),
+    })
+  }
+
+  async function resumeWriterRecovery(fullTurn = false) {
+    const record = writerRecovery
+    if (!record || recoveryBusy || ui.isGenerating || ui.submissionScope) return
+    recoveryBusy = true
+    recoveryMessage = ''
+    try {
+      if (
+        story.currentStory?.id !== record.storyId ||
+        (story.currentStory.currentBranchId ?? null) !== record.branchId
+      )
+        throw new Error('当前故事或分支已变化，请返回原分支恢复。')
+      if (!fullTurn) {
+        const fingerprint = await currentRecoveryFingerprint(record)
+        // A process interruption can leave the old variant visible with its state already
+        // undone. In that window only the original pre-Writer fingerprint is valid.
+        const interruptedRerollMatches =
+          !!record.variantBaseEntryId &&
+          !record.settledFingerprint &&
+          (await currentRecoveryFingerprint(record, true)) === record.contextFingerprint
+        if (
+          fingerprint !== (record.settledFingerprint ?? record.contextFingerprint) &&
+          !interruptedRerollMatches
+        )
+          throw new Error('故事历史、状态或设定已变化，原导演结果已过期，请重新运行整轮。')
+      }
+      if (record.variantBaseEntryId) {
+        await handleRegenerateNarration(record.variantBaseEntryId, fullTurn ? undefined : record)
+      } else {
+        const action = story.entries.find((e) => e.id === record.userActionEntryId)!
+        const latest = story.entries.findLast(
+          (e) => e.type === 'user_action' || e.type === 'narration',
+        )
+        if (!action || latest?.id !== action.id)
+          throw new Error('本轮已不是最新输入，请在当前故事末尾重新提交要求。')
+        await generateResponse(action.id, action.content, {
+          writerRecovery: fullTurn ? undefined : record,
+        })
+      }
+    } catch (error) {
+      recoveryMessage = errMessage(error)
+    } finally {
+      recoveryBusy = false
+    }
+  }
 
   // ============================================================================
   // Action Type Configuration
@@ -132,11 +279,11 @@
     free: PenLine,
   }
   const actionLabels: Record<ActionType, string> = {
-    do: 'Do',
-    say: 'Say',
-    think: 'Think',
-    story: 'Story',
-    free: 'Free',
+    do: '行动',
+    say: '对白',
+    think: '想法',
+    story: '剧情',
+    free: '自由输入',
   }
   const actionBorderColors: Record<ActionType, string> = {
     do: 'border-l-emerald-500',
@@ -193,6 +340,36 @@
   // Effects
   // ============================================================================
 
+  const activeStoryId = $derived(story.currentStory?.id)
+  const activeBranchId = $derived(story.currentStory?.currentBranchId ?? null)
+
+  $effect(() => {
+    const storyId = activeStoryId
+    const branchId = activeBranchId
+    return () => {
+      if (activeRerollScope?.storyId === storyId && activeRerollScope?.branchId === branchId)
+        activeRerollScope = null
+      if (ui.submissionScope?.storyId === storyId && ui.submissionScope?.branchId === branchId)
+        ui.submissionScope = null
+      if (activeSuggestionsRefreshId) {
+        activeSuggestionsRefreshId = null
+        ui.setSuggestionsLoading(false)
+      }
+      const scope = ui.generationScope
+      if (
+        scope?.storyId === storyId &&
+        scope?.branchId === branchId &&
+        scope?.turnId === activeTurnId
+      ) {
+        activeAbortController?.abort()
+        ui.setNovelUserSummary(null, scope)
+        ui.clearDirectorStreaming(scope)
+        ui.endStreaming()
+        ui.setGenerating(false)
+      }
+    }
+  })
+
   $effect(() => {
     ui.setRetryCallback(handleRetry)
     return () => ui.setRetryCallback(null)
@@ -209,6 +386,11 @@
   })
 
   $effect(() => {
+    ui.setRetryWriterCallback(handleWriterOnlyNarration)
+    return () => ui.setRetryWriterCallback(null)
+  })
+
+  $effect(() => {
     const pendingAction = ui.pendingActionChoice
     if (pendingAction && !ui.isGenerating) {
       inputValue = pendingAction
@@ -217,11 +399,23 @@
     }
   })
 
+  $effect(() => {
+    const storyId = activeStoryId
+    if (!storyId || inputValue.trim() || ui.isGenerating) return
+    const pending = ui.consumePendingCreativeInput(storyId)
+    if (pending) {
+      inputValue = pending
+      requestAnimationFrame(() => textareaRef?.focus())
+    } else if (ui.consumeCreativeInputFocus(storyId)) {
+      requestAnimationFrame(() => textareaRef?.focus())
+    }
+  })
+
   // Auto-regenerate suggestions/actions after time-travel delete when no saved actions found
   $effect(() => {
     if (ui.suggestionsRegenerationNeeded && !ui.isGenerating && story.entries.length > 0) {
       ui.suggestionsRegenerationNeeded = false
-      regenerateActionsAfterDelete()
+      if (!isCollaborative) regenerateActionsAfterDelete()
     }
   })
 
@@ -287,11 +481,13 @@
       generateActionChoices: aiService.generateActionChoices.bind(aiService),
       translateActionChoices: aiService.translateActionChoices.bind(aiService),
       analyzeBackgroundChangeAndGenerateImage: (storyId, visibleEntries) =>
-        aiService.analyzeBackgroundChangeAndGenerateImage(
-          storyId,
-          visibleEntries,
-          story.updateCurrentBackgroundImage.bind(story),
-        ),
+        aiService.analyzeBackgroundChangeAndGenerateImage(storyId, visibleEntries, (image) => {
+          if (
+            story.currentStory?.id === storyId &&
+            story.currentStory.settings?.backgroundImagesEnabled
+          )
+            void story.updateCurrentBackgroundImage(image)
+        }),
     }
   }
 
@@ -329,7 +525,9 @@
         mode,
         pov: story.pov,
         tense: story.tense,
-        enabled: settings.systemServicesSettings.styleReviewer.enabled,
+        enabled:
+          currentStory.mode !== 'creative-writing' &&
+          settings.systemServicesSettings.styleReviewer.enabled,
         triggerInterval: settings.systemServicesSettings.styleReviewer.triggerInterval,
         recentEntriesCount: settings.systemServicesSettings.styleReviewer.recentEntriesCount,
         currentCounter: ui.messagesSinceLastStyleReview,
@@ -398,13 +596,13 @@
               (responseText.length > 120 ? '…' : '')
             : 'Tap to return to your story.'
         sendNotification({
-          title: 'Story generation complete',
+          title: '故事生成完成',
           body: previewText,
           largeBody: previewText,
         })
       } else {
         sendNotification({
-          title: 'Story generation failed',
+          title: '故事生成失败',
           body: 'Tap to return and retry.',
           largeBody: 'Tap to return and retry.',
         })
@@ -448,9 +646,13 @@
     userActionEntryId: string,
     userActionContent: string,
     options?: {
+      writerRecovery?: CollaborativeWriterRecovery
       countStyleReview?: boolean
       styleReviewSource?: string
+      novelRetry?: NovelRetry
       cachedRetrievalResult?: RetrievalResult | null
+      /** Existing narration row to receive a new same-turn variant (creative reroll). */
+      variantBaseEntryId?: string
     },
   ) {
     const countStyleReview = options?.countStyleReview ?? true
@@ -460,31 +662,89 @@
     if (!story.currentStory) return
 
     stopRequested = false
-    activeAbortController = new AbortController()
+    const configError = generationBlockReason(!!options?.writerRecovery)
+    if (configError) {
+      ui.showToast(configError, 'error')
+      return
+    }
+    activeAbortController?.abort()
+    const abortController = new AbortController()
+    activeAbortController = abortController
 
     const visualProseMode = story.currentStory.settings?.visualProseMode ?? false
     const inlineImageMode = story.currentStory.settings?.imageGenerationMode === 'inline'
     const streamingEntryId = crypto.randomUUID()
-    const narrationEntryId = crypto.randomUUID()
+    const narrationEntryId =
+      options?.writerRecovery?.narrationEntryId ??
+      options?.variantBaseEntryId ??
+      crypto.randomUUID()
+    const previousVariantId = options?.variantBaseEntryId
+      ? story.entries.find((entry) => entry.id === options.variantBaseEntryId)?.metadata?.variantSet
+          ?.activeVariantId
+      : undefined
 
     // Snapshot the narrative generation config so we can record which model/profile/effort
     // produced this response. Captured at start to reflect the settings used for the request.
-    const narrativeProfile = settings.getMainNarrativeProfile()
+    let writerBinding: import('$lib/types').GenerationPreset | undefined
+    if (story.currentStory.mode === 'creative-writing') {
+      try {
+        writerBinding = settings.getPresetConfig(
+          settings.getServicePresetId(collaborativeServiceIds.writer),
+          collaborativeServiceIds.writer,
+        )
+      } catch (error) {
+        ui.showToast(errMessage(error), 'error')
+        if (activeAbortController === abortController) activeAbortController = null
+        return
+      }
+    }
+    const narrativeProfile = writerBinding?.profileId
+      ? settings.getProfile(writerBinding.profileId)
+      : settings.getMainNarrativeProfile()
     const generationStartedAt = Date.now()
     const generationMeta: EntryMetadata = {
-      model: settings.apiSettings.defaultModel,
+      model: writerBinding?.model ?? settings.apiSettings.defaultModel,
       profileId: narrativeProfile?.id,
       profileName: narrativeProfile?.name,
-      reasoningEffort: settings.apiSettings.reasoningEffort ?? 'none',
-      temperature: settings.apiSettings.temperature,
+      reasoningEffort:
+        writerBinding?.reasoningEffort ?? settings.apiSettings.reasoningEffort ?? 'none',
+      temperature: writerBinding?.temperature ?? settings.apiSettings.temperature,
+      maxTokens: writerBinding?.maxTokens ?? settings.apiSettings.maxTokens,
+      ...(writerBinding
+        ? {
+            collaborativeDiagnostics: {
+              phases: [],
+              sceneDirectorCompleted: false,
+              writerTemplateId: 'collaborative-chinese-writer',
+              translationPhases: 0,
+            },
+          }
+        : {}),
     }
 
     ui.setGenerating(true)
+    activeSuggestionsRefreshId = null
+    ui.setSuggestionsLoading(false)
     ui.clearGenerationError()
     ui.clearActionChoices(story.currentStory.id)
     ui.startStreaming(visualProseMode, streamingEntryId)
 
     const currentStoryRef = story.currentStory
+    const generationScope = createGenerationScope(
+      currentStoryRef.id,
+      currentStoryRef.currentBranchId ?? null,
+    )
+    activeTurnId = generationScope.turnId
+    ui.beginGenerationScope(generationScope)
+    const isGenerationScopeCurrent = () =>
+      activeTurnId === generationScope.turnId &&
+      ui.generationScope?.turnId === generationScope.turnId &&
+      !abortController.signal.aborted &&
+      isScopeCurrent(generationScope, story.currentStory)
+    const generationWriteOptions = {
+      scope: generationScope,
+      isScopeCurrent: isGenerationScopeCurrent,
+    }
 
     let inlineImageTracker: InlineImageTracker | null = null
     if (inlineImageMode) {
@@ -507,16 +767,37 @@
     ui.resetBackgroundedFlag()
 
     try {
+      if (!options?.writerRecovery) {
+        const previousRecovery = await database.getWriterRecovery(
+          currentStoryRef.id,
+          currentStoryRef.currentBranchId ?? null,
+        )
+        if (!isGenerationScopeCurrent()) return
+        if (previousRecovery)
+          await database.clearWriterRecovery(
+            previousRecovery.storyId,
+            previousRecovery.branchId,
+            previousRecovery.id,
+          )
+        if (!isGenerationScopeCurrent()) return
+        writerRecovery = null
+      }
       const worldState = story.worldStateSnapshot
 
-      const storyPosition = story.entries.length
+      const storyPosition = options?.variantBaseEntryId
+        ? story.entries.filter((entry) => entry.id !== options.variantBaseEntryId).length
+        : story.entries.length
       const activationTracker = ui.getActivationTracker(storyPosition) as SimpleActivationTracker
       const protagonist = story.characters.find((c) => c.relationship === 'self')
 
       const ctx: GenerationContext = {
         story: currentStoryRef,
-        visibleEntries: story.visibleEntries,
-        allEntries: story.entries,
+        visibleEntries: options?.variantBaseEntryId
+          ? story.visibleEntries.filter((entry) => entry.id !== options.variantBaseEntryId)
+          : story.visibleEntries,
+        allEntries: options?.variantBaseEntryId
+          ? story.entries.filter((entry) => entry.id !== options.variantBaseEntryId)
+          : story.entries,
         worldState,
         userAction: {
           entryId: userActionEntryId,
@@ -524,10 +805,26 @@
           rawInput: userActionContent,
         },
         narrationEntryId,
-        abortSignal: activeAbortController.signal,
+        abortSignal: abortController.signal,
       }
 
+      if (
+        options?.writerRecovery &&
+        (await currentRecoveryFingerprint(options.writerRecovery, !!options.variantBaseEntryId)) !==
+          options.writerRecovery.contextFingerprint
+      )
+        throw new Error('生成上下文已变化，不能复用旧 Director；请重新运行整轮。')
       const cfg: PipelineConfig = {
+        writerRecovery: options?.writerRecovery,
+        novelRetry:
+          options?.novelRetry ??
+          story.entries.find((e) => e.id === userActionEntryId)?.metadata?.novelRetry ??
+          story.entries.findLast(
+            (e) =>
+              e.type === 'retry' &&
+              e.position >
+                (story.entries.find((a) => a.id === userActionEntryId)?.position ?? Infinity),
+          )?.metadata?.novelRetry,
         rawInput: userActionContent,
         actionType,
         wasRawActionChoice: false,
@@ -538,9 +835,11 @@
         // Gated on the setting, not just on the scheduler: `lastStyleReview` is persisted
         // and restored on load, so a review produced before the feature was switched off
         // would otherwise keep reaching the narrator prompt forever.
-        styleReview: settings.systemServicesSettings.styleReviewer.enabled
-          ? ui.lastStyleReview
-          : null,
+        styleReview:
+          currentStoryRef.mode !== 'creative-writing' &&
+          settings.systemServicesSettings.styleReviewer.enabled
+            ? ui.lastStyleReview
+            : null,
         activationTracker,
         translationSettings: settings.translationSettings,
         imageSettings: {
@@ -558,17 +857,30 @@
           tone: currentStoryRef.settings?.tone ?? undefined,
           themes: currentStoryRef.settings?.themes ?? undefined,
         },
-        disableSuggestions: settings.uiSettings.disableSuggestions,
+        disableSuggestions:
+          currentStoryRef.mode === 'creative-writing' || settings.uiSettings.disableSuggestions,
         activeThreads: story.pendingQuests,
         cachedRetrievalResult: options?.cachedRetrievalResult ?? null,
       }
 
-      const deps = buildPipelineDependencies(currentStoryRef.id)
+      const deps = {
+        ...buildPipelineDependencies(currentStoryRef.id),
+        prepareCollaborative: aiService.prepareCollaborative.bind(aiService),
+      }
       const pipeline = new GenerationPipeline(deps)
 
+      let fatalMessage = ''
       let fullResponse = ''
       let fullReasoning = ''
       let narrationEntry: Awaited<ReturnType<typeof story.addEntry>> | null = null
+      let generatedVariantId: string | null = null
+      let classificationFailed = false
+      let classificationObserved = false
+      let variantClassificationResult:
+        import('$lib/services/ai/sdk/schemas/classifier').ClassificationResult | null = null
+      let deferredBackgroundImageStarted = false
+      let turnRecovery = options?.writerRecovery
+      let turnRetrieval: RetrievalResult | undefined
 
       const eventState: PipelineEventState = {
         fullResponse: () => fullResponse,
@@ -577,11 +889,12 @@
         visualProseMode,
         isCreativeMode,
         storyId: currentStoryRef.id,
+        isScopeCurrent: isGenerationScopeCurrent,
         activeParallelPhases: new Set(),
       }
 
       const persistSuggestedActions = (actions: unknown[], type: 'suggestions' | 'choices') => {
-        if (narrationEntry && actions.length > 0) {
+        if (!isCollaborative && narrationEntry && actions.length > 0) {
           database
             .updateStoryEntry(narrationEntry.id, {
               suggestedActions: JSON.stringify(actions),
@@ -596,7 +909,18 @@
         startStreaming: ui.startStreaming.bind(ui),
         appendStreamContent: ui.appendStreamContent.bind(ui),
         appendReasoningContent: ui.appendReasoningContent.bind(ui),
+        startDirectorStreaming: () => ui.startDirectorStreaming(generationScope),
+        appendDirectorContent: (content) =>
+          ui.appendDirectorStreamContent(content, generationScope),
+        collapseDirectorPanel: () => ui.collapseDirectorPanel(generationScope),
         setGenerationStatus: ui.setGenerationStatus.bind(ui),
+        setNovelTurn: (turn) => {
+          generationMeta.novelTurn = turn
+        },
+        setNovelUserSummary: (summary) => {
+          generationMeta.novelUserSummary = summary
+          ui.setNovelUserSummary(summary, generationScope)
+        },
         setSuggestionsLoading: ui.setSuggestionsLoading.bind(ui),
         setActionChoicesLoading: ui.setActionChoicesLoading.bind(ui),
         setSuggestions: (suggestions, storyId) => {
@@ -622,10 +946,74 @@
       for await (const event of pipeline.execute(ctx, cfg)) {
         if (stopRequested) break
 
+        if (!isGenerationScopeCurrent()) {
+          abortController.abort()
+          break
+        }
+        const diagnostics = generationMeta.collaborativeDiagnostics
+        if (diagnostics) {
+          if (event.type === 'phase_start') {
+            diagnostics.phases.push(event.phase)
+            if (event.phase === 'translation') diagnostics.translationPhases++
+          } else if (event.type === 'phase_progress') {
+            diagnostics.phases.push(`${event.phase}:${event.progress}`)
+          } else if (event.type === 'phase_complete' && event.phase === 'scene_director') {
+            diagnostics.sceneDirectorCompleted = true
+            if (
+              event.result &&
+              typeof event.result === 'object' &&
+              'directorDiagnostics' in event.result
+            ) {
+              diagnostics.sceneDirector = (
+                event.result as { directorDiagnostics?: typeof diagnostics.sceneDirector }
+              ).directorDiagnostics
+              if (diagnostics.sceneDirector?.directorFallback) {
+                ui.showToast(
+                  `Director 调用失败，Writer 已按原始上下文继续：${diagnostics.sceneDirector.errorMessage ?? diagnostics.sceneDirector.reason ?? '未知错误'}`,
+                  'warning',
+                  10000,
+                )
+              }
+            }
+          }
+        }
         handleEvent(event, eventState, eventCallbacks)
+
+        if (event.type === 'phase_complete' && event.phase === 'scene_director') {
+          const turn = generationMeta.novelTurn
+          if (turn?.sceneDirectorOutput?.trim() && !turn.directorDiagnostics?.directorFallback) {
+            turnRecovery = options?.writerRecovery ?? {
+              version: 1,
+              id: crypto.randomUUID(),
+              storyId: currentStoryRef.id,
+              branchId: currentStoryRef.currentBranchId ?? null,
+              userActionEntryId,
+              narrationEntryId,
+              variantBaseEntryId: options?.variantBaseEntryId,
+              previousVariantId,
+              generatedVariantId: options?.variantBaseEntryId ? crypto.randomUUID() : undefined,
+              novelRetry: cfg.novelRetry,
+              novelTurn: JSON.parse(JSON.stringify(turn)),
+              retrieval: JSON.parse(JSON.stringify(turnRetrieval)),
+              contextFingerprint: await recoveryFingerprint(ctx, {
+                packId: await database.getStoryPackId(currentStoryRef.id),
+                variables: await database.getStoryCustomVariables(currentStoryRef.id),
+              }),
+              createdAt: Date.now(),
+            }
+            if (!isGenerationScopeCurrent()) break
+            await database.saveWriterRecovery(turnRecovery)
+            if (!isGenerationScopeCurrent()) break
+            writerRecovery = turnRecovery
+            recoveryHidden = false
+            generationMeta.writerRecoveryId = turnRecovery.id
+            generationMeta.writerReplay = JSON.parse(JSON.stringify(turnRecovery))
+          }
+        }
 
         if (event.type === 'phase_complete' && event.phase === 'retrieval') {
           const retrievalResult = event.result as RetrievalResult | undefined
+          turnRetrieval = retrievalResult
           ui.setLastLorebookRetrieval(
             retrievalResult?.lorebookRetrievalResult ?? null,
             retrievalResult?.worldStateRetrievalResult ?? null,
@@ -653,7 +1041,7 @@
         if (event.type === 'narrative_chunk') {
           fullResponse += event.content
           if (event.reasoning) fullReasoning += event.reasoning
-          if (inlineImageTracker)
+          if (inlineImageTracker && !options?.variantBaseEntryId)
             inlineImageTracker.processChunk(
               fullResponse,
               currentStoryRef.settings?.referenceMode ?? false,
@@ -661,20 +1049,101 @@
         }
 
         if (event.type === 'phase_complete' && event.phase === 'narrative' && fullResponse.trim()) {
+          if (generationMeta.novelTurn) {
+            const result = event.result as import('$lib/services/generation/phases').NarrativeResult
+            Object.assign(generationMeta.novelTurn, {
+              requestedLength: result.requestedLength,
+              actualChineseCharacters: result.actualChineseCharacters,
+              outputMetricsWarning: result.outputMetricsWarning,
+              shortStopReason: result.shortStopReason,
+              outputTruncated: result.outputTruncated,
+              finishReason: result.finishReason,
+            })
+            generationMeta.novelTurn.outputKey = historyKey([
+              { type: 'narration', content: fullResponse } as import('$lib/types').StoryEntry,
+            ])
+            const writerPrompt = generationMeta.novelTurn.writerPrompt
+            if (diagnostics && writerPrompt) {
+              diagnostics.writerTemplateId = writerPrompt.templateId
+              diagnostics.writerTemplateSource = `system: ${writerPrompt.systemSource}; user: ${writerPrompt.userSource}`
+            }
+          }
+          if (diagnostics && import.meta.env.DEV) {
+            console.debug('[ActionInput] collaborative generation diagnostics', {
+              phases: diagnostics.phases,
+              length: generationMeta.novelTurn?.actualChineseCharacters,
+              directorOutputLength: generationMeta.novelTurn?.sceneDirectorOutput?.length ?? 0,
+            })
+          }
           generationMeta.generationTime = Date.now() - generationStartedAt
-          narrationEntry = await story.addEntry(
-            'narration',
-            fullResponse,
-            generationMeta,
-            fullReasoning || undefined,
-            narrationEntryId,
-          )
+          if (isCollaborative)
+            generationMeta.collaborativeStateMaintenance = createStateMaintenanceRecord(
+              currentStoryRef.settings?.collaborativeNovelWorkflow?.factStateExtractor?.enabled ===
+                false
+                ? 'disabled'
+                : 'failed',
+              { error: '正文已保存，事实与状态提取尚未完成。' },
+            )
+          if (options?.variantBaseEntryId) {
+            generatedVariantId = turnRecovery?.generatedVariantId ?? crypto.randomUUID()
+            narrationEntry = await story.appendNarrationVariant(
+              narrationEntryId,
+              {
+                id: generatedVariantId,
+                content: fullResponse,
+                reasoning: fullReasoning || undefined,
+                metadata: generationMeta,
+                classificationResult: null,
+                worldStateDelta: null,
+                suggestedActions: null,
+                createdAt: Date.now(),
+              },
+              { activate: false },
+            )
+            // The variant is kept pending until the narrative stream has completed. Once
+            // classification starts it becomes the working entry so the existing state
+            // maintenance pipeline records its delta against the correct variant.
+            narrationEntry = await story.activateNarrationVariant(
+              narrationEntryId,
+              generatedVariantId,
+            )
+          } else {
+            narrationEntry = await story.addEntry(
+              'narration',
+              fullResponse,
+              generationMeta,
+              fullReasoning || undefined,
+              narrationEntryId,
+              generationWriteOptions,
+            )
+          }
+          if (!isGenerationScopeCurrent()) break
+          if (turnRecovery) {
+            await database
+              .clearWriterRecovery(turnRecovery.storyId, turnRecovery.branchId, turnRecovery.id)
+              .catch((error) => log('Recovery cleanup deferred until next load', error))
+            writerRecovery = null
+          }
+          if (isCollaborative && !options?.variantBaseEntryId) {
+            // Materialize a one-item variant set for the first generated turn so
+            // subsequent rerolls append to the same logical narration row.
+            await story.updateNarrationVariant(narrationEntry.id, {})
+          }
           ui.endStreaming()
+          ui.setNovelUserSummary(null, generationScope)
+          ui.clearDirectorStreaming(generationScope)
           emitNarrativeResponse(narrationEntry.id, fullResponse)
-          if (inlineImageTracker?.hasPendingImages) await inlineImageTracker.flushToDatabase()
+          // For rerolls, defer image persistence until fact/state maintenance has
+          // committed the new variant. Otherwise images generated for a rejected
+          // variant would be attached to the shared narration entry and survive after
+          // the visible version is restored.
+          if (!options?.variantBaseEntryId && inlineImageTracker?.hasPendingImages)
+            await inlineImageTracker.flushToDatabase(narrationEntry.content)
         }
 
         if (event.type === 'classification_complete' && narrationEntry) {
+          classificationObserved = true
+          variantClassificationResult = event.result
           eventBus.emit<ClassificationCompleteEvent>({
             type: 'ClassificationComplete',
             messageId: narrationEntry.id,
@@ -684,18 +1153,31 @@
           // changed nothing: same empty result, no error, no toast. Say it happened —
           // the alternative is the player noticing a missing location three turns later.
           if (event.result._error) {
+            classificationFailed = true
             console.error('[ActionInput] World update failed:', event.result._error)
-            ui.showToast(
-              'The world update failed for this response. Some or all changes were not ' +
-                'applied — you can regenerate the response to try again.',
-              'warning',
-            )
+            ui.showToast('事实与状态提取未完全成功。正文已保留，可单独重试提取。', 'warning')
           }
-          await story.applyClassificationResult(event.result, narrationEntry.id)
-          await story.updateEntryTimeEnd(narrationEntry.id)
+          try {
+            await story.applyClassificationResult(
+              event.result,
+              narrationEntry.id,
+              generationWriteOptions,
+            )
+          } catch (error) {
+            classificationFailed = true
+            console.error('[ActionInput] Fact/state maintenance failed:', error)
+            if (!event.result._error)
+              ui.showToast('状态写入失败，正文已保留。可单独重试提取。', 'warning')
+          }
+          if (!isGenerationScopeCurrent()) break
+          await story.updateEntryTimeEnd(narrationEntry.id, generationWriteOptions)
+          if (!isGenerationScopeCurrent()) break
 
           const translationSettings = settings.translationSettings
-          if (TranslationService.shouldTranslateWorldState(translationSettings)) {
+          if (
+            currentStoryRef.mode !== 'creative-writing' &&
+            TranslationService.shouldTranslateWorldState(translationSettings)
+          ) {
             const translationService = new WorldStateTranslationService({
               translateUIElements: aiService.translateUIElements.bind(aiService),
             })
@@ -703,6 +1185,7 @@
               .translateEntities(
                 {
                   storyId: currentStoryRef.id,
+                  isCollaborative: false,
                   classificationResult: {
                     newCharacters: event.result.entryUpdates.newCharacters,
                     newLocations: event.result.entryUpdates.newLocations,
@@ -716,6 +1199,7 @@
                     storyBeats: story.storyBeats,
                   },
                   targetLanguage: translationSettings.targetLanguage,
+                  isScopeCurrent: isGenerationScopeCurrent,
                 },
                 {
                   updateCharacter: (id, data) => database.updateCharacter(id, data as any),
@@ -742,22 +1226,161 @@
               translatedContent: translationResult.translatedContent,
               translationLanguage: translationResult.targetLanguage,
             })
+            if (!isGenerationScopeCurrent()) break
             await story.refreshEntry(narrationEntry.id)
           }
         }
 
         if (event.type === 'error' && event.fatal) {
+          fatalMessage = event.error.message
           console.error('[ActionInput] Fatal pipeline error:', event.error)
           break
         }
       }
 
+      if (!isGenerationScopeCurrent()) return
+      if (isCollaborative && narrationEntry && !classificationObserved) {
+        const extractorEnabled =
+          currentStoryRef.settings?.collaborativeNovelWorkflow?.factStateExtractor?.enabled
+        if (extractorEnabled !== false) classificationFailed = true
+        const savedEntry = story.entries.find((entry) => entry.id === narrationEntry!.id)
+        if (savedEntry) {
+          const metadata = {
+            ...savedEntry.metadata,
+            collaborativeStateMaintenance: createStateMaintenanceRecord(
+              extractorEnabled === false ? 'disabled' : 'failed',
+              extractorEnabled === false ? undefined : { error: '事实与状态提取未完成。' },
+            ),
+          }
+          await database.updateStoryEntry(savedEntry.id, { metadata, worldStateDelta: null })
+          await story.refreshEntry(savedEntry.id)
+        }
+      }
       ui.updateActivationData(activationTracker, currentStoryRef.id)
-      if (stopRequested) return
 
-      if (!fullResponse.trim()) {
-        const errorMessage = 'The AI returned an empty response after 3 attempts. Please try again.'
-        const errorEntry = await story.addEntry('system', errorMessage)
+      if (narrationEntry && generationMeta.collaborativeDiagnostics) {
+        const savedEntry = story.entries.find((entry) => entry.id === narrationEntry.id)
+        if (savedEntry) {
+          await database.updateStoryEntry(savedEntry.id, {
+            metadata: {
+              ...savedEntry.metadata,
+              collaborativeDiagnostics: generationMeta.collaborativeDiagnostics,
+            },
+          })
+          if (!isGenerationScopeCurrent()) return
+          await story.refreshEntry(savedEntry.id)
+          if (!isGenerationScopeCurrent()) return
+        }
+      }
+
+      // Keep all post-generation fields attached to the same-turn variant. The
+      // top-level entry remains the compatibility mirror used by existing readers.
+      if (options?.variantBaseEntryId && narrationEntry) {
+        // Preserve the generated variant's diagnostic metadata before restoring the
+        // previous visible version. `applyClassificationResult` writes the failure
+        // record to the currently mirrored entry; after restoration that record must
+        // be copied back to the pending generated variant, not read from the old one.
+        const failedVariantSnapshot =
+          classificationFailed && generatedVariantId
+            ? story.entries.find((candidate) => candidate.id === narrationEntry!.id)?.metadata
+            : undefined
+        if (classificationFailed && previousVariantId && previousVariantId !== generatedVariantId) {
+          try {
+            // Classification failures are rolled back by the scoped maintenance pipeline;
+            // restore only the visible compatibility mirror while keeping the generated
+            // variant available as pending for a later state-extraction retry.
+            await story.activateNarrationVariant(narrationEntry.id, previousVariantId)
+          } catch (restoreError) {
+            console.error(
+              '[ActionInput] Failed to restore previous variant after state failure',
+              restoreError,
+            )
+          }
+        }
+        const saved = story.entries.find((candidate) => candidate.id === narrationEntry!.id)
+        if (saved) {
+          await story.updateNarrationVariant(
+            narrationEntry.id,
+            {
+              state: classificationFailed ? 'pending' : 'stored',
+              ...(classificationFailed
+                ? { metadata: failedVariantSnapshot ?? saved.metadata }
+                : {
+                    metadata: saved.metadata,
+                    worldStateDelta: saved.worldStateDelta,
+                    suggestedActions: saved.suggestedActions,
+                    classificationResult: variantClassificationResult,
+                  }),
+            },
+            generatedVariantId ? { variantId: generatedVariantId } : undefined,
+          )
+        }
+        if (!classificationFailed && inlineImageTracker) {
+          inlineImageTracker.processChunk(
+            fullResponse,
+            currentStoryRef.settings?.referenceMode ?? false,
+          )
+        }
+        if (!classificationFailed && inlineImageTracker?.hasPendingImages) {
+          await inlineImageTracker.flushToDatabase(narrationEntry.content)
+        }
+
+        // Creative rerolls defer background-image analysis until the generated
+        // variant, its world-state delta, and the compatibility mirror have all
+        // committed. The pipeline reports this phase as deferred; starting it here
+        // prevents a later variant-write failure from leaving an image generated for
+        // prose that was restored.
+        if (
+          isCollaborative &&
+          !classificationFailed &&
+          !deferredBackgroundImageStarted &&
+          cfg.imageSettings.backgroundImagesEnabled !== false &&
+          cfg.imageSettings.imageGenerationMode !== 'inline' &&
+          deps.isImageGenerationEnabled(cfg.imageSettings, 'background')
+        ) {
+          deferredBackgroundImageStarted = true
+          try {
+            await deps.analyzeBackgroundChangeAndGenerateImage(currentStoryRef.id, story.entries)
+          } catch (error) {
+            // Background generation is non-fatal, matching the normal phase.
+            log('Deferred reroll background image failed (non-fatal)', error)
+          }
+        }
+      }
+
+      if (fatalMessage || !narrationEntry) {
+        const errorMessage = fatalMessage || '模型未返回完整正文，请重试。'
+        if (typeof options !== 'undefined' && options?.variantBaseEntryId && generatedVariantId) {
+          try {
+            await story.discardNarrationVariant(
+              options.variantBaseEntryId,
+              generatedVariantId,
+              previousVariantId,
+            )
+            if (previousVariantId) {
+              await story.restoreNarrationVariantState(
+                options.variantBaseEntryId,
+                previousVariantId,
+              )
+            }
+          } catch (restoreError) {
+            console.error(
+              '[ActionInput] Failed to restore reroll after generation failure',
+              restoreError,
+            )
+          }
+        }
+        const errorEntry = await story.addEntry(
+          'system',
+          errorMessage,
+          generationMeta.collaborativeDiagnostics
+            ? { collaborativeDiagnostics: generationMeta.collaborativeDiagnostics }
+            : undefined,
+          undefined,
+          undefined,
+          generationWriteOptions,
+        )
+        if (!isGenerationScopeCurrent()) return
         ui.setGenerationError({
           message: errorMessage,
           errorEntryId: errorEntry.id,
@@ -772,15 +1395,23 @@
       if (
         narrationEntry &&
         settings.systemServicesSettings.tts.enabled &&
-        settings.systemServicesSettings.tts.autoPlay
+        settings.systemServicesSettings.tts.autoPlay &&
+        (!options?.variantBaseEntryId || !classificationFailed)
       ) {
         emitTTSQueued(narrationEntry.id, fullResponse)
       }
+
+      // A failed reroll is restored to the previous active variant. Do not launch
+      // background summarization/retrieval work for the rejected prose in that case.
+      const skipPostGenerationTasks = Boolean(options?.variantBaseEntryId && classificationFailed)
+      if (skipPostGenerationTasks) return
 
       const coordinator = new BackgroundTaskCoordinator(
         buildBackgroundTaskDependencies(currentStoryRef.id),
       )
       const input = buildBackgroundTaskInput(currentStoryRef, countStyleReview, styleReviewSource)
+      input.scope = generationScope
+      input.isScopeCurrent = isGenerationScopeCurrent
       if (!story.memoryConfig.autoSummarize) input.chapterCheck.tokensOutsideBuffer = 0
       // Deliberately not awaited — but the flag has to outlive the call, or the Memory
       // view will offer to create a chapter while this one is being created.
@@ -813,7 +1444,18 @@
       const errorMessage = ui.wasBackgroundedDuringGeneration
         ? `Generation may have been interrupted while the app was in the background. ${baseMessage}`
         : baseMessage
-      const errorEntry = await story.addEntry('system', `Generation failed: ${errorMessage}`)
+      if (!isGenerationScopeCurrent()) return
+      const errorEntry = await story.addEntry(
+        'system',
+        `Generation failed: ${errorMessage}`,
+        generationMeta.collaborativeDiagnostics
+          ? { collaborativeDiagnostics: generationMeta.collaborativeDiagnostics }
+          : undefined,
+        undefined,
+        undefined,
+        generationWriteOptions,
+      )
+      if (!isGenerationScopeCurrent()) return
       ui.setGenerationError({
         message: errorMessage,
         errorEntryId: errorEntry.id,
@@ -823,9 +1465,29 @@
 
       await notifyFailureIfBackgrounded()
     } finally {
+      if (
+        activeAbortController !== abortController ||
+        ui.generationScope?.turnId !== generationScope.turnId
+      )
+        return
       ui.endStreaming()
-      ui.setGenerating(false)
+      if (!activeRerollScope || !isScopeCurrent(activeRerollScope, story.currentStory))
+        ui.setGenerating(false)
       ui.setGenerationStatus('')
+      ui.setNovelUserSummary(null, generationScope)
+      ui.clearDirectorStreaming(generationScope)
+      if (stopRequested) {
+        try {
+          const record = await database.getWriterRecovery(
+            currentStoryRef.id,
+            currentStoryRef.currentBranchId ?? null,
+          )
+          if (record) await database.clearWriterRecovery(record.storyId, record.branchId, record.id)
+          if (isScopeCurrent(generationScope, story.currentStory)) writerRecovery = null
+        } catch (error) {
+          log('Stopped Writer recovery cleanup failed', error)
+        }
+      }
       activeAbortController = null
 
       // Android: always stop the foreground service when generation ends
@@ -848,7 +1510,7 @@
    * when no previously saved actions were found on the restored entry.
    */
   async function regenerateActionsAfterDelete() {
-    if (!story.currentStory || story.entries.length === 0) return
+    if (isCollaborative || !story.currentStory || story.entries.length === 0) return
 
     const storyMode = story.storyMode
 
@@ -918,13 +1580,44 @@
   }
 
   async function refreshSuggestions() {
-    if (!story.currentStory) return
-
-    if (story.storyMode !== 'creative-writing' || story.entries.length === 0) {
-      ui.clearSuggestions(story.currentStory.id)
+    if (!story.currentStory || ui.isGenerating) return
+    const current = story.currentStory
+    const mode = current.mode
+    const isCollaborative = mode === 'creative-writing'
+    if (
+      isCollaborative &&
+      current.settings?.collaborativeNovelWorkflow?.plotSuggestions?.enabled === false
+    ) {
+      ui.clearSuggestions(current.id)
       return
     }
 
+    if (
+      (!isCollaborative && story.storyMode !== 'creative-writing') ||
+      story.entries.length === 0
+    ) {
+      ui.clearSuggestions(current.id)
+      return
+    }
+
+    const scope = createGenerationScope(current.id, current.currentBranchId ?? null)
+    activeSuggestionsRefreshId = scope.turnId
+    const entries = story.entries.map((entry) => ({ ...entry }))
+    const lastNarration = entries.findLast((e) => e.type === 'narration')
+    const inputHistoryKey = historyKey(entries)
+    const generationTurnId = ui.generationScope?.turnId
+    const ownsRefresh = () =>
+      activeSuggestionsRefreshId === scope.turnId && isScopeCurrent(scope, story.currentStory)
+    const isCurrent = () =>
+      ownsRefresh() &&
+      !ui.isGenerating &&
+      story.currentStory?.mode === mode &&
+      (!isCollaborative ||
+        story.currentStory?.settings?.collaborativeNovelWorkflow?.plotSuggestions?.enabled !==
+          false) &&
+      ui.generationScope?.turnId === generationTurnId &&
+      historyKey(story.entries) === inputHistoryKey &&
+      story.entries.findLast((e) => e.type === 'narration')?.id === lastNarration?.id
     ui.setSuggestionsLoading(true)
     try {
       const service = new SuggestionsRefreshService({
@@ -932,18 +1625,25 @@
         translateSuggestions: aiService.translateSuggestions.bind(aiService),
       })
       const result = await service.refresh({
-        storyId: story.currentStory.id,
-        entries: story.entries,
+        storyId: scope.storyId,
+        isCollaborative,
+        entries,
         pendingQuests: story.pendingQuests,
         storyMode: story.storyMode,
         lastLorebookRetrieval: ui.lastLorebookRetrieval?.all ?? null,
         translationSettings: settings.translationSettings,
       })
-      ui.setSuggestions(result.suggestions, story.currentStory.id)
+      if (!isCurrent()) return
+      ui.setSuggestions(result.suggestions, scope.storyId)
       emitSuggestionsReady(result.suggestions.map((s) => ({ text: s.text, type: s.type })))
-      // Persist refreshed suggestions to the latest narration entry for time-travel restore
-      const lastNarration = [...story.entries].reverse().find((e) => e.type === 'narration')
-      if (lastNarration && result.suggestions.length > 0) {
+      // The legacy entry field has one shape per story mode. Collaborative inspiration uses
+      // its story-scoped cache and must not compete with RPG choices for that field.
+      if (
+        !isCollaborative &&
+        lastNarration &&
+        (lastNarration.branchId ?? null) === scope.branchId &&
+        result.suggestions.length > 0
+      ) {
         database
           .updateStoryEntry(lastNarration.id, {
             suggestedActions: JSON.stringify(result.suggestions),
@@ -954,9 +1654,12 @@
       }
     } catch (error) {
       log('Failed to generate suggestions:', error)
-      ui.clearSuggestions(story.currentStory.id)
+      if (isCurrent()) ui.clearSuggestions(scope.storyId)
     } finally {
-      ui.setSuggestionsLoading(false)
+      if (ownsRefresh()) {
+        activeSuggestionsRefreshId = null
+        ui.setSuggestionsLoading(false)
+      }
     }
   }
 
@@ -966,60 +1669,127 @@
   }
 
   async function handleSubmit() {
-    if (!inputValue.trim() || ui.isGenerating || !story.currentStory) return
+    if (recoveryBusy) return
+    if (!inputValue.trim() || ui.isGenerating || ui.submissionScope || !story.currentStory) return
+    if (blockGeneration) {
+      ui.showToast(generationConfigError, 'error')
+      return
+    }
 
+    const current = story.currentStory
+    const scope = createGenerationScope(current.id, current.currentBranchId ?? null)
+    ui.submissionScope = scope
+    const isCurrent = () =>
+      ui.submissionScope?.turnId === scope.turnId && isScopeCurrent(scope, story.currentStory)
+    const submittedActionType = actionType
+    const submittedCreativeMode = isCreativeMode || isCollaborative
+    const translationSettings = { ...settings.translationSettings }
+    const initialEntries = [...story.entries]
+    const initialHistory = historyKey(initialEntries)
+    const generationTurnId = ui.generationScope?.turnId
+    const historyUnchanged = () =>
+      isCurrent() &&
+      !ui.isGenerating &&
+      ui.generationScope?.turnId === generationTurnId &&
+      historyKey(story.entries) === initialHistory
+    const world = {
+      characters: [...story.characters],
+      locations: [...story.locations],
+      items: [...story.items],
+      storyBeats: [...story.storyBeats],
+      timeTracker: current.timeTracker ? { ...current.timeTracker } : null,
+    }
     ui.clearGenerationError()
     ui.resetScrollBreak()
-    ui.clearSuggestions(story.currentStory.id)
+    ui.clearSuggestions(scope.storyId)
 
     const rawInput = inputValue.trim()
     const wasRawActionChoice = isRawActionChoice
     const forceFreeMode = settings.uiSettings.disableActionPrefixes
 
     let content: string
-    if (isCreativeMode || wasRawActionChoice || forceFreeMode) content = rawInput
+    if (isCollaborative || isCreativeMode || wasRawActionChoice || forceFreeMode) content = rawInput
     else content = actionPrefixes[actionType] + rawInput + actionSuffixes[actionType]
 
     isRawActionChoice = false
     inputValue = ''
     if (textareaRef) textareaRef.scrollTop = 0
 
-    const embeddedImageIds = await database.getEmbeddedImageIdsForStory(story.currentStory.id)
-    ui.createRetryBackup(
-      story.currentStory.id,
-      story.entries,
-      story.characters,
-      story.locations,
-      story.items,
-      story.storyBeats,
-      embeddedImageIds,
-      content,
-      rawInput,
-      actionType,
-      wasRawActionChoice,
-      story.currentStory.timeTracker,
-    )
+    let actionSaved = false
+    try {
+      const embeddedImageIds = await database.getEmbeddedImageIdsForStory(scope.storyId)
+      if (!historyUnchanged()) return
+      ui.createRetryBackup(
+        scope.storyId,
+        initialEntries,
+        world.characters,
+        world.locations,
+        world.items,
+        world.storyBeats,
+        embeddedImageIds,
+        content,
+        rawInput,
+        submittedActionType,
+        wasRawActionChoice,
+        world.timeTracker,
+      )
 
-    const { promptContent, originalInput } = await translateUserInput(
-      content,
-      settings.translationSettings,
-    )
+      const { promptContent, originalInput } = await translateUserInput(
+        content,
+        translationSettings,
+        current,
+      )
+      if (!historyUnchanged()) return
 
-    const userActionEntry = await story.addEntry('user_action', promptContent)
+      const userActionEntry = await story.addEntry(
+        'user_action',
+        promptContent,
+        undefined,
+        undefined,
+        undefined,
+        { scope, isScopeCurrent: isCurrent },
+      )
+      actionSaved = true
+      if (!isCurrent()) return
+      if (
+        userActionEntry.storyId !== scope.storyId ||
+        (userActionEntry.branchId ?? null) !== scope.branchId
+      )
+        throw new Error('提交写入目标与捕获的故事分支不一致，已停止生成。')
 
-    if (originalInput) {
-      await database.updateStoryEntry(userActionEntry.id, { originalInput })
-      await story.refreshEntry(userActionEntry.id)
+      if (originalInput) {
+        await database.updateStoryEntry(userActionEntry.id, { originalInput })
+        if (!isCurrent()) return
+        await story.refreshEntry(userActionEntry.id)
+        if (!isCurrent()) return
+      }
+
+      emitUserInput(
+        content,
+        submittedCreativeMode ? 'direction' : forceFreeMode ? 'free' : submittedActionType,
+      )
+      await tick()
+      if (
+        !isCurrent() ||
+        ui.isGenerating ||
+        ui.generationScope?.turnId !== generationTurnId ||
+        story.entries.at(-1)?.id !== userActionEntry.id
+      )
+        return
+
+      // `promptContent`, not the raw `content`: with translation on the two differ, and the
+      // entry the narrator reads holds `promptContent`. Passing the raw text here left
+      // retrieval and classification working from a different wording than the narration —
+      // and the retry path already passes `promptContent`, so the two disagreed.
+      await generateResponse(userActionEntry.id, promptContent)
+    } catch (error) {
+      if (isCurrent()) {
+        if (!actionSaved && !inputValue) inputValue = rawInput
+        ui.showToast(errMessage(error), 'error')
+      }
+    } finally {
+      if (ui.submissionScope?.turnId === scope.turnId) ui.submissionScope = null
     }
-
-    emitUserInput(content, isCreativeMode ? 'direction' : forceFreeMode ? 'free' : actionType)
-    await tick()
-
-    // `promptContent`, not the raw `content`: with translation on the two differ, and the
-    // entry the narrator reads holds `promptContent`. Passing the raw text here left
-    // retrieval and classification working from a different wording than the narration —
-    // and the retry path already passes `promptContent`, so the two disagreed.
-    await generateResponse(userActionEntry.id, promptContent)
   }
 
   async function handleStopGeneration() {
@@ -1028,8 +1798,17 @@
     stopRequested = true
     activeAbortController?.abort()
     ui.endStreaming()
+    if (activeRerollScope && isScopeCurrent(activeRerollScope, story.currentStory)) {
+      ui.setGenerationStatus('正在结束重写并恢复状态…')
+      return
+    }
     ui.setGenerating(false)
 
+    if (writerRecovery) {
+      const record = writerRecovery
+      await database.clearWriterRecovery(record.storyId, record.branchId, record.id)
+      writerRecovery = null
+    }
     const backup = ui.retryBackup
     if (!backup || !story.currentStory || backup.storyId !== story.currentStory.id) {
       if (backup) ui.clearRetryBackup()
@@ -1063,7 +1842,7 @@
 
     if (!result.success) {
       // The backup is the only way back to the pre-action story, so a refused restore keeps it.
-      ui.showToast(result.error ?? 'Could not restore the story', 'error')
+      ui.showToast(result.error ?? '无法恢复故事', 'error')
       return
     }
 
@@ -1075,6 +1854,7 @@
   }
 
   async function handleRetry() {
+    if (writerRecovery) return resumeWriterRecovery(true)
     const error = ui.lastGenerationError
     if (!error || ui.isGenerating) return
 
@@ -1116,40 +1896,210 @@
    * classification stay applied while the replacement's was added on top: story time
    * advanced twice for one user action, and entities it invented outlived it.
    */
-  async function handleRegenerateNarration(entryId: string) {
-    if (ui.isGenerating) return
+  async function handleWriterOnlyNarration(entryId: string) {
+    if (recoveryBusy || ui.isGenerating || ui.submissionScope) return
+    const entry = story.entries.find((value) => value.id === entryId)
+    const turn = entry?.metadata?.novelTurn
+    const current = story.currentStory
+    const action = entry && findPrecedingUserAction(story.entries, entry.id)
+    if (
+      !entry ||
+      !current ||
+      !action ||
+      !turn?.sceneDirectorOutput?.trim() ||
+      turn.directorDiagnostics?.directorFallback
+    ) {
+      ui.showToast('这条正文没有完整成功的 Director 输出，请使用重新展开。', 'warning')
+      return
+    }
+    if (
+      story.entries.findLast((e) => e.type === 'narration' || e.type === 'user_action')?.id !==
+      entryId
+    ) {
+      ui.showToast('请先从这条正文创建分支，再单独重试 Writer。', 'warning')
+      return
+    }
+    if (
+      turn.rawInput !== action.content ||
+      (turn.historyKey &&
+        turn.historyKey !== historyKey(story.entries.filter((e) => e.id !== entryId)))
+    ) {
+      ui.showToast('用户输入或正文历史已变化，原 Director 已过期，请重新展开。', 'warning')
+      return
+    }
+    const replay = entry.metadata?.writerReplay
+    const record: CollaborativeWriterRecovery = {
+      ...(replay
+        ? JSON.parse(JSON.stringify(replay))
+        : {
+            version: 1,
+            storyId: current.id,
+            branchId: current.currentBranchId ?? null,
+            userActionEntryId: action.id,
+            novelTurn: JSON.parse(JSON.stringify(turn)),
+            retrieval: {
+              worldStateBlock: null,
+              chapterContext: null,
+              lorebookContext: null,
+              lorebookRetrievalResult: null,
+              worldStateRetrievalResult: null,
+              timelineFillResult: null,
+              combinedContext: null,
+            },
+            contextFingerprint: '',
+            legacyContext: true,
+          }),
+      id: crypto.randomUUID(),
+      createdAt: Date.now(),
+      narrationEntryId: entry.id,
+      variantBaseEntryId: entry.id,
+      previousVariantId: entry.metadata?.variantSet?.activeVariantId ?? `legacy-${entry.id}`,
+      generatedVariantId: crypto.randomUUID(),
+      settledFingerprint: undefined,
+    }
+    recoveryBusy = true
+    try {
+      if (record.legacyContext)
+        ui.showToast(
+          '旧版正文的原检索快照不完整：沿用已保存 Director，使用回退后的当前场景资料。',
+          'warning',
+          10000,
+        )
+      await handleRegenerateNarration(entryId, record)
+    } finally {
+      recoveryBusy = false
+    }
+  }
+
+  async function handleRegenerateNarration(
+    entryId: string,
+    recovery?: CollaborativeWriterRecovery,
+  ) {
+    if (ui.isGenerating || ui.submissionScope || activeRerollScope || !story.currentStory) return
+    const configError = generationBlockReason(!!recovery)
+    if (configError) {
+      ui.showToast(configError, 'error')
+      return
+    }
+    const retryScope = createGenerationScope(
+      story.currentStory.id,
+      story.currentStory.currentBranchId ?? null,
+    )
 
     const userActionEntry = findPrecedingUserAction(story.entries, entryId)
     if (!userActionEntry) return
 
-    let undo: { entitiesUndone: boolean; timeUndone: boolean }
+    const rejectedEntry = story.entries.find((e) => e.id === entryId)
+    const previousVariantId =
+      rejectedEntry?.metadata?.variantSet?.activeVariantId ?? `legacy-${entryId}`
+    const collaborative = story.currentStory.mode === 'creative-writing'
+    const retry = recovery
+      ? recovery.novelRetry
+      : story.currentStory?.mode === 'creative-writing' && rejectedEntry
+        ? novelRetry(rejectedEntry, userActionEntry.content)
+        : undefined
+    // A visible ancestor entry can be rerolled into the active child branch.
+    if (retry) retry.branchId = retryScope.branchId
+    const originalUserActionMetadata = userActionEntry.metadata
+      ? { ...userActionEntry.metadata }
+      : undefined
+    let retryStoredOnUserAction = false
+    let prepared = false
+    stopRequested = false
+    activeRerollScope = retryScope
+    ui.submissionScope = retryScope
+    const ownsReroll = () =>
+      activeRerollScope === retryScope && isScopeCurrent(retryScope, story.currentStory)
     try {
-      undo = await story.undoNarrationForRegenerate(entryId)
+      const undo = await story.undoNarrationForRegenerate(entryId, { preserveEntry: true })
+      prepared = true
+      if (!ownsReroll()) return
+      if (recovery?.legacyContext && !recovery.contextFingerprint)
+        recovery.contextFingerprint = await currentRecoveryFingerprint(recovery, true)
+      if (!ownsReroll()) return
+      ui.setGenerating(true)
+      if (!undo.entitiesUndone) {
+        ui.showToast('正文时间已回退，但旧版本的实体变化缺少可逆记录，未能撤销。', 'warning')
+      }
+      if (retry && userActionEntry.branchId === (story.currentStory?.currentBranchId ?? null)) {
+        await database.updateStoryEntry(userActionEntry.id, {
+          metadata: { ...userActionEntry.metadata, novelRetry: retry },
+        })
+        retryStoredOnUserAction = true
+        if (!ownsReroll()) return
+        await story.refreshEntry(userActionEntry.id)
+      } else if (retry) {
+        await story.addEntry(
+          'retry',
+          '本轮重写记录（不属于故事事实）',
+          { novelRetry: retry },
+          undefined,
+          undefined,
+          { scope: retryScope, isScopeCurrent: ownsReroll },
+        )
+      }
+      if (!ownsReroll() || stopRequested) return
+      const cachedRetrieval = retrievalKeyFor(userActionEntry.content)
+      await generateResponse(userActionEntry.id, userActionEntry.content, {
+        writerRecovery: recovery,
+        countStyleReview: false,
+        styleReviewSource: 'regenerate',
+        novelRetry: retry,
+        cachedRetrievalResult: cachedRetrieval ? ui.retrievalResultFor(cachedRetrieval) : null,
+        variantBaseEntryId: entryId,
+      })
     } catch (error) {
-      ui.showToast(errMessage(error), 'error')
-      return
+      const message = errMessage(error)
+      console.error('[ActionInput] Reroll generation failed', {
+        entryId,
+        storyId: retryScope.storyId,
+        branchId: retryScope.branchId,
+        message,
+        error,
+      })
+      ui.showToast(`${recovery ? 'Writer 重试' : '重roll'}失败：${message}`, 'error')
+    } finally {
+      try {
+        if (prepared && collaborative && ownsReroll()) {
+          await story.settleNarrationReroll(entryId, previousVariantId)
+          if (writerRecovery?.variantBaseEntryId === entryId) {
+            if (stopRequested) {
+              await database.clearWriterRecovery(
+                writerRecovery.storyId,
+                writerRecovery.branchId,
+                writerRecovery.id,
+              )
+              writerRecovery = null
+            } else {
+              const record = writerRecovery
+              record.settledFingerprint = await currentRecoveryFingerprint(record)
+              await database.saveWriterRecovery(record)
+            }
+          }
+        }
+      } catch (error) {
+        console.error('[ActionInput] Reroll state recovery failed', error)
+        if (ownsReroll())
+          ui.showToast('正文已保留，状态恢复未完成；请单独重试事实与状态提取。', 'warning')
+      } finally {
+        try {
+          if (retryStoredOnUserAction && ownsReroll()) {
+            await database.updateStoryEntry(userActionEntry.id, {
+              metadata: originalUserActionMetadata ?? null,
+            })
+            if (ownsReroll()) await story.refreshEntry(userActionEntry.id)
+          }
+        } finally {
+          if (ownsReroll()) {
+            ui.endStreaming()
+            ui.setGenerating(false)
+            ui.setGenerationStatus('')
+            activeRerollScope = null
+          }
+          if (ui.submissionScope?.turnId === retryScope.turnId) ui.submissionScope = null
+        }
+      }
     }
-
-    // Entity changes are only reversible when stateTracking recorded a delta for the
-    // entry. Say so rather than leaving the user to notice a stray character later.
-    if (!undo.entitiesUndone) {
-      ui.showToast(
-        'Regenerating: story time was restored, but characters, locations or items the ' +
-          'previous response added could not be undone. Enable State Tracking in ' +
-          'Experimental Features to make these reversible.',
-        'warning',
-      )
-    }
-
-    // The rewind above put the story back exactly where the previous turn's retrieval was
-    // computed, so that result is still the right one — same branch, same position, same
-    // action. Read after the undo, since the key is position-sensitive.
-    const cachedRetrieval = retrievalKeyFor(userActionEntry.content)
-    await generateResponse(userActionEntry.id, userActionEntry.content, {
-      countStyleReview: false,
-      styleReviewSource: 'regenerate',
-      cachedRetrievalResult: cachedRetrieval ? ui.retrievalResultFor(cachedRetrieval) : null,
-    })
   }
 
   async function handleRetryLastMessage() {
@@ -1164,6 +2114,11 @@
       return
     }
 
+    if (story.currentStory.mode === 'creative-writing') {
+      const last = story.entries.findLast((e) => e.type === 'narration')
+      if (last) await handleRegenerateNarration(last.id)
+      return
+    }
     const storyId = story.currentStory.id
 
     const result = await retryService.handleRetryLastMessage(
@@ -1189,7 +2144,7 @@
     )
 
     if (!result.success) {
-      ui.showToast(result.error ?? 'Could not restore the story', 'error')
+      ui.showToast(result.error ?? '无法恢复故事', 'error')
       return
     }
 
@@ -1255,23 +2210,53 @@
 </script>
 
 <div class="ml-1 space-y-3">
-  {#if ui.lastGenerationError && !ui.isGenerating}
+  {#if writerRecovery && !ui.isGenerating}
+    {#if recoveryHidden}
+      <button class="text-sm underline" onclick={() => (recoveryHidden = false)}
+        >显示未完成正文的恢复入口</button
+      >
+    {:else}
+      <div class="space-y-2 rounded-lg border border-amber-500/40 p-3 text-sm">
+        <p>Director 已完成，正文尚未保存。可沿用本轮安排，仅重试 Writer。</p>
+        {#if recoveryMessage}<p class="text-destructive">{recoveryMessage}</p>{/if}
+        <details>
+          <summary class="cursor-pointer">查看已保存的 Director 结果</summary>
+          <pre class="mt-2 font-sans whitespace-pre-wrap">{writerRecovery.novelTurn
+              .sceneDirectorOutput}</pre>
+        </details>
+        <div class="flex flex-wrap gap-3">
+          <button
+            class="btn"
+            disabled={recoveryBusy || !!ui.submissionScope}
+            onclick={() => resumeWriterRecovery()}>仅重试正文</button
+          >
+          <button
+            class="btn"
+            disabled={recoveryBusy || !!ui.submissionScope}
+            onclick={() => resumeWriterRecovery(true)}>重新运行整轮</button
+          >
+          <button disabled={recoveryBusy} onclick={() => (recoveryHidden = true)}>关闭提示</button>
+        </div>
+      </div>
+    {/if}
+  {/if}
+  {#if ui.lastGenerationError && !ui.isGenerating && !writerRecovery}
     <div
       class="flex items-center justify-between gap-3 rounded-lg border border-red-500/30 bg-red-500/10 p-3"
     >
       <div class="flex items-center gap-2 text-sm text-red-400">
-        <span>Generation failed. Would you like to try again?</span>
+        <span>生成失败：{ui.lastGenerationError.message}</span>
       </div>
       <div class="flex items-center gap-2">
         <button
           onclick={handleRetry}
           class="btn flex items-center gap-1.5 bg-red-500/20 text-sm text-red-400 hover:bg-red-500/30"
-          ><RefreshCw class="h-4 w-4" />Retry</button
+          ><RefreshCw class="h-4 w-4" />重试</button
         >
         <button
           onclick={dismissError}
           class="text-surface-400 hover:bg-surface-700 hover:text-surface-200 rounded p-1.5"
-          title="Dismiss"><X class="h-4 w-4" /></button
+          title="关闭提示"><X class="h-4 w-4" /></button
         >
       </div>
     </div>
@@ -1279,7 +2264,7 @@
 
   <GrammarCheck text={inputValue} onApplySuggestion={(newText) => (inputValue = newText)} />
 
-  {#if isCreativeMode}
+  {#if isCreativeMode || isCollaborative}
     <div
       class="sm:border-border rounded-lg border-l-0 sm:border sm:border-l-4 sm:shadow-sm {ui.isGenerating
         ? 'sm:border-l-surface-600 bg-surface-400/5'
@@ -1291,10 +2276,12 @@
           <div
             class="bg-surface-800 border-surface-500/30 text-surface-400 rounded-tl-md border border-b-0 px-2 py-0.5 text-sm"
           >
-            {story.wordCount} words
+            {story.wordCount} 字
           </div>
         </div>{/if}
-      {#if !settings.uiSettings.disableSuggestions}<div class="border-surface-700/30 sm:border-b">
+      {#if collaborativeSuggestionsEnabled && (isCollaborative || !settings.uiSettings.disableSuggestions)}<div
+          class="border-surface-700/30 sm:border-b"
+        >
           <Suggestions
             suggestions={ui.suggestions}
             loading={ui.suggestionsLoading}
@@ -1309,7 +2296,7 @@
             bind:this={textareaRef}
             use:autoResize={inputValue}
             onkeydown={handleKeydown}
-            placeholder="Describe what happens next in the story..."
+            placeholder="输入希望发生的事、角色行动、对白，或继续创作…"
             class="text-surface-200 placeholder-surface-500 max-h-40 min-h-6 w-full resize-none border-none bg-transparent px-2 text-base leading-relaxed focus:ring-0 focus:outline-none sm:min-h-6"
             rows="1"></textarea>
         </div>
@@ -1317,20 +2304,19 @@
           {#if !ui.isRetryingLastMessage}<button
               onclick={handleStopGeneration}
               class="flex h-11 w-11 flex-shrink-0 -translate-y-0.5 animate-pulse items-center justify-center rounded-lg p-0 text-red-400 transition-all hover:text-red-300 active:scale-95 sm:translate-y-0"
-              title="Stop generation"><Square class="h-6 w-6" /></button
+              title="停止生成"><Square class="h-6 w-6" /></button
             >
           {:else}<button
               disabled
               class="flex h-11 w-11 flex-shrink-0 cursor-not-allowed items-center justify-center rounded-lg p-0 text-red-400 opacity-50"
-              title="Stop disabled during retry"><Square class="h-6 w-6" /></button
+              title="重试期间暂不可停止"><Square class="h-6 w-6" /></button
             >{/if}
         {:else}<button
             onclick={handleSubmit}
-            disabled={!inputValue.trim() || blockGeneration}
+            disabled={!inputValue.trim() || blockGeneration || !!ui.submissionScope}
             class="text-accent-400 hover:text-accent-300 hover:bg-accent-500/10 flex h-11 w-11 flex-shrink-0 -translate-y-0.5 items-center justify-center rounded-lg p-0 transition-all active:scale-95 disabled:opacity-50 sm:translate-y-0"
-            title={blockGeneration
-              ? 'AI configuration incomplete — check Settings'
-              : `Send direction (${sendKeyHint})`}><Send class="h-6 w-6" /></button
+            title={blockGeneration ? generationConfigError : `发送创作要求（${sendKeyHint}）`}
+            ><Send class="h-6 w-6" /></button
           >{/if}
       </div>
     </div>
@@ -1346,7 +2332,7 @@
           <div
             class="bg-surface-800 border-surface-500/30 text-surface-400 rounded-tl-md border border-b-0 px-2 py-0.5 text-sm"
           >
-            {story.wordCount} words
+            {story.wordCount} 字
           </div>
         </div>{/if}
       {#if !settings.uiSettings.disableActionPrefixes}
@@ -1371,14 +2357,14 @@
             use:autoResize={inputValue}
             onkeydown={handleKeydown}
             placeholder={actionType === 'story'
-              ? 'Describe what happens...'
+              ? '描述发生的事情…'
               : actionType === 'say'
-                ? 'What do you say?'
+                ? '输入角色对白…'
                 : actionType === 'think'
-                  ? 'What are you thinking?'
+                  ? '输入角色的想法…'
                   : actionType === 'free'
-                    ? 'Write anything...'
-                    : 'What do you do?'}
+                    ? '自由输入行动、对白或剧情要求…'
+                    : '你打算怎么做？'}
             class="text-surface-200 placeholder-surface-500 max-h-[160px] min-h-[24px] w-full resize-none border-none bg-transparent px-2 text-base leading-relaxed focus:ring-0 focus:outline-none sm:min-h-[24px]"
             rows="1"></textarea>
         </div>
@@ -1386,22 +2372,21 @@
           {#if !ui.isRetryingLastMessage}<button
               onclick={handleStopGeneration}
               class="flex h-11 w-11 shrink-0 -translate-y-0.5 animate-pulse items-center justify-center rounded-lg p-0 text-red-400 transition-all hover:text-red-300 active:scale-95 sm:translate-y-0"
-              title="Stop generation"><Square class="h-6 w-6" /></button
+              title="停止生成"><Square class="h-6 w-6" /></button
             >
           {:else}<button
               disabled
               class="flex h-11 w-11 shrink-0 cursor-not-allowed items-center justify-center rounded-lg p-0 text-red-400 opacity-50"
-              title="Stop disabled during retry"><Square class="h-6 w-6" /></button
+              title="重试期间暂不可停止"><Square class="h-6 w-6" /></button
             >{/if}
         {:else}<button
             onclick={handleSubmit}
-            disabled={!inputValue.trim() || blockGeneration}
+            disabled={!inputValue.trim() || blockGeneration || !!ui.submissionScope}
             class="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg p-0 transition-all active:scale-95 disabled:opacity-50 {actionButtonStyles[
               actionType
             ]} -translate-y-0.5 sm:translate-y-0"
-            title={blockGeneration
-              ? 'AI configuration incomplete — check Settings'
-              : `Send (${sendKeyHint})`}><Send class="h-6 w-6" /></button
+            title={blockGeneration ? generationConfigError : `发送（${sendKeyHint}）`}
+            ><Send class="h-6 w-6" /></button
           >{/if}
       </div>
     </div>

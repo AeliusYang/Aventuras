@@ -70,20 +70,16 @@
 
 <div class="space-y-4">
   <div class="space-y-1">
-    <h3 class="text-lg font-medium">Character Portraits</h3>
-    <p class="text-muted-foreground text-sm">
-      Upload or generate visual representations for your cast. Portraits allow characters to appear
-      in story illustrations.
-    </p>
+    <h3 class="text-lg font-medium">角色肖像</h3>
+    <p class="text-muted-foreground text-sm">上传或生成角色肖像，用于故事插图中的角色呈现。</p>
   </div>
 
   {#if !imageGenerationEnabled}
     <Alert.Root class="py-2">
       <AlertCircle class="h-4 w-4" />
-      <Alert.Title class="text-xs font-semibold">Generation Disabled</Alert.Title>
+      <Alert.Title class="text-xs font-semibold">未启用图片生成</Alert.Title>
       <Alert.Description class="text-xs">
-        Image generation is not configured. You can manually upload portraits or enable generation
-        in Settings.
+        尚未配置图片生成。你可以手动上传肖像，或在设置中配置图片生成。
       </Alert.Description>
     </Alert.Root>
   {/if}
@@ -91,7 +87,7 @@
   {#if portraitError}
     <Alert.Root variant="destructive" class="py-2">
       <AlertCircle class="h-4 w-4" />
-      <Alert.Title class="text-xs font-semibold">Error</Alert.Title>
+      <Alert.Title class="text-xs font-semibold">错误</Alert.Title>
       <Alert.Description class="text-xs">{portraitError}</Alert.Description>
     </Alert.Root>
   {/if}
@@ -108,7 +104,7 @@
                 <Avatar.Root class="h-24 w-24 rounded-lg border shadow-sm">
                   <Avatar.Image
                     src={normalizeImageDataUrl(protagonistPortrait) ?? ''}
-                    alt="{protagonist.name} portrait"
+                    alt="{protagonist.name} 肖像"
                     class="object-cover"
                   />
                   <Avatar.Fallback class="bg-muted rounded-lg">
@@ -120,7 +116,7 @@
                   variant="destructive"
                   class="absolute -top-2 -right-2 h-6 w-6 rounded-full opacity-0 shadow-md transition-opacity group-hover:opacity-100"
                   onclick={onRemoveProtagonistPortrait}
-                  title="Remove portrait"
+                  title="移除肖像"
                 >
                   <X class="h-3 w-3" />
                 </Button>
@@ -138,17 +134,15 @@
           <div class="min-w-0 flex-1">
             <div class="flex items-center justify-between">
               <h4 class="truncate font-medium">{protagonist.name}</h4>
-              <Badge variant="default" class="h-5 px-1.5 text-[10px]">Protagonist</Badge>
+              <Badge variant="default" class="h-5 px-1.5 text-[10px]">主角</Badge>
             </div>
 
             <div class="mb-2 space-y-1.5">
-              <Label class="text-muted-foreground text-[10px] tracking-wider uppercase"
-                >Appearance</Label
-              >
+              <Label class="text-muted-foreground text-[10px] tracking-wider uppercase">外貌</Label>
               <Textarea
                 value={protagonistVisualDescriptors}
                 oninput={(e) => onProtagonistDescriptorsChange(e.currentTarget.value)}
-                placeholder="e.g., long silver hair, violet eyes, fair skin, elegant dark blue coat..."
+                placeholder="例如：银色长发、紫色眼睛、白皙皮肤、深蓝色长外套…"
                 class="min-h-[60px] resize-none text-xs"
                 rows={2}
               />
@@ -164,10 +158,10 @@
                 >
                   {#if isUploadingProtagonistPortrait}
                     <Loader2 class="h-3 w-3 animate-spin" />
-                    Uploading...
+                    正在上传…
                   {:else}
                     <ImageUp class="h-3 w-3" />
-                    Upload
+                    上传
                   {/if}
                 </Button>
                 <input
@@ -188,16 +182,14 @@
                   disabled={isGeneratingProtagonistPortrait ||
                     isUploadingProtagonistPortrait ||
                     !protagonistVisualDescriptors.trim()}
-                  title={!protagonistVisualDescriptors.trim()
-                    ? 'Add appearance descriptors to generate'
-                    : ''}
+                  title={!protagonistVisualDescriptors.trim() ? '请先填写外貌描述' : ''}
                 >
                   {#if isGeneratingProtagonistPortrait}
                     <Loader2 class="h-3 w-3 animate-spin" />
-                    Generating...
+                    正在生成…
                   {:else}
                     <Wand2 class="h-3 w-3" />
-                    {protagonistPortrait ? 'Regenerate' : 'Generate'}
+                    {protagonistPortrait ? '重新生成' : '生成'}
                   {/if}
                 </Button>
               {/if}
@@ -212,7 +204,7 @@
         class="text-muted-foreground flex flex-col items-center justify-center p-6 text-center"
       >
         <User class="mb-2 h-8 w-8 opacity-50" />
-        <p class="text-sm">No protagonist created. Go back to create one.</p>
+        <p class="text-sm">尚未创建主角，请返回上一步创建。</p>
       </Card.Content>
     </Card.Root>
   {/if}
@@ -222,9 +214,7 @@
     <div class="space-y-2">
       <div class="flex items-center gap-2 pb-1">
         <Separator class="flex-1" />
-        <h4 class="text-muted-foreground text-xs font-medium tracking-wider uppercase">
-          Supporting Cast
-        </h4>
+        <h4 class="text-muted-foreground text-xs font-medium tracking-wider uppercase">配角生成</h4>
         <Separator class="flex-1" />
       </div>
 
@@ -240,7 +230,7 @@
                       <Avatar.Root class="h-20 w-20 rounded-lg border shadow-sm">
                         <Avatar.Image
                           src={normalizeImageDataUrl(supportingCharacterPortraits[char.name]) ?? ''}
-                          alt="{char.name} portrait"
+                          alt="{char.name} 肖像"
                           class="object-cover"
                         />
                         <Avatar.Fallback class="bg-muted rounded-lg">
@@ -252,7 +242,7 @@
                         variant="destructive"
                         class="absolute -top-2 -right-2 h-5 w-5 rounded-full opacity-0 shadow-md transition-opacity group-hover:opacity-100"
                         onclick={() => onRemoveSupportingPortrait(char.name)}
-                        title="Remove portrait"
+                        title="移除肖像"
                       >
                         <X class="h-2.5 w-2.5" />
                       </Button>
@@ -281,7 +271,7 @@
                       value={supportingCharacterVisualDescriptors[char.name] || ''}
                       oninput={(e) =>
                         onSupportingDescriptorsChange(char.name, e.currentTarget.value)}
-                      placeholder="Appearance (e.g., short dark hair, green eyes)..."
+                      placeholder="外貌（例如：黑色短发、绿色眼睛）…"
                       class="min-h-[50px] resize-none text-xs"
                       rows={2}
                     />
@@ -298,10 +288,10 @@
                       >
                         {#if uploadingCharacterName === char.name}
                           <Loader2 class="h-2.5 w-2.5 animate-spin" />
-                          Uploading...
+                          正在上传…
                         {:else}
                           <ImageUp class="h-2.5 w-2.5" />
-                          Upload
+                          上传
                         {/if}
                       </Button>
                       <input
@@ -324,15 +314,15 @@
                           uploadingCharacterName !== null ||
                           !(supportingCharacterVisualDescriptors[char.name] || '').trim()}
                         title={!(supportingCharacterVisualDescriptors[char.name] || '').trim()
-                          ? 'Add appearance descriptors to generate'
+                          ? '请先填写外貌描述'
                           : ''}
                       >
                         {#if generatingPortraitName === char.name}
                           <Loader2 class="h-2.5 w-2.5 animate-spin" />
-                          Gen...
+                          生成中…
                         {:else}
                           <Wand2 class="h-2.5 w-2.5" />
-                          {supportingCharacterPortraits[char.name] ? 'Regen' : 'Generate'}
+                          {supportingCharacterPortraits[char.name] ? '重新生成' : '生成'}
                         {/if}
                       </Button>
                     {/if}
@@ -352,8 +342,8 @@
         class="text-muted-foreground flex flex-col items-center justify-center p-8 text-center"
       >
         <User class="mb-3 h-10 w-10 opacity-50" />
-        <p>No characters created yet.</p>
-        <p class="mt-1 text-xs">Go back to step 5 to create characters.</p>
+        <p>尚未创建角色。</p>
+        <p class="mt-1 text-xs">请返回第 5 步创建角色。</p>
       </Card.Content>
     </Card.Root>
   {/if}

@@ -7,6 +7,7 @@
  */
 
 import { scopeCssSelectors } from './cssScope'
+import { dialogueSpans } from './dialogue'
 
 export interface TTSSanitizeOptions {
   removeTags: boolean
@@ -18,9 +19,14 @@ export interface TTSSanitizeOptions {
  * Sanitize Visual Prose HTML for safe rendering.
  * @param html - Raw HTML content
  * @param entryId - Entry ID for CSS scoping
+ * @param highlightDialogue - Wrap recognised dialogue text nodes for the story renderer
  * @returns Sanitized and scoped HTML
  */
-export function sanitizeVisualProse(html: string, entryId: string): string {
+export function sanitizeVisualProse(
+  html: string,
+  entryId: string,
+  highlightDialogue = false,
+): string {
   const scopeClass = `vp-${entryId.slice(0, 8)}`
 
   // Create a temporary container for parsing
@@ -92,6 +98,7 @@ export function sanitizeVisualProse(html: string, entryId: string): string {
 
   // Convert newlines in text content to <br> tags (but not whitespace between tags)
   convertNewlinesToBr(fragment)
+  if (highlightDialogue) markDialogueTextNodes(fragment)
 
   // Wrap in scoped container
   const wrapper = document.createElement('div')
@@ -99,6 +106,137 @@ export function sanitizeVisualProse(html: string, entryId: string): string {
   wrapper.appendChild(fragment)
 
   return wrapper.outerHTML
+}
+
+const blockTags = new Set([
+  'address',
+  'article',
+  'aside',
+  'blockquote',
+  'dd',
+  'div',
+  'dl',
+  'dt',
+  'fieldset',
+  'figcaption',
+  'figure',
+  'footer',
+  'form',
+  'h1',
+  'h2',
+  'h3',
+  'h4',
+  'h5',
+  'h6',
+  'header',
+  'hgroup',
+  'li',
+  'main',
+  'nav',
+  'ol',
+  'p',
+  'section',
+  'table',
+  'tbody',
+  'td',
+  'tfoot',
+  'th',
+  'thead',
+  'tr',
+  'ul',
+])
+
+function markDialogueTextNodes(root: Node): void {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
+  const groups = new Map<Node, Text[]>()
+  let node = walker.nextNode() as Text | null
+
+  while (node) {
+    const parent = node.parentElement
+    if (
+      node.textContent &&
+      (!parent ||
+        !parent.closest('status_block, pre, code, style, script, textarea, .dialogue-line'))
+    ) {
+      let group: Node = root
+      let ancestor: Element | null = parent
+      while (ancestor && ancestor !== root) {
+        if (blockTags.has(ancestor.tagName.toLowerCase())) {
+          group = ancestor
+          break
+        }
+        ancestor = ancestor.parentElement
+      }
+      const textNodes = groups.get(group)
+      if (textNodes) textNodes.push(node)
+      else groups.set(group, [node])
+    }
+    node = walker.nextNode() as Text | null
+  }
+
+  for (const textNodes of groups.values()) {
+    const text = textNodes.map((textNode) => textNode.textContent ?? '').join('')
+    const spans = dialogueSpans(text)
+    for (let index = spans.length - 1; index >= 0; index--) {
+      const span = spans[index]
+      if (!span) continue
+      const range = document.createRange()
+      const start = resolveTextPoint(textNodes, span.start, false)
+      const end = resolveTextPoint(textNodes, span.end, true)
+      if (!start || !end) continue
+      range.setStart(start.node, start.offset)
+      range.setEnd(end.node, end.offset)
+      const wrapper = document.createElement('span')
+      wrapper.className = 'dialogue-line'
+      wrapper.appendChild(range.extractContents())
+      range.insertNode(wrapper)
+    }
+  }
+}
+
+function resolveTextPoint(
+  textNodes: Text[],
+  offset: number,
+  endPoint: boolean,
+): { node: Text; offset: number } | null {
+  let position = 0
+  for (const node of textNodes) {
+    const length = node.textContent?.length ?? 0
+    const nextPosition = position + length
+    if (offset < nextPosition || (endPoint && offset === nextPosition)) {
+      return { node, offset: offset - position }
+    }
+    position = nextPosition
+  }
+  const last = textNodes[textNodes.length - 1]
+  return last ? { node: last, offset: last.textContent?.length ?? 0 } : null
+}
+
+/** Mark dialogue in an already-sanitized HTML fragment without changing its structure. */
+export function highlightDialogueHtml(html: string): string {
+  if (!html || typeof document === 'undefined') return html
+
+  const template = document.createElement('template')
+  template.innerHTML = html
+  markDialogueTextNodes(template.content)
+  return template.innerHTML
+}
+
+function escapeText(value: string): string {
+  return value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
+}
+
+export function markDialogueText(text: string): string {
+  const spans = dialogueSpans(text)
+  if (spans.length === 0) return escapeText(text)
+  let output = ''
+  let cursor = 0
+  for (const span of spans) {
+    output += escapeText(text.slice(cursor, span.start))
+    output += `<span class="dialogue-line">${escapeText(text.slice(span.start, span.end))}</span>`
+    cursor = span.end
+  }
+  return output + escapeText(text.slice(cursor))
 }
 
 /**

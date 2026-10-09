@@ -56,7 +56,7 @@
     <!-- Token Usage Section -->
     <div class="space-y-3">
       <div class="flex items-center justify-between">
-        <Label class="text-muted-foreground">Context Usage</Label>
+        <Label class="text-muted-foreground">上下文用量</Label>
         <div class="flex items-center gap-2">
           <Label
             for="auto-summarize"
@@ -64,7 +64,7 @@
               ? 'text-primary'
               : 'text-muted-foreground'}"
           >
-            Auto-summarize
+            自动摘要
           </Label>
           <Switch
             id="auto-summarize"
@@ -96,9 +96,9 @@
           <span class="text-muted-foreground/70"> tokens</span>
         </span>
         <span class="text-muted-foreground text-xs sm:text-sm">
-          {messagesSinceLastChapter} messages
+          {messagesSinceLastChapter} 条消息
           {#if bufferSize > 0}
-            <span class="text-muted-foreground/70">({bufferSize} protected)</span>
+            <span class="text-muted-foreground/70">({bufferSize} 条受保护）</span>
           {/if}
         </span>
       </div>
@@ -112,7 +112,7 @@
         disabled={ui.memoryLoading || chapterWorkInFlight || messagesSinceLastChapter === 0}
       >
         <Plus class="h-4 w-4" />
-        <span>Create Chapter Now</span>
+        <span>立即创建章节</span>
       </Button>
 
       <Button
@@ -120,7 +120,7 @@
         size="icon"
         class={cn(ui.memorySettingsOpen && 'bg-accent text-accent-foreground')}
         onclick={() => ui.toggleMemorySettings()}
-        title="Memory Settings"
+        title="记忆设置"
       >
         <Settings class="h-5 w-5" />
       </Button>

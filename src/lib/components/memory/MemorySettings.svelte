@@ -25,9 +25,9 @@
   let localBuffer = $state(story.memoryConfig.chapterBuffer)
 
   const detailOptions = [
-    { value: 'concise', label: 'Concise' },
-    { value: 'auto', label: 'Auto' },
-    { value: 'precise', label: 'Precise' },
+    { value: 'concise', label: '简洁' },
+    { value: 'auto', label: '自动' },
+    { value: 'precise', label: '详细' },
   ] as const
 
   function saveDetail(val: string) {
@@ -70,12 +70,12 @@
   <div transition:slide={{ duration: 200 }}>
     <Card class="mt-4">
       <CardContent class="space-y-4 p-4">
-        <h3 class="text-foreground text-sm font-medium">Memory Settings</h3>
+        <h3 class="text-foreground text-sm font-medium">记忆设置</h3>
 
         <!-- Token Threshold -->
         <div class="space-y-4">
           <div class="flex items-center justify-between">
-            <Label for="token-threshold" class="text-muted-foreground">Token Threshold</Label>
+            <Label for="token-threshold" class="text-muted-foreground">Token 阈值</Label>
             <span class="text-foreground text-sm font-medium">{formatNumber(localThreshold)}</span>
           </div>
 
@@ -102,14 +102,12 @@
             {/each}
           </ToggleGroup>
 
-          <p class="text-muted-foreground text-xs">
-            Auto-summarization triggers when token count exceeds this threshold.
-          </p>
+          <p class="text-muted-foreground text-xs">上下文 Token 数超过此阈值时，触发自动摘要。</p>
         </div>
 
         <!-- Summary Detail -->
         <div class="space-y-4">
-          <Label class="text-muted-foreground">Summary Detail</Label>
+          <Label class="text-muted-foreground">摘要详细程度</Label>
 
           <ToggleGroup
             type="single"
@@ -125,15 +123,14 @@
           </ToggleGroup>
 
           <p class="text-muted-foreground text-xs">
-            How much detail chapter summaries capture. Higher detail helps long chapters keep every
-            plot point.
+            控制章节摘要保留的细节量。更详细的摘要有助于保留长章节中的剧情信息。
           </p>
         </div>
 
         <!-- Buffer Messages -->
         <div class="space-y-4">
           <div class="flex items-center justify-between">
-            <Label for="buffer-messages" class="text-muted-foreground">Buffer Messages</Label>
+            <Label for="buffer-messages" class="text-muted-foreground">保留的近期消息数</Label>
             <span class="text-foreground text-sm font-medium">{localBuffer}</span>
           </div>
 
@@ -148,8 +145,7 @@
           />
 
           <p class="text-muted-foreground text-xs">
-            Recent messages protected from being included in chapter summaries. Higher values keep
-            more context visible but create smaller chapters.
+            这些近期消息暂不纳入章节摘要。数值越大，保留的近期原文越多，每章包含的内容越少。
           </p>
         </div>
       </CardContent>

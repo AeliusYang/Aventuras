@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import * as z from 'zod'
 import type { RuntimeVariable } from '$lib/services/packs/types'
 import { buildExtendedClassificationSchema, salvageClassification } from './runtime-variables'
+import { classificationResultSchema, collaborativeClassificationResultSchema } from './classifier'
 
 function variable(overrides: Partial<RuntimeVariable> & Pick<RuntimeVariable, 'variableName'>) {
   return {
@@ -39,6 +40,34 @@ function response() {
 describe('buildExtendedClassificationSchema', () => {
   const health = variable({ variableName: 'health', entityType: 'character', maxValue: 100 })
   const danger = variable({ variableName: 'danger_level', entityType: 'location', maxValue: 10 })
+
+  it('selects the requested base variant when no runtime variables exist', () => {
+    expect(buildExtendedClassificationSchema({})).toBe(classificationResultSchema)
+    expect(buildExtendedClassificationSchema({}, false)).toBe(classificationResultSchema)
+    expect(buildExtendedClassificationSchema({}, true)).toBe(
+      collaborativeClassificationResultSchema,
+    )
+  })
+
+  it('retains collaborative descriptions when extending with runtime variables', () => {
+    const vars = { character: [health], location: [danger] }
+    const collaborative = buildExtendedClassificationSchema(vars, true)
+    const ordinary = buildExtendedClassificationSchema(vars)
+    expect(collaborative.parse(response())).toEqual(ordinary.parse(response()))
+    const serialized = JSON.stringify(z.toJSONSchema(collaborative))
+    expect(serialized).toContain('未知类别省略')
+    expect(serialized).toContain('没有明确时间证据则输出 none')
+    expect(serialized).toContain('只从已生成正文')
+    expect(serialized).not.toContain('ALL categories should be filled')
+    expect(serialized).not.toContain('minutes=conversations')
+    const bad = response()
+    ;(bad.entryUpdates.newCharacters[0] as Record<string, unknown>).health = 'full'
+    expect(collaborative.safeParse(bad).success).toBe(false)
+    const salvaged = salvageClassification(bad, vars)
+    expect(salvaged).not.toBeNull()
+    expect(collaborative.safeParse(salvaged).success).toBe(true)
+    expect(salvaged!.entryUpdates.newCharacters[0]).not.toHaveProperty('health')
+  })
 
   it('accepts inline runtime variables on updates and new entities', () => {
     const schema = buildExtendedClassificationSchema({ character: [health] }) as z.ZodType
@@ -117,6 +146,20 @@ describe('salvageClassification', () => {
     expect(salvaged!.entryUpdates.newCharacters).toHaveLength(1)
     expect(salvaged!.entryUpdates.newStoryBeats.map((b) => b.title)).toEqual(['Restore the forge'])
     expect(salvaged!.scene.timeProgression).toBe('minutes')
+    expect(salvaged!.scene.currentLocationName).toBe('Blackwood')
+  })
+
+  it('recovers valid flat update arrays when entryUpdates was omitted', () => {
+    const raw = response() as Record<string, unknown>
+    const updates = raw.entryUpdates as Record<string, unknown>
+    delete raw.entryUpdates
+    Object.assign(raw, updates)
+
+    const salvaged = salvageClassification(raw, {})
+
+    expect(salvaged).not.toBeNull()
+    expect(salvaged!.entryUpdates.newLocations).toHaveLength(1)
+    expect(salvaged!.entryUpdates.newItems).toHaveLength(1)
     expect(salvaged!.scene.currentLocationName).toBe('Blackwood')
   })
 

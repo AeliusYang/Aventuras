@@ -9,6 +9,18 @@
 export interface RenderResult {
   system: string
   user: string
+  /** Requested template and active pack, not necessarily the fallback source. */
+  templateId?: string
+  packId?: string
+  systemSource?: 'story-pack' | 'default-pack' | 'baseline' | null
+  userSource?: 'story-pack' | 'default-pack' | 'baseline' | null
+  /** Actual resolved IDs, including persisted legacy aliases. */
+  systemTemplateId?: string | null
+  userTemplateId?: string | null
+  /** Actual source packs; null for compiled baseline or missing templates. */
+  systemPackId?: string | null
+  userPackId?: string | null
+  userTemplateState?: 'missing' | 'empty' | 'present'
 }
 
 /**

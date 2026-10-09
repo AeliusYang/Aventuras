@@ -18,6 +18,9 @@ import * as z from 'zod'
 import type { RuntimeVariable, RuntimeEntityType } from '$lib/services/packs/types'
 import {
   classificationResultSchema,
+  collaborativeClassificationResultSchema,
+  collaborativeCharacterUpdateSchema,
+  collaborativeNewCharacterSchema,
   characterUpdateSchema,
   newCharacterSchema,
   locationUpdateSchema,
@@ -216,6 +219,7 @@ function withoutNativeFields(
  */
 function buildEntryUpdateElementSchemas(
   runtimeVarsByEntityType: Record<string, RuntimeVariable[]>,
+  collaborative = false,
 ): Record<string, ElementSchemas> {
   const elements: Record<string, ElementSchemas> = {}
 
@@ -223,8 +227,14 @@ function buildEntryUpdateElementSchemas(
     const fields = ENTITY_TYPE_TO_SCHEMA_FIELDS[entityType]
     const vars = runtimeVarsByEntityType[entityType]
     const varsShape = vars ? buildEntityVarsShape(vars) : null
-    const baseUpdate = BASE_UPDATE_SCHEMAS[entityType]
-    const baseNew = BASE_NEW_SCHEMAS[entityType]
+    const baseUpdate =
+      collaborative && entityType === 'character'
+        ? collaborativeCharacterUpdateSchema
+        : BASE_UPDATE_SCHEMAS[entityType]
+    const baseNew =
+      collaborative && entityType === 'character'
+        ? collaborativeNewCharacterSchema
+        : BASE_NEW_SCHEMAS[entityType]
     const originalChanges = (baseUpdate.shape as Record<string, z.ZodTypeAny>).changes
 
     // Each container keeps its own surviving shape: `status` is a native field on an update's
@@ -263,7 +273,11 @@ function buildEntryUpdateElementSchemas(
  */
 export function buildExtendedClassificationSchema(
   runtimeVarsByEntityType: Record<string, RuntimeVariable[]>,
+  collaborative = false,
 ): z.ZodType {
+  const baseSchema = collaborative
+    ? collaborativeClassificationResultSchema
+    : classificationResultSchema
   // Check if there are any runtime variables at all
   const entityTypes = Object.keys(runtimeVarsByEntityType) as RuntimeEntityType[]
   const typesWithVars = entityTypes.filter(
@@ -271,19 +285,19 @@ export function buildExtendedClassificationSchema(
   )
 
   if (typesWithVars.length === 0) {
-    return classificationResultSchema
+    return baseSchema
   }
 
-  const elements = buildEntryUpdateElementSchemas(runtimeVarsByEntityType)
+  const elements = buildEntryUpdateElementSchemas(runtimeVarsByEntityType, collaborative)
   const entryUpdatesShape: Record<string, z.ZodTypeAny> = {}
   for (const [field, element] of Object.entries(elements)) {
     entryUpdatesShape[field] = z.array(element.full).default([])
   }
 
-  return z.object({
+  const extended = baseSchema.extend({
     entryUpdates: z.object(entryUpdatesShape),
-    scene: sceneSchema,
   })
+  return baseSchema.description ? extended.describe(baseSchema.description) : extended
 }
 
 // ============================================================================
@@ -380,7 +394,11 @@ export function salvageClassification(
   const rawEntryUpdates =
     typeof root.entryUpdates === 'object' && root.entryUpdates !== null
       ? (root.entryUpdates as Record<string, unknown>)
-      : {}
+      : Object.fromEntries(
+          Object.keys(buildEntryUpdateElementSchemas(runtimeVarsByEntityType)).flatMap((field) =>
+            Array.isArray(root[field]) ? [[field, root[field]]] : [],
+          ),
+        )
 
   const elements = buildEntryUpdateElementSchemas(runtimeVarsByEntityType)
   const entryUpdates: Record<string, unknown[]> = {}

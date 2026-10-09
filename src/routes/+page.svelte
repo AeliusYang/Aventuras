@@ -4,6 +4,7 @@
   import { settings } from '$lib/stores/settings.svelte'
   import { grammarService } from '$lib/services/grammar'
   import { updaterService } from '$lib/services/updater'
+  import { UPSTREAM_UPDATES_ENABLED } from '$lib/constants/localRelease'
   import { updateNotifier } from '$lib/stores/updateNotifier.svelte'
   import { packService } from '$lib/services/packs/pack-service'
   import { warmupAllProfiles } from '$lib/services/modelHealthOrchestrator'
@@ -39,7 +40,7 @@
       grammarService.setup().catch(console.error)
 
       // Check for updates on startup if enabled (don't await, run in background)
-      if (settings.updateSettings.autoCheck) {
+      if (UPSTREAM_UPDATES_ENABLED && settings.updateSettings.autoCheck) {
         const { checkInterval, lastChecked } = settings.updateSettings
         const now = Date.now()
         const shouldCheck =

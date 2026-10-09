@@ -9,3 +9,31 @@
 export function branchScopeKey(storyId: string, branchId: string | null): string {
   return `${storyId}:${branchId ?? 'main'}`
 }
+
+export interface GenerationScope {
+  readonly storyId: string
+  readonly branchId: string | null
+  readonly turnId: string
+}
+
+export interface ScopedWriteOptions {
+  scope?: Pick<GenerationScope, 'storyId' | 'branchId'>
+  isScopeCurrent?: () => boolean
+}
+
+export function assertWriteScopeCurrent(isCurrent: boolean): void {
+  if (!isCurrent) throw new DOMException('Story write scope is no longer current', 'AbortError')
+}
+
+export function createGenerationScope(storyId: string, branchId: string | null): GenerationScope {
+  return Object.freeze({ storyId, branchId, turnId: crypto.randomUUID() })
+}
+
+export function isGenerationScopeCurrent(
+  scope: GenerationScope,
+  currentStory: { id: string; currentBranchId?: string | null } | null | undefined,
+): boolean {
+  return (
+    currentStory?.id === scope.storyId && (currentStory.currentBranchId ?? null) === scope.branchId
+  )
+}

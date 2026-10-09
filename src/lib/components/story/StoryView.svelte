@@ -9,6 +9,7 @@
   import StreamingEntry from './StreamingEntry.svelte'
   import ActionInput from './ActionInput.svelte'
   import ActionChoices from './ActionChoices.svelte'
+  import ImportOrganizationPanel from './ImportOrganizationPanel.svelte'
   import { Button } from '$lib/components/ui/button'
   import EmptyState from '$lib/components/ui/empty-state/empty-state.svelte'
   import { eventBus, type BranchSwitchedEvent } from '$lib/services/events'
@@ -470,7 +471,7 @@
 
 <div class="relative flex h-full flex-col overflow-hidden">
   <!-- Background Image Layer -->
-  {#if story.currentBgImage}
+  {#if story.currentBgImage && story.currentStory?.settings?.backgroundImagesEnabled}
     {#key story.currentBgImage}
       <div
         class="absolute inset-0 z-0 bg-cover bg-center bg-no-repeat transition-all duration-300"
@@ -502,8 +503,8 @@
       {#if story.entries.length === 0 && !ui.isStreaming}
         <EmptyState
           icon={BookOpen}
-          title="Your adventure begins here..."
-          description="Type an action below to start your story."
+          title="你的故事从这里开始…"
+          description="在下方输入行动，开始故事。"
           class="py-12 sm:py-20"
         />
       {:else}
@@ -511,15 +512,15 @@
         {#if displayedEntries.hiddenAtTop > 0}
           <div class="border-border mb-3 flex flex-col items-center gap-2 border-b py-3">
             <p class="text-muted-foreground text-sm">
-              {displayedEntries.hiddenAtTop} earlier entries hidden for performance
+              {displayedEntries.hiddenAtTop} 段较早内容已暂时隐藏，以提升性能
             </p>
             <div class="flex flex-row gap-2">
               <Button variant="secondary" size="sm" class="h-7 text-xs" onclick={showMoreAbove}>
-                Show {Math.min(LOAD_MORE_BATCH, displayedEntries.hiddenAtTop)} more
+                显示 {Math.min(LOAD_MORE_BATCH, displayedEntries.hiddenAtTop)} 更多
               </Button>
               {#if !settings.uiSettings.showScrollToTop}
                 <Button variant="secondary" size="sm" class="h-7 text-xs" onclick={scrollToTop}>
-                  Go to top
+                  返回顶部
                 </Button>
               {/if}
             </div>
@@ -539,7 +540,7 @@
         {/if}
 
         <!-- Show post-generation status (e.g. Updating world...) -->
-        {#if ui.isGenerating && !ui.isStreaming && ui.generationStatus}
+        {#if ui.isGenerating && ui.generationStatus && ui.generationScope?.storyId === story.currentStory?.id && ui.generationScope?.branchId === (story.currentStory?.currentBranchId ?? null)}
           <div
             class="text-muted-foreground animate-fade-in flex items-center justify-center gap-2 py-2"
           >
@@ -548,7 +549,23 @@
           </div>
         {/if}
 
-        <!-- Show RPG-style action choices after narration (adventure mode only) -->
+        {#if ui.isGenerating && ui.directorStreamingActive && ui.generationScope?.storyId === story.currentStory?.id && ui.generationScope?.branchId === (story.currentStory?.currentBranchId ?? null)}
+          <details
+            class="border-border bg-muted/20 mx-auto mb-2 w-full max-w-2xl rounded-md border px-3 py-2"
+            open={ui.directorPanelExpanded}
+            ontoggle={(event) => ui.setDirectorPanelExpanded(event.currentTarget.open)}
+          >
+            <summary class="text-muted-foreground cursor-pointer text-sm"
+              >本轮 Director 原文</summary
+            >
+            <p class="text-muted-foreground mt-2 text-sm whitespace-pre-wrap">
+              {ui.directorStreamingContent || ui.novelUserSummary || '等待 Director 输出…'}
+            </p>
+          </details>
+        {/if}
+
+        <!-- RPG choices remain an adventure-mode feature. Collaborative stories use the
+             unified inspiration entry beside the writing input. -->
         {#if !ui.isStreaming && !ui.isGenerating && story.storyMode === 'adventure' && !settings.uiSettings.disableSuggestions}
           <ActionChoices />
         {/if}
@@ -557,15 +574,15 @@
         {#if displayedEntries.hiddenAtBottom > 0}
           <div class="border-border mt-3 flex flex-col items-center gap-2 border-t py-3">
             <p class="text-muted-foreground text-sm">
-              {displayedEntries.hiddenAtBottom} later entries hidden for performance
+              {displayedEntries.hiddenAtBottom} 段后续内容已暂时隐藏，以提升性能
             </p>
             <div class="flex flex-row gap-2">
               <Button variant="secondary" size="sm" class="h-7 text-xs" onclick={showMoreBelow}>
-                Show {Math.min(LOAD_MORE_BATCH, displayedEntries.hiddenAtBottom)} more
+                显示 {Math.min(LOAD_MORE_BATCH, displayedEntries.hiddenAtBottom)} 更多
               </Button>
               {#if !settings.uiSettings.showScrollToBottom}
                 <Button variant="secondary" size="sm" class="h-7 text-xs" onclick={scrollToBottom}>
-                  Go to bottom
+                  返回底部
                 </Button>
               {/if}
             </div>
@@ -589,7 +606,7 @@
                 size="sm"
                 class={buttonClasses}
                 onclick={scrollToTop}
-                aria-label="Scroll to first message"
+                aria-label="跳转到第一条内容"
               >
                 <ChevronUp class={iconClasses} />
               </Button>
@@ -604,7 +621,7 @@
                 size="sm"
                 class={buttonClasses}
                 onclick={scrollToBottom}
-                aria-label="Scroll to bottom"
+                aria-label="滚动到底部"
               >
                 <ChevronDown class={iconClasses} />
               </Button>
@@ -617,10 +634,12 @@
 
   <!-- Action input area -->
   <div
-    class="border-border relative z-10 border-t px-3 pt-2 pb-1 sm:pt-3 sm:pr-8 sm:pb-2 sm:pl-6 {story.currentBgImage
+    class="border-border relative z-10 border-t px-3 pt-2 pb-1 sm:pt-3 sm:pr-8 sm:pb-2 sm:pl-6 {story.currentBgImage &&
+    story.currentStory?.settings?.backgroundImagesEnabled
       ? 'bg-background/60 backdrop-blur-md'
       : 'bg-card'}"
   >
+    <ImportOrganizationPanel />
     <div class="mx-auto" style={storyMaxWidthStyle}>
       <ActionInput />
     </div>

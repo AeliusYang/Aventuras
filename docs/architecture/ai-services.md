@@ -4,11 +4,22 @@ How a task picks its model, and where the numbers that govern it live.
 
 ## Agent Profiles and Service Resolution
 
+The collaborative workflow has six dedicated service ids: Scene Director, Writer, long planning,
+pattern review, plot suggestions, and fact/state extraction. They do not own duplicate model settings.
+Each service is assigned to a normal Generation Profile on the system Agents page and inherits that
+profile's API Profile, model, token budget, reasoning and generation parameters. The request protocol
+belongs to the service rather than the profile; in particular the Director has one fixed 90-second
+attempt. Prompt text comes from the story's active Prompt Pack. Scene Director and Writer are required
+turn stages; the other four are story-gated, and long planning and pattern review are user-requested
+only and never run periodically.
+
 Every AI task is a `ServiceId` — the keys of `DEFAULT_SERVICE_PRESET_ASSIGNMENTS` in
 `src/lib/stores/settings.svelte.ts`: `classifier`, `lorebookClassifier`, `entryRetrieval`,
 `worldStateInjection`, `characterCardImport`, `memory`, `chapterQuery`, `timelineFill`,
 `suggestions`, `actionChoices`, `styleReviewer`, `loreManagement`, `agenticRetrieval`,
-`interactiveVault`, `imageGeneration`, `bgImageGeneration`, plus the namespaced
+`interactiveVault`, `imageGeneration`, `bgImageGeneration`, `collaborativeSceneDirector`,
+`collaborativeWriter`, `collaborativeLongPlanner`, `collaborativePatternReviewer`,
+`collaborativeFactExtractor`, `collaborativePlotSuggestions`, plus the namespaced
 `wizard:*` and `translation:*` families.
 
 The translation family is one `ServiceId` per surface — `translation:narration`,
@@ -22,8 +33,9 @@ Resolution is two hops, and conflating them is the usual source of confusion:
 ServiceId ──(servicePresetAssignments)──▶ presetId ──(generationPresets)──▶ GenerationPreset
 ```
 
-A `GenerationPreset` is what the UI calls an **Agent Profile**: it carries the model, the API
-profile, temperature and reasoning effort. Several services share one by default — everything
+A `GenerationPreset` is what the UI calls an **Agent Profile**: it carries the model, API profile,
+temperature, token limit, timeout, reasoning effort and the remaining supported request options.
+Several services share one by default — everything
 classification-shaped points at the `classification` preset, the memory pipeline at `memory`, and
 so on — so retargeting one profile moves every service assigned to it.
 

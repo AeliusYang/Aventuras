@@ -17,6 +17,7 @@
     Settings as SettingsIcon,
     FlaskConical,
     BookOpen,
+    Bot,
   } from '@lucide/svelte'
 
   import * as ResponsiveModal from '$lib/components/ui/responsive-modal'
@@ -37,18 +38,66 @@
   import AdvancedSettings from './AdvancedSettings.svelte'
   import ExperimentalSettings from './ExperimentalSettings.svelte'
   import StorySettingsTab from './tabs/story-settings.svelte'
+  import { database } from '$lib/services/database'
 
   const baseTabs = [
-    { id: 'api' as const, label: 'API', icon: Key },
-    { id: 'generation' as const, label: 'Generation', icon: Cpu },
-    { id: 'interface' as const, label: 'Interface', icon: Palette },
-    { id: 'images' as const, label: 'Images', icon: Image },
-    { id: 'tts' as const, label: 'TTS', icon: Volume2 },
-    { id: 'advanced' as const, label: 'Advanced', icon: SettingsIcon },
-    { id: 'experimental' as const, label: 'Labs', icon: FlaskConical },
+    { id: 'api' as const, label: '模型连接', icon: Key },
+    { id: 'generation' as const, label: '生成设置', icon: Cpu },
+    { id: 'interface' as const, label: '界面', icon: Palette },
+    { id: 'images' as const, label: '图片', icon: Image },
+    { id: 'tts' as const, label: '朗读', icon: Volume2 },
+    { id: 'advanced' as const, label: '高级', icon: SettingsIcon },
+    { id: 'experimental' as const, label: '实验功能', icon: FlaskConical },
+    { id: 'prompts' as const, label: '提示词管理', icon: Bot },
   ]
 
-  const storyTab = { id: 'story-settings' as const, label: 'Story', icon: BookOpen }
+  const storyTab = $derived({
+    id: 'story-settings' as const,
+    label: story.currentStory?.mode === 'creative-writing' ? '中文写作' : '故事设置',
+    icon: BookOpen,
+  })
+
+  let openingPrompts = $state(false)
+  async function openPromptManager() {
+    if (openingPrompts) return
+    openingPrompts = true
+    const current = story.currentStory
+    // The editor returns to the actual settings page, never a removed Agent tab.
+    ui.setSettingsTab(current ? 'story-settings' : 'generation')
+    try {
+      if (current) {
+        const packId = (await database.getStoryPackId(current.id)) || 'default-pack'
+        if (story.currentStory?.id !== current.id) return
+        ui.openPromptPackEditor(
+          packId,
+          current.mode === 'creative-writing' ? 'collaborative-scene-director' : 'adventure',
+          {
+            kind: 'story-settings',
+            storyId: current.id,
+            settingsTab: 'story-settings',
+          },
+        )
+      } else {
+        ui.clearPromptEditorSession()
+        ui.setVaultTab('prompts')
+        ui.setActivePanel('vault')
+        ui.closeSettings()
+      }
+    } catch (error) {
+      ui.showToast(error instanceof Error ? error.message : '无法打开提示词管理', 'error')
+    } finally {
+      openingPrompts = false
+    }
+  }
+
+  $effect(() => {
+    if (
+      ui.settingsModalOpen &&
+      (ui.settingsTab === 'prompts' || ui.settingsTab === 'collaborative-agents')
+    ) {
+      void openPromptManager()
+    }
+  })
 
   let tabs = $derived(story.currentStory ? [storyTab, ...baseTabs] : baseTabs)
 
@@ -148,8 +197,8 @@
 
   async function handleResetAll() {
     const confirmed = await ask(
-      'Reset all settings to their default values?\n\nYour API key will be preserved, but all other settings (models, temperatures, prompts, UI preferences) will be reset.\n\nThis cannot be undone.',
-      { title: 'Reset All Settings', kind: 'warning' },
+      '将所有设置恢复为默认值？\n\nAPI 密钥会保留，其他设置（模型、温度、提示词、界面偏好）将被重置。\n\n此操作无法撤销。',
+      { title: '重置所有设置', kind: 'warning' },
     )
     if (!confirmed) return
 
@@ -186,10 +235,10 @@
         </div>
         <div class="flex-1 text-center md:text-left">
           <ResponsiveModal.Title class="text-2xl font-semibold sm:text-xl"
-            >Settings</ResponsiveModal.Title
+            >设置</ResponsiveModal.Title
           >
           <p class="text-muted-foreground hidden text-sm md:block">
-            Configure your Aventuras experience
+            配置模型连接、生成方式和阅读界面
           </p>
         </div>
       </div>
@@ -223,10 +272,10 @@
           >
             {#if isResettingSettings}
               <Loader2 class="h-4 w-4 animate-spin" />
-              Resetting...
+              正在重置…
             {:else}
               <RotateCcw class="h-4 w-4" />
-              Reset All
+              全部重置
             {/if}
           </Button>
         </div>
@@ -275,9 +324,9 @@
                           class="border-destructive/50 flex items-center justify-between rounded-lg border p-4"
                         >
                           <div class="space-y-0.5">
-                            <p class="text-destructive font-medium">Reset All Settings</p>
+                            <p class="text-destructive font-medium">重置所有设置</p>
                             <p class="text-muted-foreground text-xs">
-                              Resets all settings to defaults. API key is preserved.
+                              将所有设置恢复为默认值，保留 API 密钥。
                             </p>
                           </div>
                           <Button
@@ -288,10 +337,10 @@
                           >
                             {#if isResettingSettings}
                               <Loader2 class="mr-2 h-4 w-4 animate-spin" />
-                              Resetting...
+                              正在重置…
                             {:else}
                               <RotateCcw class="mr-2 h-4 w-4" />
-                              Reset
+                              重置
                             {/if}
                           </Button>
                         </div>
@@ -342,8 +391,7 @@
     <Dialog.Header>
       <Dialog.Title>{manualBodyEditorTitle}</Dialog.Title>
       <Dialog.Description>
-        Edit the manual request body. This overrides request parameters; messages and tools are
-        managed by Aventuras.
+        编辑自定义请求体以覆盖请求参数；消息与工具由 Aventuras 管理。
       </Dialog.Description>
     </Dialog.Header>
 
@@ -351,13 +399,13 @@
       <Textarea
         bind:value={manualBodyEditorValue}
         class="h-full min-h-[50vh] resize-none font-mono text-sm"
-        placeholder="Enter JSON request body..."
+        placeholder="输入 JSON 请求体…"
       />
     </div>
 
     <Dialog.Footer>
-      <Button variant="outline" onclick={closeManualBodyEditor}>Cancel</Button>
-      <Button onclick={applyManualBodyEditor}>Save</Button>
+      <Button variant="outline" onclick={closeManualBodyEditor}>取消</Button>
+      <Button onclick={applyManualBodyEditor}>保存</Button>
     </Dialog.Footer>
   </Dialog.Content>
 </Dialog.Root>

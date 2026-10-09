@@ -60,24 +60,24 @@
 </script>
 
 <div class="space-y-5">
-  <p class="text-muted-foreground">Describe or refine the world setting and add lorebooks.</p>
+  <p class="text-muted-foreground">描述或完善世界设定，并添加世界书。</p>
 
   <!-- Setting Seed -->
   <div class="space-y-2">
     <div class="flex items-center gap-2">
       <MapPin class="h-4 w-4" />
-      <Label for="setting-seed">World Setting</Label>
+      <Label for="setting-seed">世界设定</Label>
     </div>
     <Textarea
       id="setting-seed"
-      placeholder="Describe the world and setting for your story..."
+      placeholder="描述故事的世界与背景…"
       value={settingSeed}
       oninput={(e) => onSettingSeedChange(e.currentTarget.value)}
       rows={4}
     />
     <div class="flex gap-2">
       <Button variant="secondary" size="sm" onclick={onUseAsIs} disabled={!settingSeed.trim()}>
-        Use as-is
+        直接使用
       </Button>
       <Button
         variant="default"
@@ -87,10 +87,10 @@
       >
         {#if isExpandingSetting}
           <Loader2 class="mr-1 h-3 w-3 animate-spin" />
-          Expanding...
+          正在扩写…
         {:else}
           <Sparkles class="mr-1 h-3 w-3" />
-          Expand with AI
+          用 AI 扩写
         {/if}
       </Button>
     </div>
@@ -125,16 +125,16 @@
     <div class="flex items-center justify-between">
       <h4 class="flex items-center gap-2 text-sm font-medium">
         <BookOpen class="h-4 w-4" />
-        Lorebooks
+        世界书
         {#if importedLorebooks.length > 0}
           <Badge variant="secondary" class="text-xs">
-            {importedEntries.length} entries
+            {importedEntries.length} 条目
           </Badge>
         {/if}
       </h4>
       <Button variant="outline" size="sm" onclick={() => (showVaultBrowser = !showVaultBrowser)}>
         <Archive class="mr-1 h-3 w-3" />
-        {showVaultBrowser ? 'Hide Vault' : 'Add from Vault'}
+        {showVaultBrowser ? '收起素材库' : '从素材库添加'}
       </Button>
     </div>
 
@@ -172,7 +172,7 @@
                     />
                     <span class="text-sm font-medium">{lorebook.filename}</span>
                     <Badge variant="outline" class="text-xs">
-                      {lorebook.entries.length} entries
+                      {lorebook.entries.length} 条目
                     </Badge>
                   </div>
                   <Button

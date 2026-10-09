@@ -88,6 +88,9 @@ class TemplateEngine {
    * @returns Array of unique variable names
    */
   extractVariableNames(template: string): string[] {
+    try {
+      return this.liquid.globalFullVariablesSync(template, { partials: false })
+    } catch {}
     const variableNames = new Set<string>()
 
     // Extract from output tags: {{ variable }}, {{ variable | filter }}
